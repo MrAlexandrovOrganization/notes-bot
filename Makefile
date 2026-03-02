@@ -4,9 +4,12 @@ install:
 run:
 	poetry run python main.py
 
+test:
+	poetry run pytest -v
+
 format:
-	poetry run ruff check --fix --unsafe-fixes core frontends/telegram
-	poetry run ruff format core frontends/telegram
+	poetry run ruff check --fix --unsafe-fixes core frontends/telegram tests
+	poetry run ruff format core frontends/telegram tests
 
 clean:
 	find . -type f -name '*.pyc' -delete
@@ -33,4 +36,4 @@ docker-clean:
 	docker-compose down --rmi all --volumes --remove-orphans
 	docker system prune -f
 
-.PHONY: install run clean up down restart docker-clean
+.PHONY: install run test clean up down restart docker-clean

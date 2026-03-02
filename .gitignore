@@ -29,6 +29,10 @@ wheels/
 # Poetry
 poetry.lock
 
+# Test coverage
+htmlcov/
+.coverage
+
 # Notes directory
 notes/
 

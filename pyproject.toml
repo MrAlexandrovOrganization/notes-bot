@@ -11,6 +11,20 @@ python-telegram-bot = "^21.0"
 python-dotenv = "^1.0.0"
 ruff = "^0.14.4"
 pre-commit = "^4.4.0"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=core --cov-report=term-missing --cov-report=html:htmlcov"
+
+[tool.coverage.run]
+source = ["core"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
 
 [build-system]
 requires = ["poetry-core"]
