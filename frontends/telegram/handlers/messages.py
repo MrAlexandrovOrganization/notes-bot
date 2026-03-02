@@ -4,12 +4,14 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..config import ROOT_ID, DAILY_NOTES_DIR
+from core.config import DAILY_NOTES_DIR
+from core.notes import create_daily_note_from_template
+from core.features.rating import update_rating
+from core.features.tasks import add_task
+from ..config import ROOT_ID
 from ..states.context import UserState
 from ..states import state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
-from ..features.rating import update_rating
-from ..features.tasks import add_task
 from ..utils import escape_markdown_v2
 
 logger = logging.getLogger(__name__)
@@ -119,9 +121,6 @@ async def handle_text_message(
             # IDLE or other states - add text to active note
             # Ensure note exists
             if not filepath.exists():
-                # Create note from template
-                from ..notes import create_daily_note_from_template
-
                 create_daily_note_from_template(filepath, active_date)
 
             # Append text to note

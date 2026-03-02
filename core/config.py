@@ -1,29 +1,11 @@
-"""Configuration module for the Notes Bot."""
+"""Configuration module — notes paths and timezone settings."""
 
 import os
-import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-
-def get_bot_token():
-    """Get Telegram bot token from environment."""
-    return os.getenv("BOT_TOKEN")
-
-
-def get_root_id():
-    """Get authorized user's Telegram ID from environment."""
-    _root_id = os.getenv("ROOT_ID")
-    return int(_root_id) if _root_id else None
 
 
 def get_notes_dir():
@@ -42,10 +24,6 @@ def get_notes_dir():
 
     return NOTES_DIR
 
-
-# Get configuration from environment
-BOT_TOKEN = get_bot_token()
-ROOT_ID = get_root_id()
 
 # Notes directory - base path for all notes and templates
 NOTES_DIR = get_notes_dir()

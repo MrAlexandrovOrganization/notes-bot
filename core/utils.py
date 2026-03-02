@@ -1,8 +1,7 @@
-"""Utility functions for the Notes Bot."""
+"""Utility functions — date helpers."""
 
-import re
 from datetime import datetime, timedelta, timezone
-from .config import TIMEZONE_OFFSET_HOURS, DAY_START_HOUR
+from core.config import TIMEZONE_OFFSET_HOURS, DAY_START_HOUR
 
 
 def get_today_filename() -> str:
@@ -21,10 +20,3 @@ def get_today_filename() -> str:
         adjusted_time = moscow_time
 
     return adjusted_time.strftime("%d-%b-%Y") + ".md"
-
-
-def escape_markdown_v2(text: str) -> str:
-    """Escape special characters for MarkdownV2"""
-    # Characters that need to be escaped in MarkdownV2
-    escape_chars = r"_*[]()~`>#+-=|{}.!"
-    return re.sub(f"([{re.escape(escape_chars)}])", r"\\\1", text)

@@ -15,7 +15,8 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --no-interaction --no-ansi --no-root
 
 # Copy bot code
-COPY src/ ./src/
+COPY core/ ./core/
+COPY frontends/ ./frontends/
 COPY main.py .
 
 # Run the bot

@@ -2,8 +2,8 @@
 
 import logging
 from pathlib import Path
-from .config import DAILY_NOTES_DIR, DAILY_TEMPLATE_PATH
-from .utils import get_today_filename
+from core.config import DAILY_NOTES_DIR, DAILY_TEMPLATE_PATH
+from core.utils import get_today_filename
 
 logger = logging.getLogger(__name__)
 

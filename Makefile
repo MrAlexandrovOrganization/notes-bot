@@ -5,8 +5,8 @@ run:
 	poetry run python main.py
 
 format:
-	poetry run ruff check --fix --unsafe-fixes src .
-	poetry run ruff format src .
+	poetry run ruff check --fix --unsafe-fixes core frontends/telegram
+	poetry run ruff format core frontends/telegram
 
 clean:
 	find . -type f -name '*.pyc' -delete

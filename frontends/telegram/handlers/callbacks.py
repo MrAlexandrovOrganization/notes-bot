@@ -5,15 +5,17 @@ from datetime import datetime
 from telegram import CallbackQuery, Update
 from telegram.ext import ContextTypes
 
-from ..config import ROOT_ID, DAILY_NOTES_DIR, NOTES_DIR
+from core.config import DAILY_NOTES_DIR, NOTES_DIR
+from core.notes import read_note, create_daily_note_from_template
+from core.features.rating import get_rating_impl
+from core.features.tasks import parse_tasks, toggle_task
+from core.features.calendar_ops import get_existing_dates
+from core.utils import get_today_filename
+from ..config import ROOT_ID
 from ..states import UserState, state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
 from ..keyboards.tasks import get_tasks_keyboard, get_task_add_keyboard
 from ..keyboards.calendar import get_calendar_keyboard
-from ..features.rating import get_rating_impl
-from ..features.tasks import parse_tasks, toggle_task
-from ..features.calendar_ops import get_existing_dates
-from ..notes import read_note, create_daily_note_from_template
 from ..utils import escape_markdown_v2
 
 logger = logging.getLogger(__name__)
@@ -265,7 +267,9 @@ async def handle_menu_calendar(query: CallbackQuery, user_id: int) -> None:
 # Task handlers
 
 
-async def handle_task_toggle(query: CallbackQuery, user_id: int, task_index: int) -> None:
+async def handle_task_toggle(
+    query: CallbackQuery, user_id: int, task_index: int
+) -> None:
     """Handle task toggle button - switch task completion status."""
     user_context = state_manager.get_context(user_id)
     active_date = user_context.active_date
@@ -471,8 +475,6 @@ async def handle_cal_select(query: CallbackQuery, user_id: int, date: str) -> No
 
 async def handle_cal_today(query: CallbackQuery, user_id: int) -> None:
     """Handle calendar today button - return to current date."""
-    from ..utils import get_today_filename
-
     # Get today's date
     today_filename = get_today_filename()
     today_date = today_filename.replace(".md", "")
@@ -495,7 +497,9 @@ async def handle_cal_today(query: CallbackQuery, user_id: int) -> None:
     text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(today_date)}"
 
     try:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+        await query.edit_message_text(
+            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
     except Exception as e:
         logger.warning(f"Error editing date, probably date did not changed: {e}")
 
