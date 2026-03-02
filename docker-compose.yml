@@ -4,13 +4,19 @@ services:
   core:
     build:
       context: .
-      dockerfile: Dockerfile.core
+      dockerfile: core/Dockerfile
     restart: unless-stopped
     volumes:
       - ${NOTES_DIR}:/notes:rw
     environment:
       - NOTES_DIR=/notes
       - GRPC_PORT=50051
+    healthcheck:
+      test: ["CMD", "python", "-m", "core.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -20,7 +26,7 @@ services:
   telegram:
     build:
       context: .
-      dockerfile: Dockerfile.telegram
+      dockerfile: frontends/telegram/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -28,7 +34,8 @@ services:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
     depends_on:
-      - core
+      core:
+        condition: service_healthy
     logging:
       driver: "json-file"
       options:
