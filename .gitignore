@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Generated protobuf stubs
+proto/*_pb2*.py
+
 # Python
 __pycache__/
 *.py[cod]

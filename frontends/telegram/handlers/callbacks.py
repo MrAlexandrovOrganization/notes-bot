@@ -5,13 +5,8 @@ from datetime import datetime
 from telegram import CallbackQuery, Update
 from telegram.ext import ContextTypes
 
-from core.config import DAILY_NOTES_DIR, NOTES_DIR
-from core.notes import read_note, create_daily_note_from_template
-from core.features.rating import get_rating_impl
-from core.features.tasks import parse_tasks, toggle_task
-from core.features.calendar_ops import get_existing_dates
-from core.utils import get_today_filename
 from ..config import ROOT_ID
+from ..grpc_client import core_client
 from ..states import UserState, state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
 from ..keyboards.tasks import get_tasks_keyboard, get_task_add_keyboard
@@ -152,22 +147,11 @@ async def handle_menu_tasks(query: CallbackQuery, user_id: int) -> None:
     # Update state
     state_manager.update_context(user_id, state=UserState.TASKS_VIEW, task_page=0)
 
-    # Get filepath
-    filepath = DAILY_NOTES_DIR / f"{active_date}.md"
-
     # Ensure note exists
-    if not filepath.exists():
-        create_daily_note_from_template(filepath, active_date)
+    core_client.ensure_note(active_date)
 
-    # Read and parse tasks
-    content = read_note(f"{active_date}.md")
-    if not content:
-        await query.edit_message_text(
-            "❌ Не удалось прочитать заметку\\.", parse_mode="MarkdownV2"
-        )
-        return
-
-    tasks = parse_tasks(content)
+    # Get tasks
+    tasks = core_client.get_tasks(active_date)
 
     # Generate tasks keyboard
     keyboard = get_tasks_keyboard(tasks, current_page=0)
@@ -188,15 +172,11 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
     user_context = state_manager.get_context(user_id)
     active_date = user_context.active_date
 
-    # Get filepath
-    filepath = DAILY_NOTES_DIR / f"{active_date}.md"
-
     # Ensure note exists
-    if not filepath.exists():
-        create_daily_note_from_template(filepath, active_date)
+    core_client.ensure_note(active_date)
 
     # Read note
-    content = read_note(f"{active_date}.md")
+    content = core_client.get_note(active_date)
     if not content:
         await query.edit_message_text(
             "❌ Не удалось прочитать заметку\\.", parse_mode="MarkdownV2"
@@ -204,7 +184,7 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
         return
 
     # Get rating if exists
-    rating = get_rating_impl(content)
+    rating = core_client.get_rating(active_date)
     rating_text = (
         f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
     )
@@ -247,7 +227,7 @@ async def handle_menu_calendar(query: CallbackQuery, user_id: int) -> None:
     state_manager.update_context(user_id, state=UserState.CALENDAR_VIEW)
 
     # Get existing dates
-    existing_dates = get_existing_dates(NOTES_DIR)
+    existing_dates = core_client.get_existing_dates()
 
     # Generate calendar keyboard
     keyboard = get_calendar_keyboard(
@@ -274,24 +254,19 @@ async def handle_task_toggle(
     user_context = state_manager.get_context(user_id)
     active_date = user_context.active_date
 
-    # Get filepath
-    filepath = DAILY_NOTES_DIR / f"{active_date}.md"
-
     # Toggle task
-    if toggle_task(filepath, task_index):
-        # Re-read and display updated tasks
-        content = read_note(f"{active_date}.md")
-        if content:
-            tasks = parse_tasks(content)
-            keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
+    if core_client.toggle_task(active_date, task_index):
+        # Re-fetch and display updated tasks
+        tasks = core_client.get_tasks(active_date)
+        keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
 
-            text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
+        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
 
-            await query.edit_message_text(
-                text, reply_markup=keyboard, parse_mode="MarkdownV2"
-            )
+        await query.edit_message_text(
+            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
 
-            logger.info(f"User {user_id} toggled task {task_index}")
+        logger.info(f"User {user_id} toggled task {task_index}")
     else:
         await query.answer("❌ Ошибка при переключении задачи", show_alert=True)
 
@@ -318,19 +293,17 @@ async def handle_task_page(query: CallbackQuery, user_id: int, page: int) -> Non
     # Update page
     state_manager.update_context(user_id, task_page=page)
 
-    # Read and parse tasks
-    content = read_note(f"{active_date}.md")
-    if content:
-        tasks = parse_tasks(content)
-        keyboard = get_tasks_keyboard(tasks, current_page=page)
+    # Fetch tasks
+    tasks = core_client.get_tasks(active_date)
+    keyboard = get_tasks_keyboard(tasks, current_page=page)
 
-        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
+    text = (
+        f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
+    )
 
-        await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
-        )
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
 
-        logger.info(f"User {user_id} changed to task page {page}")
+    logger.info(f"User {user_id} changed to task page {page}")
 
 
 async def handle_task_back(query: CallbackQuery, user_id: int) -> None:
@@ -358,19 +331,17 @@ async def handle_task_cancel(query: CallbackQuery, user_id: int) -> None:
     # Return to tasks view
     state_manager.update_context(user_id, state=UserState.TASKS_VIEW)
 
-    # Read and parse tasks
-    content = read_note(f"{active_date}.md")
-    if content:
-        tasks = parse_tasks(content)
-        keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
+    # Fetch tasks
+    tasks = core_client.get_tasks(active_date)
+    keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
 
-        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
+    text = (
+        f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
+    )
 
-        await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
-        )
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
 
-        logger.info(f"User {user_id} cancelled adding task")
+    logger.info(f"User {user_id} cancelled adding task")
 
 
 # Calendar handlers
@@ -394,7 +365,7 @@ async def handle_cal_prev(query: CallbackQuery, user_id: int) -> None:
     state_manager.update_context(user_id, calendar_month=month, calendar_year=year)
 
     # Get existing dates
-    existing_dates = get_existing_dates(NOTES_DIR)
+    existing_dates = core_client.get_existing_dates()
 
     # Generate calendar
     keyboard = get_calendar_keyboard(
@@ -428,7 +399,7 @@ async def handle_cal_next(query: CallbackQuery, user_id: int) -> None:
     state_manager.update_context(user_id, calendar_month=month, calendar_year=year)
 
     # Get existing dates
-    existing_dates = get_existing_dates(NOTES_DIR)
+    existing_dates = core_client.get_existing_dates()
 
     # Generate calendar
     keyboard = get_calendar_keyboard(
@@ -449,13 +420,8 @@ async def handle_cal_select(query: CallbackQuery, user_id: int, date: str) -> No
     # Set as active date
     state_manager.set_active_date(user_id, date)
 
-    # Get filepath
-    filepath = DAILY_NOTES_DIR / f"{date}.md"
-
     # Create note if doesn't exist
-    if not filepath.exists():
-        create_daily_note_from_template(filepath, date)
-        logger.info(f"Created new note for {date}")
+    core_client.ensure_note(date)
 
     # Reset to IDLE state
     state_manager.update_context(user_id, state=UserState.IDLE)
@@ -476,8 +442,7 @@ async def handle_cal_select(query: CallbackQuery, user_id: int, date: str) -> No
 async def handle_cal_today(query: CallbackQuery, user_id: int) -> None:
     """Handle calendar today button - return to current date."""
     # Get today's date
-    today_filename = get_today_filename()
-    today_date = today_filename.replace(".md", "")
+    today_date = core_client.get_today_date()
 
     # Set as active date
     state_manager.set_active_date(user_id, today_date)
@@ -489,7 +454,7 @@ async def handle_cal_today(query: CallbackQuery, user_id: int) -> None:
     )
 
     # Get existing dates
-    existing_dates = get_existing_dates(NOTES_DIR)
+    existing_dates = core_client.get_existing_dates()
 
     # Generate calendar
     keyboard = get_calendar_keyboard(now.year, now.month, today_date, existing_dates)

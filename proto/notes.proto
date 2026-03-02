@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package notes;
+
+service NotesService {
+  rpc GetTodayDate(Empty) returns (DateResponse);
+  rpc GetExistingDates(Empty) returns (ExistingDatesResponse);
+  rpc EnsureNote(DateRequest) returns (SuccessResponse);
+  rpc GetNote(DateRequest) returns (NoteResponse);
+  rpc GetRating(DateRequest) returns (RatingResponse);
+  rpc UpdateRating(UpdateRatingRequest) returns (SuccessResponse);
+  rpc GetTasks(DateRequest) returns (TasksResponse);
+  rpc ToggleTask(ToggleTaskRequest) returns (SuccessResponse);
+  rpc AddTask(AddTaskRequest) returns (SuccessResponse);
+  rpc AppendToNote(AppendRequest) returns (SuccessResponse);
+}
+
+message Empty {}
+
+message DateRequest {
+  string date = 1;
+}
+
+message DateResponse {
+  string date = 1;
+}
+
+message ExistingDatesResponse {
+  repeated string dates = 1;
+}
+
+message NoteResponse {
+  string content = 1;
+}
+
+message RatingResponse {
+  bool has_rating = 1;
+  int32 rating = 2;
+}
+
+message UpdateRatingRequest {
+  string date = 1;
+  int32 rating = 2;
+}
+
+message Task {
+  string text = 1;
+  bool completed = 2;
+  int32 index = 3;
+  int32 line_number = 4;
+}
+
+message TasksResponse {
+  repeated Task tasks = 1;
+}
+
+message ToggleTaskRequest {
+  string date = 1;
+  int32 task_index = 2;
+}
+
+message AddTaskRequest {
+  string date = 1;
+  string task_text = 2;
+}
+
+message AppendRequest {
+  string date = 1;
+  string text = 2;
+}
+
+message SuccessResponse {
+  bool success = 1;
+}

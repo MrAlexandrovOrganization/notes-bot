@@ -4,11 +4,8 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from core.config import DAILY_NOTES_DIR
-from core.notes import create_daily_note_from_template
-from core.features.rating import update_rating
-from core.features.tasks import add_task
 from ..config import ROOT_ID
+from ..grpc_client import core_client
 from ..states.context import UserState
 from ..states import state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
@@ -49,9 +46,6 @@ async def handle_text_message(
     current_state = user_context.state
     active_date = user_context.active_date
 
-    # Get filepath for active note
-    filepath = DAILY_NOTES_DIR / f"{active_date}.md"
-
     try:
         # Handle based on state
         if current_state == UserState.WAITING_RATING:
@@ -66,7 +60,7 @@ async def handle_text_message(
                     return
 
                 # Update rating in note
-                if update_rating(filepath, rating):
+                if core_client.update_rating(active_date, rating):
                     # Reset state to IDLE
                     state_manager.update_context(user_id, state=UserState.IDLE)
 
@@ -93,7 +87,7 @@ async def handle_text_message(
 
         elif current_state == UserState.WAITING_NEW_TASK:
             # Add new task
-            if add_task(filepath, text):
+            if core_client.add_task(active_date, text):
                 # Return to tasks view
                 state_manager.update_context(user_id, state=UserState.TASKS_VIEW)
 
@@ -119,24 +113,20 @@ async def handle_text_message(
 
         else:
             # IDLE or other states - add text to active note
-            # Ensure note exists
-            if not filepath.exists():
-                create_daily_note_from_template(filepath, active_date)
+            if core_client.append_to_note(active_date, text):
+                confirmation_text = (
+                    f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}"
+                )
+                keyboard = get_main_menu_keyboard(active_date)
 
-            # Append text to note
-            with open(filepath, "a", encoding="utf-8") as f:
-                f.write(f"{text}\n")
-
-            # Send confirmation with main menu
-            confirmation_text = (
-                f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}"
-            )
-            keyboard = get_main_menu_keyboard(active_date)
-
-            await update.message.reply_text(
-                confirmation_text, reply_markup=keyboard, parse_mode="MarkdownV2"
-            )
-            logger.info(f"User {user_id} added text to {active_date}")
+                await update.message.reply_text(
+                    confirmation_text, reply_markup=keyboard, parse_mode="MarkdownV2"
+                )
+                logger.info(f"User {user_id} added text to {active_date}")
+            else:
+                await update.message.reply_text(
+                    "❌ Ошибка при сохранении текста\\.", parse_mode="MarkdownV2"
+                )
 
     except Exception as e:
         logger.error(f"Error handling text message from user {user_id}: {e}")

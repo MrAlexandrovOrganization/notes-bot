@@ -36,4 +36,7 @@ docker-clean:
 	docker-compose down --rmi all --volumes --remove-orphans
 	docker system prune -f
 
-.PHONY: install run test clean up down restart docker-clean
+proto:
+	poetry run python -m grpc_tools.protoc -I proto --python_out=proto --grpc_python_out=proto proto/notes.proto
+
+.PHONY: install run test clean up down restart docker-clean proto

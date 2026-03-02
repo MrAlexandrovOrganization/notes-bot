@@ -1,11 +1,20 @@
 """State manager for handling user contexts in the Notes Bot."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from .context import UserContext, UserState
-from core.utils import get_today_filename
+
+
+def _get_today_date() -> str:
+    """Return today's date string in DD-MMM-YYYY format (Moscow time, day starts at 7 AM)."""
+    now_utc = datetime.now(timezone.utc)
+    moscow_time = now_utc + timedelta(hours=3)
+    if moscow_time.hour < 7:
+        moscow_time -= timedelta(days=1)
+    return moscow_time.strftime("%d-%b-%Y")
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +48,7 @@ class StateManager:
         """
         if user_id not in self._contexts:
             # Get current date in the required format
-            today_filename = get_today_filename()
-            # Remove .md extension to get just the date
-            active_date = today_filename.replace(".md", "")
+            active_date = _get_today_date()
 
             # Get current month and year
             now = datetime.now()

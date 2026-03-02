@@ -1,18 +1,34 @@
 version: '3.8'
 
 services:
-  notes_bot:
-    build: .
-    container_name: notes_bot
+  core:
+    build:
+      context: .
+      dockerfile: Dockerfile.core
+    restart: unless-stopped
+    volumes:
+      - ${NOTES_DIR}:/notes:rw
+    environment:
+      - NOTES_DIR=/notes
+      - GRPC_PORT=50051
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram
     restart: unless-stopped
     env_file:
       - .env
-    volumes:
-      # Mount host notes directory to /notes in container
-      - ${NOTES_DIR}:/notes:rw
     environment:
-      # Override NOTES_DIR to use container path
-      - NOTES_DIR=/notes
+      - CORE_GRPC_HOST=core
+      - CORE_GRPC_PORT=50051
+    depends_on:
+      - core
     logging:
       driver: "json-file"
       options:
