@@ -33,12 +33,16 @@ class CoreClient:
         return set(response.dates)
 
     def ensure_note(self, date: str) -> bool:
-        response = self._stub.EnsureNote(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
+        response = self._stub.EnsureNote(
+            notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT
+        )
         return response.success
 
     def get_note(self, date: str) -> Optional[str]:
         try:
-            response = self._stub.GetNote(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
+            response = self._stub.GetNote(
+                notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT
+            )
             return response.content
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -46,7 +50,9 @@ class CoreClient:
             raise
 
     def get_rating(self, date: str) -> Optional[int]:
-        response = self._stub.GetRating(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
+        response = self._stub.GetRating(
+            notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT
+        )
         if response.has_rating:
             return response.rating
         return None
@@ -59,7 +65,9 @@ class CoreClient:
         return response.success
 
     def get_tasks(self, date: str) -> List[Dict[str, Any]]:
-        response = self._stub.GetTasks(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
+        response = self._stub.GetTasks(
+            notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT
+        )
         return [
             {
                 "text": t.text,

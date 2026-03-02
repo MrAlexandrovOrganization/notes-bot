@@ -13,6 +13,7 @@ from core.server import NotesServicer
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_context():
     """Return a minimal mock for grpc.ServicerContext."""
     ctx = MagicMock()
@@ -26,6 +27,7 @@ def _make_servicer():
 # ---------------------------------------------------------------------------
 # GetTodayDate
 # ---------------------------------------------------------------------------
+
 
 class TestGetTodayDate:
     def test_returns_date_without_md_extension(self):
@@ -44,6 +46,7 @@ class TestGetTodayDate:
 # ---------------------------------------------------------------------------
 # GetExistingDates
 # ---------------------------------------------------------------------------
+
 
 class TestGetExistingDates:
     def test_returns_all_dates_from_calendar_ops(self):
@@ -64,14 +67,17 @@ class TestGetExistingDates:
 # EnsureNote
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureNote:
     def test_creates_note_when_missing(self, tmp_path):
         servicer = _make_servicer()
         request = MagicMock()
         request.date = "01-Mar-2026"
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.create_daily_note_from_template") as mock_create:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.create_daily_note_from_template") as mock_create,
+        ):
             response = servicer.EnsureNote(request, _make_context())
 
         mock_create.assert_called_once()
@@ -85,8 +91,10 @@ class TestEnsureNote:
         request = MagicMock()
         request.date = "01-Mar-2026"
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.create_daily_note_from_template") as mock_create:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.create_daily_note_from_template") as mock_create,
+        ):
             response = servicer.EnsureNote(request, _make_context())
 
         mock_create.assert_not_called()
@@ -96,6 +104,7 @@ class TestEnsureNote:
 # ---------------------------------------------------------------------------
 # GetNote
 # ---------------------------------------------------------------------------
+
 
 class TestGetNote:
     def test_returns_content_when_note_exists(self):
@@ -125,14 +134,17 @@ class TestGetNote:
 # GetRating
 # ---------------------------------------------------------------------------
 
+
 class TestGetRating:
     def test_returns_rating_when_present(self):
         servicer = _make_servicer()
         request = MagicMock()
         request.date = "01-Mar-2026"
 
-        with patch("core.server.read_note", return_value="content"), \
-             patch("core.server.get_rating_impl", return_value=8):
+        with (
+            patch("core.server.read_note", return_value="content"),
+            patch("core.server.get_rating_impl", return_value=8),
+        ):
             response = servicer.GetRating(request, _make_context())
 
         assert response.has_rating is True
@@ -143,8 +155,10 @@ class TestGetRating:
         request = MagicMock()
         request.date = "01-Mar-2026"
 
-        with patch("core.server.read_note", return_value="content"), \
-             patch("core.server.get_rating_impl", return_value=None):
+        with (
+            patch("core.server.read_note", return_value="content"),
+            patch("core.server.get_rating_impl", return_value=None),
+        ):
             response = servicer.GetRating(request, _make_context())
 
         assert response.has_rating is False
@@ -164,6 +178,7 @@ class TestGetRating:
 # UpdateRating
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateRating:
     def test_delegates_to_update_rating_and_returns_success(self, tmp_path):
         servicer = _make_servicer()
@@ -171,8 +186,10 @@ class TestUpdateRating:
         request.date = "01-Mar-2026"
         request.rating = 7
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.update_rating", return_value=True) as mock_update:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.update_rating", return_value=True) as mock_update,
+        ):
             response = servicer.UpdateRating(request, _make_context())
 
         mock_update.assert_called_once_with(tmp_path / "01-Mar-2026.md", 7)
@@ -184,8 +201,10 @@ class TestUpdateRating:
         request.date = "01-Mar-2026"
         request.rating = 7
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.update_rating", return_value=False):
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.update_rating", return_value=False),
+        ):
             response = servicer.UpdateRating(request, _make_context())
 
         assert response.success is False
@@ -194,6 +213,7 @@ class TestUpdateRating:
 # ---------------------------------------------------------------------------
 # GetTasks
 # ---------------------------------------------------------------------------
+
 
 class TestGetTasks:
     def test_returns_parsed_tasks(self):
@@ -206,8 +226,10 @@ class TestGetTasks:
             {"text": "Task 2", "completed": True, "index": 1, "line_number": 6},
         ]
 
-        with patch("core.server.read_note", return_value="content"), \
-             patch("core.server.parse_tasks", return_value=raw_tasks):
+        with (
+            patch("core.server.read_note", return_value="content"),
+            patch("core.server.parse_tasks", return_value=raw_tasks),
+        ):
             response = servicer.GetTasks(request, _make_context())
 
         assert len(response.tasks) == 2
@@ -230,6 +252,7 @@ class TestGetTasks:
 # ToggleTask
 # ---------------------------------------------------------------------------
 
+
 class TestToggleTask:
     def test_delegates_to_toggle_task(self, tmp_path):
         servicer = _make_servicer()
@@ -237,8 +260,10 @@ class TestToggleTask:
         request.date = "01-Mar-2026"
         request.task_index = 2
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.toggle_task", return_value=True) as mock_toggle:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.toggle_task", return_value=True) as mock_toggle,
+        ):
             response = servicer.ToggleTask(request, _make_context())
 
         mock_toggle.assert_called_once_with(tmp_path / "01-Mar-2026.md", 2)
@@ -249,6 +274,7 @@ class TestToggleTask:
 # AddTask
 # ---------------------------------------------------------------------------
 
+
 class TestAddTask:
     def test_delegates_to_add_task(self, tmp_path):
         servicer = _make_servicer()
@@ -256,8 +282,10 @@ class TestAddTask:
         request.date = "01-Mar-2026"
         request.task_text = "New task"
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.add_task", return_value=True) as mock_add:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.add_task", return_value=True) as mock_add,
+        ):
             response = servicer.AddTask(request, _make_context())
 
         mock_add.assert_called_once_with(tmp_path / "01-Mar-2026.md", "New task")
@@ -267,6 +295,7 @@ class TestAddTask:
 # ---------------------------------------------------------------------------
 # AppendToNote
 # ---------------------------------------------------------------------------
+
 
 class TestAppendToNote:
     def test_appends_text_to_existing_note(self, tmp_path):
@@ -291,8 +320,10 @@ class TestAppendToNote:
         request.date = "01-Mar-2026"
         request.text = "first line"
 
-        with patch("core.server.DAILY_NOTES_DIR", tmp_path), \
-             patch("core.server.create_daily_note_from_template") as mock_create:
+        with (
+            patch("core.server.DAILY_NOTES_DIR", tmp_path),
+            patch("core.server.create_daily_note_from_template") as mock_create,
+        ):
             # create_daily_note_from_template is called but we still need the file
             # to exist for the open() call — simulate by creating it in the mock
             def _side_effect(filepath, date):
