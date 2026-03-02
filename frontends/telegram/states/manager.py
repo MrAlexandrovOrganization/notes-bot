@@ -4,16 +4,17 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
+from ..config import TIMEZONE_OFFSET_HOURS, DAY_START_HOUR
 from .context import UserContext, UserState
 
 
 def _get_today_date() -> str:
-    """Return today's date string in DD-MMM-YYYY format (Moscow time, day starts at 7 AM)."""
+    """Return today's date string in DD-MMM-YYYY format."""
     now_utc = datetime.now(timezone.utc)
-    moscow_time = now_utc + timedelta(hours=3)
-    if moscow_time.hour < 7:
-        moscow_time -= timedelta(days=1)
-    return moscow_time.strftime("%d-%b-%Y")
+    local_time = now_utc + timedelta(hours=TIMEZONE_OFFSET_HOURS)
+    if local_time.hour < DAY_START_HOUR:
+        local_time -= timedelta(days=1)
+    return local_time.strftime("%d-%b-%Y")
 
 
 logger = logging.getLogger(__name__)

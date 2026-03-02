@@ -15,6 +15,8 @@ from ..utils import escape_markdown_v2
 
 logger = logging.getLogger(__name__)
 
+NOTE_PREVIEW_MAX_CHARS = 3800
+
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -189,9 +191,9 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
         f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
     )
 
-    # Prepare note preview (first 3800 chars)
-    preview = content[:3800]
-    if len(content) > 3800:
+    # Prepare note preview
+    preview = content[:NOTE_PREVIEW_MAX_CHARS]
+    if len(content) > NOTE_PREVIEW_MAX_CHARS:
         preview += "..."
 
     # Escape for MarkdownV2

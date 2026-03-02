@@ -11,6 +11,9 @@ from proto import notes_pb2, notes_pb2_grpc
 logger = logging.getLogger(__name__)
 
 
+_GRPC_TIMEOUT = 10
+
+
 class CoreClient:
     """Client wrapping all core service gRPC calls."""
 
@@ -18,21 +21,24 @@ class CoreClient:
         self._channel = grpc.insecure_channel(f"{host}:{port}")
         self._stub = notes_pb2_grpc.NotesServiceStub(self._channel)
 
+    def close(self) -> None:
+        self._channel.close()
+
     def get_today_date(self) -> str:
-        response = self._stub.GetTodayDate(notes_pb2.Empty())
+        response = self._stub.GetTodayDate(notes_pb2.Empty(), timeout=_GRPC_TIMEOUT)
         return response.date
 
     def get_existing_dates(self) -> Set[str]:
-        response = self._stub.GetExistingDates(notes_pb2.Empty())
+        response = self._stub.GetExistingDates(notes_pb2.Empty(), timeout=_GRPC_TIMEOUT)
         return set(response.dates)
 
     def ensure_note(self, date: str) -> bool:
-        response = self._stub.EnsureNote(notes_pb2.DateRequest(date=date))
+        response = self._stub.EnsureNote(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
         return response.success
 
     def get_note(self, date: str) -> Optional[str]:
         try:
-            response = self._stub.GetNote(notes_pb2.DateRequest(date=date))
+            response = self._stub.GetNote(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
             return response.content
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -40,19 +46,20 @@ class CoreClient:
             raise
 
     def get_rating(self, date: str) -> Optional[int]:
-        response = self._stub.GetRating(notes_pb2.DateRequest(date=date))
+        response = self._stub.GetRating(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
         if response.has_rating:
             return response.rating
         return None
 
     def update_rating(self, date: str, rating: int) -> bool:
         response = self._stub.UpdateRating(
-            notes_pb2.UpdateRatingRequest(date=date, rating=rating)
+            notes_pb2.UpdateRatingRequest(date=date, rating=rating),
+            timeout=_GRPC_TIMEOUT,
         )
         return response.success
 
     def get_tasks(self, date: str) -> List[Dict[str, Any]]:
-        response = self._stub.GetTasks(notes_pb2.DateRequest(date=date))
+        response = self._stub.GetTasks(notes_pb2.DateRequest(date=date), timeout=_GRPC_TIMEOUT)
         return [
             {
                 "text": t.text,
@@ -65,19 +72,22 @@ class CoreClient:
 
     def toggle_task(self, date: str, task_index: int) -> bool:
         response = self._stub.ToggleTask(
-            notes_pb2.ToggleTaskRequest(date=date, task_index=task_index)
+            notes_pb2.ToggleTaskRequest(date=date, task_index=task_index),
+            timeout=_GRPC_TIMEOUT,
         )
         return response.success
 
     def add_task(self, date: str, task_text: str) -> bool:
         response = self._stub.AddTask(
-            notes_pb2.AddTaskRequest(date=date, task_text=task_text)
+            notes_pb2.AddTaskRequest(date=date, task_text=task_text),
+            timeout=_GRPC_TIMEOUT,
         )
         return response.success
 
     def append_to_note(self, date: str, text: str) -> bool:
         response = self._stub.AppendToNote(
-            notes_pb2.AppendRequest(date=date, text=text)
+            notes_pb2.AppendRequest(date=date, text=text),
+            timeout=_GRPC_TIMEOUT,
         )
         return response.success
 
