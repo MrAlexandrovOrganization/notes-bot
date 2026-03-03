@@ -29,8 +29,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Poetry
-poetry.lock
 
 # Test coverage
 htmlcov/
