@@ -23,6 +23,11 @@ up:
 	$(DOCKER_COMPOSE) up -d
 	$(DOCKER_COMPOSE) logs -f
 
+deploy:
+	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE) build --no-cache
+	$(DOCKER_COMPOSE) up -d
+
 down:
 	$(DOCKER_COMPOSE) down
 
@@ -44,4 +49,4 @@ proto:
 	sed -i '' 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py
 	sed -i '' 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py
 
-.PHONY: install run test clean up down restart docker-clean proto
+.PHONY: install run test clean up deploy down restart docker-clean proto
