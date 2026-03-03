@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package notifications;
+
+service NotificationsService {
+  rpc CreateReminder(CreateReminderRequest) returns (ReminderResponse);
+  rpc ListReminders(ListRemindersRequest) returns (ListRemindersResponse);
+  rpc DeleteReminder(DeleteReminderRequest) returns (SuccessResponse);
+  rpc PostponeReminder(PostponeReminderRequest) returns (SuccessResponse);
+}
+
+message Reminder {
+  int64 id = 1;
+  int64 user_id = 2;
+  string title = 3;
+  string schedule_type = 4;
+  string schedule_params_json = 5;
+  string next_fire_at = 6;
+  bool is_active = 7;
+}
+
+message CreateReminderRequest {
+  int64 user_id = 1;
+  string title = 2;
+  string schedule_type = 3;
+  string schedule_params_json = 4;
+}
+
+message ListRemindersRequest {
+  int64 user_id = 1;
+}
+
+message ListRemindersResponse {
+  repeated Reminder reminders = 1;
+}
+
+message DeleteReminderRequest {
+  int64 reminder_id = 1;
+  int64 user_id = 2;
+}
+
+message PostponeReminderRequest {
+  int64 reminder_id = 1;
+  int64 user_id = 2;
+  int32 postpone_days = 3;
+  string target_date = 4;
+}
+
+message ReminderResponse {
+  bool success = 1;
+  Reminder reminder = 2;
+}
+
+message SuccessResponse {
+  bool success = 1;
+}

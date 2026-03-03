@@ -11,6 +11,7 @@ python-telegram-bot = "^21.0"
 python-dotenv = "^1.0.0"
 grpcio = "^1.62"
 protobuf = ">=5.0"
+psycopg2-binary = "^2.9"
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "^1.62"
@@ -21,10 +22,10 @@ pytest-cov = "^6.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=core --cov-report=term-missing --cov-report=html:htmlcov"
+addopts = "--cov=core --cov=notifications --cov-report=term-missing --cov-report=html:htmlcov"
 
 [tool.coverage.run]
-source = ["core"]
+source = ["core", "notifications"]
 omit = ["tests/*"]
 
 [tool.coverage.report]

@@ -1,4 +1,25 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=notifications
+      - POSTGRES_USER=notif
+      - POSTGRES_PASSWORD=notif
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "notif", "-d", "notifications"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   core:
     build:
       context: .
@@ -21,6 +42,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  notifications:
+    build:
+      context: .
+      dockerfile: notifications/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=notifications
+      - DB_USER=notif
+      - DB_PASSWORD=notif
+      - GRPC_PORT=50052
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   telegram:
     build:
       context: .
@@ -31,11 +75,18 @@ services:
     environment:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
+      - NOTIFICATIONS_GRPC_HOST=notifications
+      - NOTIFICATIONS_GRPC_PORT=50052
     depends_on:
       core:
         condition: service_healthy
+      notifications:
+        condition: service_started
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  postgres_data:

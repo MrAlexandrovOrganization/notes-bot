@@ -22,6 +22,9 @@ def get_main_menu_keyboard(active_date: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📝 Заметка", callback_data="menu:note"),
             InlineKeyboardButton("📅 Календарь", callback_data="menu:calendar"),
         ],
+        [
+            InlineKeyboardButton("🔔 Уведомления", callback_data="menu:notifications"),
+        ],
     ]
 
     return InlineKeyboardMarkup(keyboard)

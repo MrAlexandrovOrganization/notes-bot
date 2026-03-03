@@ -12,6 +12,21 @@ from ..keyboards.main_menu import get_main_menu_keyboard
 from ..keyboards.tasks import get_tasks_keyboard, get_task_add_keyboard
 from ..keyboards.calendar import get_calendar_keyboard
 from ..utils import escape_markdown_v2
+from .reminders import (
+    handle_menu_notifications,
+    handle_reminder_create,
+    handle_reminder_type_select,
+    handle_reminder_delete,
+    handle_reminder_done,
+    handle_reminder_postpone_days,
+    handle_reminder_custom_date,
+    handle_reminder_back,
+    handle_reminder_cancel,
+    handle_reminder_cal_prev,
+    handle_reminder_cal_next,
+    handle_reminder_cal_today,
+    handle_reminder_cal_select,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +84,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await handle_menu_note(query, user_id)
             elif menu_action == "calendar":
                 await handle_menu_calendar(query, user_id)
+            elif menu_action == "notifications":
+                await handle_menu_notifications(query, user_id)
 
         elif action == "task":
             if len(parts) < 2:
@@ -112,6 +129,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await handle_cal_back(query, user_id)
             elif cal_action == "noop":
                 pass  # No operation for header/weekday display
+
+        elif action == "reminder":
+            if len(parts) < 2:
+                logger.error(f"Invalid reminder callback: {callback_data}")
+                return
+
+            reminder_action = parts[1]
+
+            if reminder_action == "create":
+                await handle_reminder_create(query, user_id)
+            elif reminder_action == "type" and len(parts) >= 3:
+                await handle_reminder_type_select(query, user_id, parts[2])
+            elif reminder_action == "delete" and len(parts) >= 3:
+                await handle_reminder_delete(query, user_id, int(parts[2]))
+            elif reminder_action == "done" and len(parts) >= 3:
+                await handle_reminder_done(query, user_id, int(parts[2]))
+            elif reminder_action == "postpone" and len(parts) >= 4:
+                await handle_reminder_postpone_days(
+                    query, user_id, int(parts[2]), int(parts[3])
+                )
+            elif reminder_action == "custom_date" and len(parts) >= 3:
+                await handle_reminder_custom_date(query, user_id, int(parts[2]))
+            elif reminder_action == "cal" and len(parts) >= 4:
+                cal_sub = parts[2]
+                context_name = parts[3]
+                if cal_sub == "prev":
+                    await handle_reminder_cal_prev(query, user_id, context_name)
+                elif cal_sub == "next":
+                    await handle_reminder_cal_next(query, user_id, context_name)
+                elif cal_sub == "today":
+                    await handle_reminder_cal_today(query, user_id, context_name)
+                elif cal_sub == "select" and len(parts) >= 5:
+                    date_str = parts[3]
+                    context_name = parts[4]
+                    await handle_reminder_cal_select(
+                        query, user_id, date_str, context_name
+                    )
+            elif reminder_action == "back":
+                await handle_reminder_back(query, user_id)
+            elif reminder_action == "cancel":
+                await handle_reminder_cancel(query, user_id)
+            elif reminder_action == "noop":
+                pass
 
         else:
             logger.warning(f"Unknown callback action: {action}")

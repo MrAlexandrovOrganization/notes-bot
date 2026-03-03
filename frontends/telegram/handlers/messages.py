@@ -10,6 +10,10 @@ from ..states.context import UserState
 from ..states import state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
 from ..utils import escape_markdown_v2
+from .reminders import (
+    handle_reminder_title_input,
+    handle_reminder_param_input,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +88,17 @@ async def handle_text_message(
                     "❌ Пожалуйста, введите число от 0 до 10\\.",
                     parse_mode="MarkdownV2",
                 )
+
+        elif current_state == UserState.REMINDER_CREATE_TITLE:
+            await handle_reminder_title_input(update, user_id, text)
+
+        elif current_state in (
+            UserState.REMINDER_CREATE_TIME,
+            UserState.REMINDER_CREATE_DAY,
+            UserState.REMINDER_CREATE_INTERVAL,
+            UserState.REMINDER_CREATE_DATE,
+        ):
+            await handle_reminder_param_input(update, user_id, text)
 
         elif current_state == UserState.WAITING_NEW_TASK:
             # Add new task

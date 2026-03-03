@@ -1,6 +1,6 @@
 """User context and state definitions for the Notes Bot."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -13,6 +13,14 @@ class UserState(Enum):
     TASKS_VIEW = "tasks_view"
     WAITING_NEW_TASK = "waiting_new_task"
     CALENDAR_VIEW = "calendar_view"
+    REMINDER_LIST = "reminder_list"
+    REMINDER_CREATE_TITLE = "reminder_create_title"
+    REMINDER_CREATE_SCHEDULE_TYPE = "reminder_create_schedule_type"
+    REMINDER_CREATE_TIME = "reminder_create_time"
+    REMINDER_CREATE_DAY = "reminder_create_day"
+    REMINDER_CREATE_INTERVAL = "reminder_create_interval"
+    REMINDER_CREATE_DATE = "reminder_create_date"
+    REMINDER_POSTPONE_DATE = "reminder_postpone_date"
 
 
 @dataclass
@@ -28,6 +36,8 @@ class UserContext:
         calendar_year: Year being viewed in calendar
         task_page: Current page number for task pagination (0-indexed)
         last_message_id: ID of the last bot message for editing purposes
+        reminder_draft: Accumulates multi-step reminder creation params
+        pending_postpone_reminder_id: Reminder ID awaiting custom postpone date
     """
 
     user_id: int
@@ -37,3 +47,7 @@ class UserContext:
     calendar_year: int = 0
     task_page: int = 0
     last_message_id: Optional[int] = None
+    reminder_draft: dict = field(default_factory=dict)
+    pending_postpone_reminder_id: Optional[int] = None
+    reminder_cal_month: int = 0
+    reminder_cal_year: int = 0

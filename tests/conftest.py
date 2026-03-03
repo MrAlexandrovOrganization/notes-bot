@@ -27,3 +27,10 @@ _mock_config.TIMEZONE_OFFSET_HOURS = 3
 _mock_config.DAY_START_HOUR = 7
 
 sys.modules["core.config"] = _mock_config
+
+# ---------------------------------------------------------------------------
+# Mock psycopg2 so notifications modules import without a real DB driver.
+# Individual tests patch the specific DB functions they need.
+# ---------------------------------------------------------------------------
+sys.modules["psycopg2"] = MagicMock()
+sys.modules["psycopg2.extras"] = MagicMock()
