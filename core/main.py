@@ -9,7 +9,9 @@ import grpc
 from proto import notes_pb2_grpc
 from core.server import NotesServicer
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 

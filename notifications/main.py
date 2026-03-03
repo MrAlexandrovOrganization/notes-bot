@@ -11,7 +11,9 @@ from notifications.db import ensure_schema
 from notifications.scheduler import start_scheduler_thread
 from notifications.server import NotificationsServicer
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 
