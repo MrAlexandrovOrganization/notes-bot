@@ -1,3 +1,5 @@
+DOCKER_COMPOSE = docker compose
+
 install:
 	poetry install
 
@@ -16,24 +18,24 @@ clean:
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
 up:
-	docker-compose down
-	docker-compose build --no-cache
-	docker-compose up -d
-	docker-compose logs -f
+	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE) build --no-cache
+	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) logs -f
 
 down:
-	docker-compose down
+	$(DOCKER_COMPOSE) down
 
 logs:
-	docker-compose logs -f
+	$(DOCKER_COMPOSE) logs -f
 
 restart:
-	docker-compose down
-	docker-compose up -d
-	docker-compose logs -f
+	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) logs -f
 
 docker-clean:
-	docker-compose down --rmi all --volumes --remove-orphans
+	$(DOCKER_COMPOSE) down --rmi all --volumes --remove-orphans
 	docker system prune -f
 
 proto:
