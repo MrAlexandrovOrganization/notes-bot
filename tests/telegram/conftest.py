@@ -62,6 +62,26 @@ def make_text_update(text: str, user_id: int = ROOT_USER_ID) -> MagicMock:
     return update
 
 
+def make_voice_update(user_id: int = ROOT_USER_ID) -> MagicMock:
+    """Build a mock Update carrying a voice message."""
+    update = MagicMock()
+    update.effective_user.id = user_id
+    update.effective_message.reply_text = AsyncMock()
+    update.effective_message.voice.file_id = "test-file-id"
+    update.effective_message.video_note = None
+    return update
+
+
+def make_video_note_update(user_id: int = ROOT_USER_ID) -> MagicMock:
+    """Build a mock Update carrying a video note (кружочек)."""
+    update = MagicMock()
+    update.effective_user.id = user_id
+    update.effective_message.reply_text = AsyncMock()
+    update.effective_message.voice = None
+    update.effective_message.video_note.file_id = "test-video-note-file-id"
+    return update
+
+
 def make_callback_update(data: str, user_id: int = ROOT_USER_ID) -> MagicMock:
     """Build a mock Update carrying an inline-keyboard callback."""
     update = MagicMock()

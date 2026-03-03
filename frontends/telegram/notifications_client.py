@@ -1,5 +1,6 @@
 """gRPC client for communicating with the notifications service."""
 
+import functools
 import logging
 import os
 from typing import Any, Dict, List
@@ -11,6 +12,24 @@ from proto import notifications_pb2, notifications_pb2_grpc
 logger = logging.getLogger(__name__)
 
 _GRPC_TIMEOUT = 10
+_UNAVAILABLE_CODES = (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED)
+
+
+class NotificationsUnavailableError(Exception):
+    """Raised when the notifications service cannot be reached."""
+
+
+def _handle_unavailable(method):
+    @functools.wraps(method)
+    def wrapper(*args, **kwargs):
+        try:
+            return method(*args, **kwargs)
+        except grpc.RpcError as e:
+            if e.code() in _UNAVAILABLE_CODES:
+                raise NotificationsUnavailableError() from e
+            raise
+
+    return wrapper
 
 
 class NotificationsClient:
@@ -23,6 +42,7 @@ class NotificationsClient:
     def close(self) -> None:
         self._channel.close()
 
+    @_handle_unavailable
     def create_reminder(
         self,
         user_id: int,
@@ -52,6 +72,7 @@ class NotificationsClient:
             "is_active": r.is_active,
         }
 
+    @_handle_unavailable
     def list_reminders(self, user_id: int) -> List[Dict[str, Any]]:
         response = self._stub.ListReminders(
             notifications_pb2.ListRemindersRequest(user_id=user_id),
@@ -70,6 +91,7 @@ class NotificationsClient:
             for r in response.reminders
         ]
 
+    @_handle_unavailable
     def delete_reminder(self, reminder_id: int, user_id: int) -> bool:
         response = self._stub.DeleteReminder(
             notifications_pb2.DeleteReminderRequest(
@@ -79,6 +101,7 @@ class NotificationsClient:
         )
         return response.success
 
+    @_handle_unavailable
     def postpone_reminder(
         self,
         reminder_id: int,

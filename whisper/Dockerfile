@@ -9,23 +9,15 @@ RUN python -m grpc_tools.protoc \
         -I proto \
         --python_out=proto \
         --grpc_python_out=proto \
-        proto/notes.proto && \
-    sed -i 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
-        proto/notifications.proto && \
-    sed -i 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
         proto/whisper.proto && \
     sed -i 's/^import whisper_pb2/from proto import whisper_pb2/' proto/whisper_pb2_grpc.py
 
 
 FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir poetry==1.8.3
 
@@ -36,8 +28,7 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi --no-root
 
-COPY frontends/ ./frontends/
+COPY whisper/ ./whisper/
 COPY --from=proto-builder /proto-build/proto/ ./proto/
-COPY main.py .
 
-CMD ["python", "main.py"]
+CMD ["python", "-m", "whisper.main"]

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package whisper;
+
+service TranscriptionService {
+  rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+}
+message TranscribeRequest {
+  bytes audio_data = 1;
+  string format    = 2;  // "ogg", "mp4"
+}
+message TranscribeResponse {
+  string text = 1;
+}

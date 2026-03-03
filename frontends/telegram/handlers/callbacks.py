@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from ..config import ROOT_ID
 from ..grpc_client import core_client
+from ..notifications_client import NotificationsUnavailableError
 from ..states import UserState, state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
 from ..keyboards.tasks import get_tasks_keyboard, get_task_add_keyboard
@@ -176,6 +177,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             logger.warning(f"Unknown callback action: {action}")
 
+    except NotificationsUnavailableError:
+        await query.edit_message_text(
+            "⏳ Сервис уведомлений ещё запускается\\. Попробуйте через несколько секунд\\.",
+            parse_mode="MarkdownV2",
+        )
     except Exception as e:
         logger.error(f"Error handling callback {callback_data}: {e}")
         await query.edit_message_text(

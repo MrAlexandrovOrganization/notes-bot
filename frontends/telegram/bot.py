@@ -17,6 +17,7 @@ from .handlers import (
     cmd_start,
     handle_text_message,
     handle_callback,
+    handle_voice_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
+    )
+    application.add_handler(
+        MessageHandler(filters.VOICE | filters.VIDEO_NOTE, handle_voice_message)
     )
 
     # Add error handler
