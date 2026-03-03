@@ -20,13 +20,15 @@ ruff = "^0.14.4"
 pre-commit = "^4.4.0"
 pytest = "^8.0"
 pytest-cov = "^6.0"
+pytest-asyncio = "^0.23"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=core --cov=notifications --cov-report=term-missing --cov-report=html:htmlcov"
+asyncio_mode = "auto"
+addopts = "--cov=core --cov=notifications --cov=frontends/telegram --cov-report=term-missing --cov-report=html:htmlcov"
 
 [tool.coverage.run]
-source = ["core", "notifications"]
+source = ["core", "notifications", "frontends/telegram"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
