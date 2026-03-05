@@ -9,8 +9,10 @@ RUN python -m grpc_tools.protoc \
         -I proto \
         --python_out=proto \
         --grpc_python_out=proto \
-        proto/notifications.proto && \
-    sed -i 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py
+        proto/notifications.proto \
+        proto/notes.proto && \
+    sed -i 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && \
+    sed -i 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py
 
 
 FROM python:3.11-slim

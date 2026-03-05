@@ -19,6 +19,7 @@ from notifications.config import (
     CORE_GRPC_PORT,
 )
 from notifications.db import get_due_reminders, update_next_fire
+from proto import notes_pb2, notes_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +29,15 @@ _core_stub = None
 def _get_core_stub():
     global _core_stub
     if _core_stub is None:
-        try:
-            from proto import notes_pb2_grpc
-            channel = grpc.insecure_channel(f"{CORE_GRPC_HOST}:{CORE_GRPC_PORT}")
-            _core_stub = notes_pb2_grpc.NotesServiceStub(channel)
-        except Exception as e:
-            logger.error(f"Failed to create core gRPC stub: {e}")
+        channel = grpc.insecure_channel(f"{CORE_GRPC_HOST}:{CORE_GRPC_PORT}")
+        _core_stub = notes_pb2_grpc.NotesServiceStub(channel)
     return _core_stub
 
 
 def _get_today_date_str() -> str:
     """Return today's date in DD-MMM-YYYY format via core gRPC."""
     try:
-        from proto import notes_pb2
-        stub = _get_core_stub()
-        if stub is None:
-            raise RuntimeError("core stub unavailable")
-        response = stub.GetTodayDate(notes_pb2.Empty(), timeout=5)
+        response = _get_core_stub().GetTodayDate(notes_pb2.Empty(), timeout=5)
         return response.date
     except Exception as e:
         logger.error(f"Failed to get today date from core: {e}")
@@ -56,10 +49,7 @@ def _get_today_date_str() -> str:
 def _add_task_to_today(title: str, today_date: str) -> None:
     """Add a task to today's note via core gRPC."""
     try:
-        from proto import notes_pb2
         stub = _get_core_stub()
-        if stub is None:
-            return
         stub.EnsureNote(notes_pb2.DateRequest(date=today_date), timeout=5)
         stub.AddTask(
             notes_pb2.AddTaskRequest(date=today_date, task_text=title), timeout=5
