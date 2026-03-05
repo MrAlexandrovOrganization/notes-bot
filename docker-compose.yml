@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=notifications
-      - POSTGRES_USER=notif
-      - POSTGRES_PASSWORD=notif
+      - POSTGRES_DB=${DB_NAME:-notifications}
+      - POSTGRES_USER=${DB_USER:-notif}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "notif", "-d", "notifications"]
+      test: ["CMD", "pg_isready", "-U", "${DB_USER:-notif}", "-d", "${DB_NAME:-notifications}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,9 +52,9 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=notifications
-      - DB_USER=notif
-      - DB_PASSWORD=notif
+      - DB_NAME=${DB_NAME:-notifications}
+      - DB_USER=${DB_USER:-notif}
+      - DB_PASSWORD=${DB_PASSWORD}
       - GRPC_PORT=50052
     depends_on:
       postgres:

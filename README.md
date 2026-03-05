@@ -38,30 +38,46 @@ cp .env.example .env
 BOT_TOKEN=your_bot_token_here
 ROOT_ID=your_telegram_id_here
 
-# Obsidian Vault Configuration (REQUIRED)
-# Path to your Obsidian vault on the host machine
-OBSIDIAN_VAULT_PATH=/home/maxim/Yandex.Disk
+# Database Configuration (REQUIRED)
+# These credentials are used by PostgreSQL and notifications service
+DB_NAME=notifications
+DB_USER=notif
+DB_PASSWORD=change_this_password_in_production
 
-# Notes Configuration (OPTIONAL)
-# Relative paths from OBSIDIAN_VAULT_PATH
-# Default values shown below - only override if your structure is different
-# NOTES_SUBDIR=notes
-# TEMPLATE_SUBDIR=notes/Templates
+# Notes Directory Configuration (REQUIRED)
+# Path to your notes directory
+#
+# For local run: specify full path on your machine
+# Example: /home/maxim/Yandex.Disk/notes
+#
+# For Docker: same path will be automatically mapped to /notes inside container
+# (docker-compose.yml handles the path translation)
+NOTES_DIR=/path/to/your/notes
+
+# Template Subdirectory (OPTIONAL)
+# Relative path from NOTES_DIR to templates folder
+# Default: Templates
+# TEMPLATE_SUBDIR=Templates
 ```
 
 **Параметры:**
 - `BOT_TOKEN` - токен вашего бота от BotFather (обязательно)
 - `ROOT_ID` - ваш Telegram ID (обязательно)
-- `OBSIDIAN_VAULT_PATH` - **полный путь** к вашему хранилищу Obsidian на хост-машине (обязательно)
-- `NOTES_SUBDIR` - относительный путь к папке с заметками от корня хранилища (опционально, по умолчанию `notes`)
-- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами от корня хранилища (опционально, по умолчанию `notes/Templates`)
+- `DB_NAME` - имя базы данных PostgreSQL (обязательно)
+- `DB_USER` - имя пользователя базы данных (обязательно)
+- `DB_PASSWORD` - пароль базы данных (обязательно) - **обязательно измените в production!**
+- `NOTES_DIR` - **полный путь** к папке с заметками на хост-машине (обязательно)
+- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами от NOTES_DIR (опционально, по умолчанию `Templates`)
 
-**Примеры путей для `OBSIDIAN_VAULT_PATH`:**
-- На локальном компьютере: `/Users/username/Yandex.Disk`
-- На виртуальной машине: `/home/maxim/Yandex.Disk`
-- На Windows: `C:/Users/username/Documents/ObsidianVault`
+**Примеры путей для `NOTES_DIR`:**
+- На локальном компьютере: `/Users/username/Yandex.Disk/notes`
+- На виртуальной машине: `/home/maxim/Yandex.Disk/notes`
+- На Windows: `C:/Users/username/Documents/ObsidianVault/notes`
 
-**Важно:** Теперь достаточно указать только базовый путь к хранилищу Obsidian. Пути к заметкам и шаблонам вычисляются автоматически относительно базового пути. Если у вас нестандартная структура папок, вы можете переопределить `NOTES_SUBDIR` и `TEMPLATE_SUBDIR`.
+**⚠️ ВАЖНО для безопасности:**
+- **ОБЯЗАТЕЛЬНО** измените `DB_PASSWORD` на сильный пароль перед запуском в production
+- Файл `.env` с credentials НЕ должен попадать в git (он уже добавлен в `.gitignore`)
+- Никогда не коммитьте реальные пароли в репозиторий
 
 ### 3. Запустите бота с Docker
 
@@ -236,45 +252,67 @@ tags:
 
 - `BOT_TOKEN` - токен Telegram бота
 - `ROOT_ID` - ID авторизованного пользователя
-- `OBSIDIAN_VAULT_PATH` - путь к хранилищу Obsidian на хост-машине
+- `DB_NAME` - имя базы данных PostgreSQL
+- `DB_USER` - имя пользователя базы данных
+- `DB_PASSWORD` - пароль базы данных (используйте сильный пароль!)
+- `NOTES_DIR` - путь к папке с заметками на хост-машине
 
 **Опциональные переменные:**
 
-- `NOTES_SUBDIR` - относительный путь к папке с заметками (по умолчанию: `notes`)
-- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами (по умолчанию: `notes/Templates`)
+- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами (по умолчанию: `Templates`)
 
-**Важно:** Бот проверяет существование всех указанных путей при запуске и выдаст ошибку, если какой-то путь не найден или переменная не указана.
+**⚠️ Важно для безопасности:**
+- Бот проверяет существование всех указанных путей при запуске и выдаст ошибку, если какой-то путь не найден или переменная не указана
+- **НИКОГДА** не коммитьте файл `.env` с реальными credentials в git
+- Используйте сильные пароли для базы данных в production окружении
 
 ### Как работает Docker
 
 При запуске через Docker Compose:
-1. Ваше хранилище Obsidian (указанное в `OBSIDIAN_VAULT_PATH`) монтируется в контейнер по пути `/vault`
-2. Внутри контейнера переменная `OBSIDIAN_VAULT_PATH` автоматически переопределяется на `/vault`
-3. Пути к заметкам и шаблонам вычисляются относительно `/vault` внутри контейнера
+1. Ваша папка с заметками (указанная в `NOTES_DIR`) монтируется в контейнер по пути `/notes`
+2. Внутри контейнера переменная `NOTES_DIR` автоматически переопределяется на `/notes`
+3. Пути к шаблонам вычисляются относительно `/notes` внутри контейнера
+4. База данных PostgreSQL запускается в отдельном контейнере с credentials из `.env`
 
 Это позволяет использовать одинаковую конфигурацию как для локального запуска, так и для Docker.
 
-### Структура хранилища Obsidian
+### Структура папки с заметками
 
 Бот ожидает следующую структуру (по умолчанию):
 
 ```
-obsidian-vault/                    # <- OBSIDIAN_VAULT_PATH
-├── notes/                         # <- NOTES_SUBDIR (по умолчанию)
-│   ├── Daily/                     # Папка с дневными заметками (создается автоматически)
-│   │   ├── 09-Nov-2025.md
-│   │   ├── 10-Nov-2025.md
-│   │   └── ...
-│   └── Templates/                 # <- TEMPLATE_SUBDIR (по умолчанию)
-│       └── Daily.md              # Шаблон дневной заметки
-└── ...                           # Другие файлы и папки Obsidian
+notes/                             # <- NOTES_DIR
+├── Daily/                         # Папка с дневными заметками (создается автоматически)
+│   ├── 09-Nov-2025.md
+│   ├── 10-Nov-2025.md
+│   └── ...
+└── Templates/                     # <- TEMPLATE_SUBDIR (по умолчанию)
+    └── Daily.md                  # Шаблон дневной заметки
 ```
 
-Если у вас другая структура, переопределите `NOTES_SUBDIR` и `TEMPLATE_SUBDIR` в `.env`.
+Если у вас другая структура, переопределите `TEMPLATE_SUBDIR` в `.env`.
 
 ## Безопасность
 
+### Общие рекомендации
 - Бот обрабатывает сообщения только от пользователя с ID, указанным в `ROOT_ID`
-- Файл `.env` с токенами не должен попадать в систему контроля версий
+- Файл `.env` с токенами и паролями **НИКОГДА** не должен попадать в git (он уже в `.gitignore`)
 - При использовании Docker volume монтируется с правами на чтение и запись (`:rw`)
 - Убедитесь, что у контейнера есть права на запись в примонтированную директорию
+
+### База данных
+- **⚠️ КРИТИЧЕСКИ ВАЖНО:** В файле [`docker-compose.yml`](docker-compose.yml:1) используются переменные окружения для credentials БД
+- База данных PostgreSQL доступна **только внутри Docker-сети** (порты не проброшены наружу)
+- **ОБЯЗАТЕЛЬНО** измените `DB_PASSWORD` в файле `.env` перед запуском в production
+- Используйте сильный пароль (минимум 16 символов, включая буквы, цифры и специальные символы)
+- Не используйте пароль `notif` из примера в реальном окружении
+
+### Что защищено
+✅ Файл `.env` с реальными credentials не попадает в git
+✅ База данных изолирована внутри Docker-сети
+✅ Порты БД не открыты наружу
+
+### Что нужно сделать
+⚠️ Изменить `DB_PASSWORD` в `.env` на сильный пароль
+⚠️ Никогда не коммитить файл `.env` в репозиторий
+⚠️ Не использовать слабые пароли типа `notif`, `password`, `123456` и т.д.
