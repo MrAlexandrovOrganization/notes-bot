@@ -251,28 +251,39 @@ class TestComputeNextFireUnknown:
 
 
 class TestBuildKeyboard:
-    def test_has_three_rows(self):
+    def test_has_four_rows(self):
         kb = _build_keyboard(42)
-        assert len(kb["inline_keyboard"]) == 3
+        assert len(kb["inline_keyboard"]) == 4
 
-    def test_done_button_callback(self):
+    def test_done_button_callback_no_task(self):
         kb = _build_keyboard(42)
         btn = kb["inline_keyboard"][0][0]
-        assert btn["callback_data"] == "reminder:done:42"
+        assert btn["callback_data"] == "reminder:done:42:0"
+
+    def test_done_button_callback_with_task(self):
+        kb = _build_keyboard(42, create_task=True, today_date="05-Mar-2026")
+        btn = kb["inline_keyboard"][0][0]
+        assert btn["callback_data"] == "reminder:done:42:1:05-Mar-2026"
+
+    def test_postpone_hours_row(self):
+        kb = _build_keyboard(42)
+        row = kb["inline_keyboard"][1]
+        assert row[0]["callback_data"] == "reminder:postpone_hours:1:42"
+        assert row[1]["callback_data"] == "reminder:postpone_hours:3:42"
 
     def test_postpone_one_day_callback(self):
         kb = _build_keyboard(42)
-        btn = kb["inline_keyboard"][1][0]
+        btn = kb["inline_keyboard"][2][0]
         assert btn["callback_data"] == "reminder:postpone:1:42"
 
     def test_postpone_three_days_callback(self):
         kb = _build_keyboard(42)
-        btn = kb["inline_keyboard"][1][1]
+        btn = kb["inline_keyboard"][2][1]
         assert btn["callback_data"] == "reminder:postpone:3:42"
 
     def test_custom_date_callback(self):
         kb = _build_keyboard(42)
-        btn = kb["inline_keyboard"][2][0]
+        btn = kb["inline_keyboard"][3][0]
         assert btn["callback_data"] == "reminder:custom_date:42"
 
     def test_id_embedded_in_all_action_callbacks(self):

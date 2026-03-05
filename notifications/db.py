@@ -21,10 +21,13 @@ CREATE TABLE IF NOT EXISTS reminders (
     next_fire_at TIMESTAMPTZ NOT NULL,
     last_fired_at TIMESTAMPTZ,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    create_task BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_next_fire ON reminders (next_fire_at) WHERE is_active = TRUE;
 """
+
+_MIGRATE_SQL = "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS create_task BOOLEAN NOT NULL DEFAULT FALSE;"
 
 
 def get_connection():
@@ -41,6 +44,7 @@ def ensure_schema() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE_SQL)
+            cur.execute(_MIGRATE_SQL)
         conn.commit()
     logger.info("Database schema ensured")
 
@@ -51,17 +55,18 @@ def create_reminder(
     schedule_type: str,
     schedule_params: Dict[str, Any],
     next_fire_at: str,
+    create_task: bool = False,
 ) -> Dict[str, Any]:
     sql = """
-        INSERT INTO reminders (user_id, title, schedule_type, schedule_params, next_fire_at)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active
+        INSERT INTO reminders (user_id, title, schedule_type, schedule_params, next_fire_at, create_task)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
     """
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 sql,
-                (user_id, title, schedule_type, json.dumps(schedule_params), next_fire_at),
+                (user_id, title, schedule_type, json.dumps(schedule_params), next_fire_at, create_task),
             )
             row = dict(cur.fetchone())
         conn.commit()
@@ -71,7 +76,7 @@ def create_reminder(
 
 def list_reminders(user_id: int) -> List[Dict[str, Any]]:
     sql = """
-        SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active
+        SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
         FROM reminders
         WHERE user_id = %s AND is_active = TRUE
         ORDER BY next_fire_at ASC
@@ -100,7 +105,7 @@ def delete_reminder(reminder_id: int, user_id: int) -> bool:
 
 def get_due_reminders() -> List[Dict[str, Any]]:
     sql = """
-        SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active
+        SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
         FROM reminders
         WHERE is_active = TRUE AND next_fire_at <= NOW()
         FOR UPDATE SKIP LOCKED

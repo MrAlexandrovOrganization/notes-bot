@@ -34,6 +34,7 @@ def _row_to_proto(row: Dict[str, Any]) -> notifications_pb2.Reminder:
         schedule_params_json=json.dumps(row["schedule_params"]),
         next_fire_at=next_fire_str,
         is_active=row["is_active"],
+        create_task=row.get("create_task", False),
     )
 
 
@@ -90,6 +91,7 @@ class NotificationsServicer(notifications_pb2_grpc.NotificationsServiceServicer)
                 schedule_type=request.schedule_type,
                 schedule_params=params,
                 next_fire_at=next_fire_at,
+                create_task=bool(request.create_task),
             )
         except Exception as e:
             logger.error(f"Error creating reminder: {e}")
@@ -133,6 +135,10 @@ class NotificationsServicer(notifications_pb2_grpc.NotificationsServiceServicer)
                     hour=9, minute=0, second=0, tzinfo=local_tz
                 )
                 next_fire_str = dt.astimezone(timezone.utc).isoformat()
+            elif request.postpone_hours > 0:
+                next_fire_str = (
+                    datetime.now(timezone.utc) + timedelta(hours=request.postpone_hours)
+                ).isoformat()
             else:
                 days = request.postpone_days if request.postpone_days > 0 else 1
                 next_fire_str = (
@@ -144,6 +150,13 @@ class NotificationsServicer(notifications_pb2_grpc.NotificationsServiceServicer)
             logger.error(f"Error postponing reminder: {e}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
-            return notifications_pb2.SuccessResponse(success=False)
+            return notifications_pb2.ReminderResponse(success=False)
 
-        return notifications_pb2.SuccessResponse(success=success)
+        return notifications_pb2.ReminderResponse(
+            success=success,
+            reminder=notifications_pb2.Reminder(
+                id=request.reminder_id,
+                user_id=request.user_id,
+                next_fire_at=next_fire_str if success else "",
+            ),
+        )

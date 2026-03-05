@@ -37,6 +37,7 @@ def _db_row(
     schedule_type="daily",
     params=None,
     next_fire=None,
+    create_task=False,
 ):
     return {
         "id": rid,
@@ -46,6 +47,7 @@ def _db_row(
         "schedule_params": params or {"hour": 9, "minute": 0, "tz_offset": 3},
         "next_fire_at": next_fire or datetime(2026, 3, 4, 6, 0, 0, tzinfo=timezone.utc),
         "is_active": True,
+        "create_task": create_task,
     }
 
 
@@ -116,7 +118,7 @@ class TestComputeInitialNextFire:
 
 
 class TestCreateReminder:
-    def _make_request(self, schedule_type="daily", params=None, user_id=123):
+    def _make_request(self, schedule_type="daily", params=None, user_id=123, create_task=False):
         req = MagicMock()
         req.user_id = user_id
         req.title = "Standup"
@@ -124,6 +126,7 @@ class TestCreateReminder:
         req.schedule_params_json = json.dumps(
             params or {"hour": 9, "minute": 0, "tz_offset": 3}
         )
+        req.create_task = create_task
         return req
 
     def test_valid_request_returns_success(self):
@@ -346,13 +349,14 @@ class TestDeleteReminder:
 
 class TestPostponeReminder:
     def _make_request(
-        self, reminder_id=1, user_id=123, postpone_days=0, target_date=""
+        self, reminder_id=1, user_id=123, postpone_days=0, target_date="", postpone_hours=0
     ):
         req = MagicMock()
         req.reminder_id = reminder_id
         req.user_id = user_id
         req.postpone_days = postpone_days
         req.target_date = target_date
+        req.postpone_hours = postpone_hours
         return req
 
     def test_postpone_by_positive_days(self):
@@ -449,3 +453,30 @@ class TestPostponeReminder:
                 self._make_request(postpone_days=1), ctx
             )
         assert response.success is False
+
+    def test_postpone_by_hours(self):
+        servicer = _make_servicer()
+        ctx = _make_context()
+        with patch(
+            "notifications.server.set_next_fire_at", return_value=True
+        ) as mock_set:
+            response = servicer.PostponeReminder(
+                self._make_request(postpone_hours=3), ctx
+            )
+        assert response.success is True
+        stored_dt = datetime.fromisoformat(mock_set.call_args[0][2])
+        if stored_dt.tzinfo is None:
+            stored_dt = stored_dt.replace(tzinfo=timezone.utc)
+        delta = stored_dt - datetime.now(timezone.utc)
+        assert timedelta(hours=2, minutes=55) <= delta <= timedelta(hours=3, minutes=5)
+
+    def test_response_contains_next_fire_at(self):
+        servicer = _make_servicer()
+        ctx = _make_context()
+        with patch("notifications.server.set_next_fire_at", return_value=True):
+            response = servicer.PostponeReminder(
+                self._make_request(postpone_days=1), ctx
+            )
+        assert response.success is True
+        assert response.reminder.next_fire_at != ""
+        assert response.reminder.id == 1

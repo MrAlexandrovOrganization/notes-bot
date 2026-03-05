@@ -6,7 +6,7 @@ service NotificationsService {
   rpc CreateReminder(CreateReminderRequest) returns (ReminderResponse);
   rpc ListReminders(ListRemindersRequest) returns (ListRemindersResponse);
   rpc DeleteReminder(DeleteReminderRequest) returns (SuccessResponse);
-  rpc PostponeReminder(PostponeReminderRequest) returns (SuccessResponse);
+  rpc PostponeReminder(PostponeReminderRequest) returns (ReminderResponse);
 }
 
 message Reminder {
@@ -17,6 +17,7 @@ message Reminder {
   string schedule_params_json = 5;
   string next_fire_at = 6;
   bool is_active = 7;
+  bool create_task = 8;
 }
 
 message CreateReminderRequest {
@@ -24,6 +25,7 @@ message CreateReminderRequest {
   string title = 2;
   string schedule_type = 3;
   string schedule_params_json = 4;
+  bool create_task = 5;
 }
 
 message ListRemindersRequest {
@@ -44,6 +46,7 @@ message PostponeReminderRequest {
   int64 user_id = 2;
   int32 postpone_days = 3;
   string target_date = 4;
+  int32 postpone_hours = 5;
 }
 
 message ReminderResponse {

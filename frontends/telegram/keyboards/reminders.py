@@ -35,9 +35,17 @@ _SCHEDULE_TYPE_LABELS = {
 
 def get_reminders_list_keyboard(
     reminders: List[Dict[str, Any]],
+    page: int = 0,
+    per_page: int = 5,
 ) -> InlineKeyboardMarkup:
+    total = len(reminders)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    end = min(start + per_page, total)
+
     keyboard = []
-    for r in reminders:
+    for r in reminders[start:end]:
         label = r["title"][:30]
         keyboard.append(
             [
@@ -45,11 +53,35 @@ def get_reminders_list_keyboard(
                 InlineKeyboardButton("🗑", callback_data=f"reminder:delete:{r['id']}"),
             ]
         )
+
+    if total_pages > 1:
+        nav: List[InlineKeyboardButton] = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("◀", callback_data=f"reminder:page:{page - 1}"))
+        nav.append(
+            InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="reminder:noop")
+        )
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("▶", callback_data=f"reminder:page:{page + 1}"))
+        keyboard.append(nav)
+
     keyboard.append(
         [InlineKeyboardButton("➕ Создать", callback_data="reminder:create")]
     )
     keyboard.append([InlineKeyboardButton("◀ Назад", callback_data="reminder:back")])
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_task_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Да, создавать задачу", callback_data="reminder:task_confirm:yes"),
+                InlineKeyboardButton("❌ Нет", callback_data="reminder:task_confirm:no"),
+            ],
+            [InlineKeyboardButton("❌ Отмена", callback_data="reminder:cancel")],
+        ]
+    )
 
 
 def get_schedule_type_keyboard() -> InlineKeyboardMarkup:

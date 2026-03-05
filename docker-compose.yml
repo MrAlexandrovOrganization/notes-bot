@@ -56,8 +56,12 @@ services:
       - DB_USER=${DB_USER:-notif}
       - DB_PASSWORD=${DB_PASSWORD}
       - GRPC_PORT=50052
+      - CORE_GRPC_HOST=core
+      - CORE_GRPC_PORT=50051
     depends_on:
       postgres:
+        condition: service_healthy
+      core:
         condition: service_healthy
     logging:
       driver: "json-file"

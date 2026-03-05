@@ -49,6 +49,7 @@ class NotificationsClient:
         title: str,
         schedule_type: str,
         schedule_params_json: str,
+        create_task: bool = False,
     ) -> Dict[str, Any]:
         response = self._stub.CreateReminder(
             notifications_pb2.CreateReminderRequest(
@@ -56,6 +57,7 @@ class NotificationsClient:
                 title=title,
                 schedule_type=schedule_type,
                 schedule_params_json=schedule_params_json,
+                create_task=create_task,
             ),
             timeout=_GRPC_TIMEOUT,
         )
@@ -108,17 +110,24 @@ class NotificationsClient:
         user_id: int,
         postpone_days: int = 0,
         target_date: str = "",
-    ) -> bool:
+        postpone_hours: int = 0,
+    ) -> Dict[str, Any]:
         response = self._stub.PostponeReminder(
             notifications_pb2.PostponeReminderRequest(
                 reminder_id=reminder_id,
                 user_id=user_id,
                 postpone_days=postpone_days,
                 target_date=target_date,
+                postpone_hours=postpone_hours,
             ),
             timeout=_GRPC_TIMEOUT,
         )
-        return response.success
+        if not response.success:
+            return {}
+        return {
+            "success": True,
+            "next_fire_at": response.reminder.next_fire_at,
+        }
 
 
 _host = os.getenv("NOTIFICATIONS_GRPC_HOST", "localhost")

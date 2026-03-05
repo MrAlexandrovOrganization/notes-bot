@@ -9,14 +9,64 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+import grpc
+
 from notifications.config import (
     BOT_TOKEN,
     SCHEDULER_INTERVAL_SECONDS,
     TIMEZONE_OFFSET_HOURS,
+    CORE_GRPC_HOST,
+    CORE_GRPC_PORT,
 )
 from notifications.db import get_due_reminders, update_next_fire
 
 logger = logging.getLogger(__name__)
+
+_core_stub = None
+
+
+def _get_core_stub():
+    global _core_stub
+    if _core_stub is None:
+        try:
+            from proto import notes_pb2_grpc
+            channel = grpc.insecure_channel(f"{CORE_GRPC_HOST}:{CORE_GRPC_PORT}")
+            _core_stub = notes_pb2_grpc.NotesServiceStub(channel)
+        except Exception as e:
+            logger.error(f"Failed to create core gRPC stub: {e}")
+    return _core_stub
+
+
+def _get_today_date_str() -> str:
+    """Return today's date in DD-MMM-YYYY format via core gRPC."""
+    try:
+        from proto import notes_pb2
+        stub = _get_core_stub()
+        if stub is None:
+            raise RuntimeError("core stub unavailable")
+        response = stub.GetTodayDate(notes_pb2.Empty(), timeout=5)
+        return response.date
+    except Exception as e:
+        logger.error(f"Failed to get today date from core: {e}")
+        # Fallback: compute locally
+        local_now = datetime.now(timezone.utc) + timedelta(hours=TIMEZONE_OFFSET_HOURS)
+        return local_now.strftime("%d-%b-%Y")
+
+
+def _add_task_to_today(title: str, today_date: str) -> None:
+    """Add a task to today's note via core gRPC."""
+    try:
+        from proto import notes_pb2
+        stub = _get_core_stub()
+        if stub is None:
+            return
+        stub.EnsureNote(notes_pb2.DateRequest(date=today_date), timeout=5)
+        stub.AddTask(
+            notes_pb2.AddTaskRequest(date=today_date, task_text=title), timeout=5
+        )
+        logger.info(f"Added task '{title}' to note {today_date}")
+    except Exception as e:
+        logger.error(f"Failed to add task to core: {e}")
 
 
 def _utc_now() -> datetime:
@@ -142,15 +192,24 @@ def _send_telegram_message(chat_id: int, text: str, keyboard: Dict) -> None:
         logger.error(f"Failed to send notification to {chat_id}: {e}")
 
 
-def _build_keyboard(reminder_id: int) -> Dict:
+def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str = "") -> Dict:
+    done_cb = (
+        f"reminder:done:{reminder_id}:1:{today_date}"
+        if create_task and today_date
+        else f"reminder:done:{reminder_id}:0"
+    )
     return {
         "inline_keyboard": [
             [
-                {"text": "✅ Принято", "callback_data": f"reminder:done:{reminder_id}"},
+                {"text": "✅ Принято", "callback_data": done_cb},
             ],
             [
-                {"text": "+1 день", "callback_data": f"reminder:postpone:1:{reminder_id}"},
-                {"text": "+3 дня", "callback_data": f"reminder:postpone:3:{reminder_id}"},
+                {"text": "+1 ч", "callback_data": f"reminder:postpone_hours:1:{reminder_id}"},
+                {"text": "+3 ч", "callback_data": f"reminder:postpone_hours:3:{reminder_id}"},
+            ],
+            [
+                {"text": "+1 д", "callback_data": f"reminder:postpone:1:{reminder_id}"},
+                {"text": "+3 д", "callback_data": f"reminder:postpone:3:{reminder_id}"},
             ],
             [
                 {"text": "📅 Выбрать дату", "callback_data": f"reminder:custom_date:{reminder_id}"},
@@ -170,9 +229,16 @@ def run_scheduler() -> None:
                 title = reminder["title"]
                 schedule_type = reminder["schedule_type"]
                 params = reminder["schedule_params"]
+                create_task = reminder.get("create_task", False)
+
+                # If create_task flag is set, add task to today's note
+                today_date = ""
+                if create_task:
+                    today_date = _get_today_date_str()
+                    _add_task_to_today(title, today_date)
 
                 # Send notification
-                keyboard = _build_keyboard(rid)
+                keyboard = _build_keyboard(rid, create_task=create_task, today_date=today_date)
                 _send_telegram_message(user_id, f"🔔 Напоминание: {title}", keyboard)
 
                 # Compute next fire

@@ -21,6 +21,7 @@ class UserState(Enum):
     REMINDER_CREATE_INTERVAL = "reminder_create_interval"
     REMINDER_CREATE_DATE = "reminder_create_date"
     REMINDER_POSTPONE_DATE = "reminder_postpone_date"
+    REMINDER_CREATE_TASK_CONFIRM = "reminder_create_task_confirm"
 
 
 @dataclass
@@ -51,3 +52,4 @@ class UserContext:
     pending_postpone_reminder_id: Optional[int] = None
     reminder_cal_month: int = 0
     reminder_cal_year: int = 0
+    reminder_list_page: int = 0

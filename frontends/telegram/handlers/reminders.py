@@ -17,6 +17,7 @@ from ..keyboards.reminders import (
     get_schedule_type_keyboard,
     get_reminder_cancel_keyboard,
     get_reminder_calendar_keyboard,
+    get_task_confirm_keyboard,
 )
 from ..utils import escape_markdown_v2
 
@@ -68,13 +69,18 @@ def _cal_month_year(user_id: int) -> tuple[int, int]:
 
 
 async def handle_menu_notifications(query: CallbackQuery, user_id: int) -> None:
+    ctx = state_manager.get_context(user_id)
     state_manager.update_context(user_id, state=UserState.REMINDER_LIST)
     reminders = notifications_client.list_reminders(user_id)
-    keyboard = get_reminders_list_keyboard(reminders)
+    page = ctx.reminder_list_page
+    keyboard = get_reminders_list_keyboard(reminders, page=page)
 
     if reminders:
+        per_page = 5
+        start = page * per_page
+        end = min(start + per_page, len(reminders))
         lines = []
-        for r in reminders:
+        for r in reminders[start:end]:
             next_fire = _format_local_time(r["next_fire_at"])
             lines.append(
                 f"• {escape_markdown_v2(r['title'])} "
@@ -87,6 +93,35 @@ async def handle_menu_notifications(query: CallbackQuery, user_id: int) -> None:
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
     logger.info(f"User {user_id} opened reminders list")
+
+
+async def handle_reminder_page(query: CallbackQuery, user_id: int, page: int) -> None:
+    state_manager.update_context(user_id, reminder_list_page=page)
+    reminders = notifications_client.list_reminders(user_id)
+    keyboard = get_reminders_list_keyboard(reminders, page=page)
+
+    per_page = 5
+    start = page * per_page
+    end = min(start + per_page, len(reminders))
+    if reminders:
+        lines = []
+        for r in reminders[start:end]:
+            next_fire = _format_local_time(r["next_fire_at"])
+            lines.append(
+                f"• {escape_markdown_v2(r['title'])} "
+                f"\\({escape_markdown_v2(_schedule_label(r['schedule_type']))}\\) "
+                f"— {escape_markdown_v2(next_fire)}"
+            )
+        text = "🔔 Уведомления:\n\n" + "\n".join(lines)
+    else:
+        text = "🔔 Уведомления:\n\nНапоминаний пока нет\\."
+
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+    except Exception as e:
+        if "Message is not modified" not in str(e):
+            raise
+    logger.info(f"User {user_id} navigated to reminders page {page}")
 
 
 async def handle_reminder_create(query: CallbackQuery, user_id: int) -> None:
@@ -382,18 +417,36 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
             return
         draft["hour"] = hour
         draft["minute"] = minute
-        state_manager.update_context(user_id, reminder_draft=draft)
-        await _finalize_reminder_creation(update, user_id)
+        state_manager.update_context(
+            user_id,
+            state=UserState.REMINDER_CREATE_TASK_CONFIRM,
+            reminder_draft=draft,
+        )
+        await update.message.reply_text(
+            "➕ Создавать задачу в заметке при срабатывании напоминания?",
+            reply_markup=get_task_confirm_keyboard(),
+        )
 
 
-async def _finalize_reminder_creation(update, user_id: int) -> None:
+async def _finalize_reminder_creation(update_or_query, user_id: int) -> None:
     ctx = state_manager.get_context(user_id)
     draft = dict(ctx.reminder_draft)
     title = draft.pop("title", "Напоминание")
     schedule_type = draft.pop("schedule_type", "daily")
+    create_task = draft.pop("create_task", False)
     # Embed the client's timezone offset so the server uses the correct local time
     draft["tz_offset"] = TIMEZONE_OFFSET_HOURS
     params_json = json.dumps(draft)
+
+    async def _reply(text, keyboard):
+        if hasattr(update_or_query, "message") and update_or_query.message:
+            await update_or_query.message.reply_text(
+                text, reply_markup=keyboard, parse_mode="MarkdownV2"
+            )
+        else:
+            await update_or_query.edit_message_text(
+                text, reply_markup=keyboard, parse_mode="MarkdownV2"
+            )
 
     try:
         result = notifications_client.create_reminder(
@@ -401,41 +454,50 @@ async def _finalize_reminder_creation(update, user_id: int) -> None:
             title=title,
             schedule_type=schedule_type,
             schedule_params_json=params_json,
+            create_task=create_task,
         )
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
             # Date/time is in the past — ask to re-enter time without losing draft
             state_manager.update_context(user_id, state=UserState.REMINDER_CREATE_TIME)
-            await update.message.reply_text(
+            await _reply(
                 "❌ Выбранное время уже прошло\\.\n"
                 "Введите другое время в формате `ЧЧ:ММ`:",
-                reply_markup=get_reminder_cancel_keyboard(),
-                parse_mode="MarkdownV2",
+                get_reminder_cancel_keyboard(),
             )
             return
         raise
 
     state_manager.update_context(
-        user_id, state=UserState.REMINDER_LIST, reminder_draft={}
+        user_id, state=UserState.REMINDER_LIST, reminder_draft={}, reminder_list_page=0
     )
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)
 
     if result:
         next_fire = _format_local_time(result.get("next_fire_at", ""))
+        task_note = " \\(задача будет создана\\)" if create_task else ""
         text = (
             f"✅ Напоминание создано\\!\n\n"
-            f"*{escape_markdown_v2(title)}*\n"
+            f"*{escape_markdown_v2(title)}*{task_note}\n"
             f"Тип: {escape_markdown_v2(_schedule_label(schedule_type))}\n"
             f"Следующее: {escape_markdown_v2(next_fire)}"
         )
     else:
         text = "❌ Не удалось создать напоминание\\."
 
-    await update.message.reply_text(
-        text, reply_markup=keyboard, parse_mode="MarkdownV2"
-    )
+    await _reply(text, keyboard)
     logger.info(f"User {user_id} created reminder: {title}")
+
+
+async def handle_reminder_task_confirm(
+    query: CallbackQuery, user_id: int, create_task: bool
+) -> None:
+    ctx = state_manager.get_context(user_id)
+    draft = dict(ctx.reminder_draft)
+    draft["create_task"] = create_task
+    state_manager.update_context(user_id, reminder_draft=draft)
+    await _finalize_reminder_creation(query, user_id)
 
 
 # ── Notification message actions ───────────────────────────────────────────────
@@ -445,7 +507,9 @@ async def handle_reminder_delete(
     query: CallbackQuery, user_id: int, reminder_id: int
 ) -> None:
     notifications_client.delete_reminder(reminder_id, user_id)
-    state_manager.update_context(user_id, state=UserState.REMINDER_LIST)
+    state_manager.update_context(
+        user_id, state=UserState.REMINDER_LIST, reminder_list_page=0
+    )
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)
     text = (
@@ -458,9 +522,26 @@ async def handle_reminder_delete(
 
 
 async def handle_reminder_done(
-    query: CallbackQuery, user_id: int, reminder_id: int
+    query: CallbackQuery,
+    user_id: int,
+    reminder_id: int,
+    create_task_flag: int = 0,
+    date_str: str = "",
 ) -> None:
-    # Keep the original notification text (which contains the title) and append status
+    if create_task_flag and date_str:
+        # Find and toggle the task created for this reminder
+        try:
+            from ..grpc_client import core_client
+            msg_text = query.message.text or ""
+            title = msg_text.removeprefix("🔔 Напоминание: ")
+            tasks = core_client.get_tasks(date_str)
+            for task in tasks:
+                if task["text"] == title and not task["completed"]:
+                    core_client.toggle_task(date_str, task["index"])
+                    break
+        except Exception as e:
+            logger.error(f"Failed to toggle task on reminder done: {e}")
+
     original = escape_markdown_v2(query.message.text or "")
     try:
         await query.edit_message_text(
@@ -474,17 +555,39 @@ async def handle_reminder_done(
 async def handle_reminder_postpone_days(
     query: CallbackQuery, user_id: int, days: int, reminder_id: int
 ) -> None:
-    notifications_client.postpone_reminder(
+    result = notifications_client.postpone_reminder(
         reminder_id=reminder_id, user_id=user_id, postpone_days=days
     )
+    next_fire = _format_local_time(result.get("next_fire_at", "")) if result else ""
+    next_fire_text = f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
     original = escape_markdown_v2(query.message.text or "")
     try:
         await query.edit_message_text(
-            f"{original}\n\n⏰ _Перенесено на {days} д\\._", parse_mode="MarkdownV2"
+            f"{original}\n\n⏰ _Перенесено на {days} д\\._" + next_fire_text,
+            parse_mode="MarkdownV2",
         )
     except Exception:
         pass
     logger.info(f"User {user_id} postponed reminder {reminder_id} by {days} days")
+
+
+async def handle_reminder_postpone_hours(
+    query: CallbackQuery, user_id: int, hours: int, reminder_id: int
+) -> None:
+    result = notifications_client.postpone_reminder(
+        reminder_id=reminder_id, user_id=user_id, postpone_hours=hours
+    )
+    next_fire = _format_local_time(result.get("next_fire_at", "")) if result else ""
+    next_fire_text = f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
+    original = escape_markdown_v2(query.message.text or "")
+    try:
+        await query.edit_message_text(
+            f"{original}\n\n⏰ _Перенесено на {hours} ч\\._" + next_fire_text,
+            parse_mode="MarkdownV2",
+        )
+    except Exception:
+        pass
+    logger.info(f"User {user_id} postponed reminder {reminder_id} by {hours} hours")
 
 
 async def handle_reminder_custom_date(
@@ -528,6 +631,7 @@ async def handle_reminder_cancel(query: CallbackQuery, user_id: int) -> None:
         state=UserState.REMINDER_LIST,
         reminder_draft={},
         pending_postpone_reminder_id=None,
+        reminder_list_page=0,
     )
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)

@@ -15,11 +15,14 @@ from ..keyboards.calendar import get_calendar_keyboard
 from ..utils import escape_markdown_v2
 from .reminders import (
     handle_menu_notifications,
+    handle_reminder_page,
     handle_reminder_create,
     handle_reminder_type_select,
+    handle_reminder_task_confirm,
     handle_reminder_delete,
     handle_reminder_done,
     handle_reminder_postpone_days,
+    handle_reminder_postpone_hours,
     handle_reminder_custom_date,
     handle_reminder_back,
     handle_reminder_cancel,
@@ -140,14 +143,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             if reminder_action == "create":
                 await handle_reminder_create(query, user_id)
+            elif reminder_action == "page" and len(parts) >= 3:
+                await handle_reminder_page(query, user_id, int(parts[2]))
             elif reminder_action == "type" and len(parts) >= 3:
                 await handle_reminder_type_select(query, user_id, parts[2])
+            elif reminder_action == "task_confirm" and len(parts) >= 3:
+                await handle_reminder_task_confirm(query, user_id, parts[2] == "yes")
             elif reminder_action == "delete" and len(parts) >= 3:
                 await handle_reminder_delete(query, user_id, int(parts[2]))
             elif reminder_action == "done" and len(parts) >= 3:
-                await handle_reminder_done(query, user_id, int(parts[2]))
+                reminder_id = int(parts[2])
+                create_task_flag = int(parts[3]) if len(parts) > 3 else 0
+                date_str = parts[4] if len(parts) > 4 else ""
+                await handle_reminder_done(
+                    query, user_id, reminder_id, create_task_flag, date_str
+                )
             elif reminder_action == "postpone" and len(parts) >= 4:
                 await handle_reminder_postpone_days(
+                    query, user_id, int(parts[2]), int(parts[3])
+                )
+            elif reminder_action == "postpone_hours" and len(parts) >= 4:
+                await handle_reminder_postpone_hours(
                     query, user_id, int(parts[2]), int(parts[3])
                 )
             elif reminder_action == "custom_date" and len(parts) >= 3:
