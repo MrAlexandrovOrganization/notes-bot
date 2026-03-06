@@ -22,6 +22,7 @@ pre-commit = "^4.4.0"
 pytest = "^8.0"
 pytest-cov = "^6.0"
 pytest-asyncio = "^0.23"
+mypy-protobuf = "^5.0.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
