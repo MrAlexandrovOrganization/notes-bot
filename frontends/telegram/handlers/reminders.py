@@ -66,6 +66,31 @@ def _cal_month_year(user_id: int) -> tuple[int, int]:
     return month, year
 
 
+async def _reply(update_or_query: Update | CallbackQuery, text: str, keyboard):
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        await update_or_query.message.reply_text(
+            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
+    else:
+        await update_or_query.edit_message_text(
+            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
+
+
+async def _change_state_to_create_time(
+    user_id: int,
+    draft,
+    update_or_query: Update | CallbackQuery,
+    reply_markup,
+    text: str = "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
+):
+    if draft:
+        state_manager.update_context(
+            user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
+        )
+    await _reply(update_or_query=update_or_query, text=text, keyboard=reply_markup)
+
+
 # ── List & create ──────────────────────────────────────────────────────────────
 
 
@@ -213,15 +238,12 @@ async def handle_reminder_type_select(
 
     else:
         # daily — go straight to time
-        state_manager.update_context(
-            user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
-        )
-        await query.edit_message_text(
-            "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
+        await _change_state_to_create_time(
+            user_id=user_id,
+            draft=draft,
+            update_or_query=query,
             reply_markup=cancel_kb,
-            parse_mode="MarkdownV2",
         )
-
     logger.info(f"User {user_id} selected schedule type: {schedule_type}")
 
 
@@ -322,13 +344,11 @@ async def handle_reminder_cal_select(
         # once: use full date
         draft["date"] = date_str
 
-    state_manager.update_context(
-        user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
-    )
-    await query.edit_message_text(
-        "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
+    await _change_state_to_create_time(
+        user_id=user_id,
+        draft=draft,
+        update_or_query=query,
         reply_markup=cancel_kb,
-        parse_mode="MarkdownV2",
     )
     logger.info(f"User {user_id} selected date {date_str} (context={context_name})")
 
@@ -372,13 +392,11 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
                 return
             draft["day_of_month"] = day
 
-        state_manager.update_context(
-            user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
-        )
-        await update.message.reply_text(
-            "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
+        await _change_state_to_create_time(
+            user_id=user_id,
+            draft=draft,
+            update_or_query=update,
             reply_markup=cancel_kb,
-            parse_mode="MarkdownV2",
         )
 
     elif state == UserState.REMINDER_CREATE_INTERVAL:
@@ -394,13 +412,11 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
             )
             return
         draft["interval_days"] = interval
-        state_manager.update_context(
-            user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
-        )
-        await update.message.reply_text(
-            "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
+        await _change_state_to_create_time(
+            user_id=user_id,
+            draft=draft,
+            update_or_query=update,
             reply_markup=cancel_kb,
-            parse_mode="MarkdownV2",
         )
 
     elif state == UserState.REMINDER_CREATE_TIME:
@@ -410,10 +426,12 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
             if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 raise ValueError
         except (ValueError, AttributeError):
-            await update.message.reply_text(
-                "❌ Введите время в формате ЧЧ:ММ\\.",
+            await _change_state_to_create_time(
+                user_id=user_id,
+                draft=None,
+                update_or_query=update,
                 reply_markup=cancel_kb,
-                parse_mode="MarkdownV2",
+                text="❌ Введите время в формате ЧЧ:ММ\\.",
             )
             return
         draft["hour"] = hour
@@ -429,7 +447,9 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
         )
 
 
-async def _finalize_reminder_creation(update_or_query, user_id: int) -> None:
+async def _finalize_reminder_creation(
+    update_or_query: Update | CallbackQuery, user_id: int
+) -> None:
     ctx = state_manager.get_context(user_id)
     draft = dict(ctx.reminder_draft)
     title = draft.pop("title", "Напоминание")
@@ -438,16 +458,6 @@ async def _finalize_reminder_creation(update_or_query, user_id: int) -> None:
     # Embed the client's timezone offset so the server uses the correct local time
     draft["tz_offset"] = TIMEZONE_OFFSET_HOURS
     params_json = json.dumps(draft)
-
-    async def _reply(text, keyboard):
-        if hasattr(update_or_query, "message") and update_or_query.message:
-            await update_or_query.message.reply_text(
-                text, reply_markup=keyboard, parse_mode="MarkdownV2"
-            )
-        else:
-            await update_or_query.edit_message_text(
-                text, reply_markup=keyboard, parse_mode="MarkdownV2"
-            )
 
     try:
         result = notifications_client.create_reminder(
@@ -460,18 +470,18 @@ async def _finalize_reminder_creation(update_or_query, user_id: int) -> None:
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
             # Date/time is in the past — ask to re-enter time without losing draft
-            state_manager.update_context(user_id, state=UserState.REMINDER_CREATE_TIME)
-            await _reply(
-                "❌ Выбранное время уже прошло\\.\n"
+            await _change_state_to_create_time(
+                user_id=user_id,
+                draft=None,
+                update_or_query=update_or_query,
+                reply_markup=get_reminder_cancel_keyboard(),
+                text="❌ Выбранное время уже прошло\\.\n"
                 "Введите другое время в формате `ЧЧ:ММ`:",
-                get_reminder_cancel_keyboard(),
             )
             return
         raise
 
-    state_manager.update_context(
-        user_id, state=UserState.REMINDER_LIST, reminder_draft={}, reminder_list_page=0
-    )
+    state_manager.update_context(user_id, state=UserState.REMINDER_LIST)
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)
 
@@ -487,7 +497,7 @@ async def _finalize_reminder_creation(update_or_query, user_id: int) -> None:
     else:
         text = "❌ Не удалось создать напоминание\\."
 
-    await _reply(text, keyboard)
+    await _reply(update_or_query, text, keyboard)
     logger.info(f"User {user_id} created reminder: {title}")
 
 
@@ -508,9 +518,7 @@ async def handle_reminder_delete(
     query: CallbackQuery, user_id: int, reminder_id: int
 ) -> None:
     notifications_client.delete_reminder(reminder_id, user_id)
-    state_manager.update_context(
-        user_id, state=UserState.REMINDER_LIST, reminder_list_page=0
-    )
+    state_manager.update_context(user_id, state=UserState.REMINDER_LIST)
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)
     text = (
@@ -627,13 +635,7 @@ async def handle_reminder_back(query: CallbackQuery, user_id: int) -> None:
 
 
 async def handle_reminder_cancel(query: CallbackQuery, user_id: int) -> None:
-    state_manager.update_context(
-        user_id,
-        state=UserState.REMINDER_LIST,
-        reminder_draft={},
-        pending_postpone_reminder_id=None,
-        reminder_list_page=0,
-    )
+    state_manager.update_context(user_id, state=UserState.REMINDER_LIST)
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders)
     text = (
