@@ -66,7 +66,9 @@ async def _show_calendar(query: CallbackQuery, user_id: int) -> None:
     )
     text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(ctx.active_date)}"
     try:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+        await query.edit_message_text(
+            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
     except Exception as e:
         if "Message is not modified" not in str(e):
             raise
@@ -272,7 +274,9 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
         return
 
     rating = core_client.get_rating(active_date)
-    rating_text = f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
+    rating_text = (
+        f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
+    )
     preview = content[:NOTE_PREVIEW_MAX_CHARS]
     if len(content) > NOTE_PREVIEW_MAX_CHARS:
         preview += "..."
@@ -284,7 +288,9 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
     )
     try:
         await query.edit_message_text(
-            text, reply_markup=get_main_menu_keyboard(active_date), parse_mode="MarkdownV2"
+            text,
+            reply_markup=get_main_menu_keyboard(active_date),
+            parse_mode="MarkdownV2",
         )
     except Exception as e:
         logger.warning(f"Error editing message, probably note did not changed: {e}")

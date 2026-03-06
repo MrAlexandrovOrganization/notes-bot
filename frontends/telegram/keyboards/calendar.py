@@ -44,7 +44,10 @@ def get_calendar_keyboard(
     )
 
     keyboard.append(
-        [InlineKeyboardButton(day, callback_data="cal:noop") for day in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]]
+        [
+            InlineKeyboardButton(day, callback_data="cal:noop")
+            for day in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        ]
     )
 
     for week in calendar.monthcalendar(year, month):
@@ -61,7 +64,9 @@ def get_calendar_keyboard(
                 else:
                     button_text = str(day)
                 week_buttons.append(
-                    InlineKeyboardButton(button_text, callback_data=f"cal:select:{date_str}")
+                    InlineKeyboardButton(
+                        button_text, callback_data=f"cal:select:{date_str}"
+                    )
                 )
         keyboard.append(week_buttons)
 

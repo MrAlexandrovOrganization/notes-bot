@@ -118,7 +118,9 @@ class TestComputeInitialNextFire:
 
 
 class TestCreateReminder:
-    def _make_request(self, schedule_type="daily", params=None, user_id=123, create_task=False):
+    def _make_request(
+        self, schedule_type="daily", params=None, user_id=123, create_task=False
+    ):
         req = MagicMock()
         req.user_id = user_id
         req.title = "Standup"
@@ -349,7 +351,12 @@ class TestDeleteReminder:
 
 class TestPostponeReminder:
     def _make_request(
-        self, reminder_id=1, user_id=123, postpone_days=0, target_date="", postpone_hours=0
+        self,
+        reminder_id=1,
+        user_id=123,
+        postpone_days=0,
+        target_date="",
+        postpone_hours=0,
     ):
         req = MagicMock()
         req.reminder_id = reminder_id

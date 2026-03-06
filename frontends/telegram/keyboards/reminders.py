@@ -35,12 +35,18 @@ def get_reminders_list_keyboard(
     if total_pages > 1:
         nav: list[InlineKeyboardButton] = []
         if page > 0:
-            nav.append(InlineKeyboardButton("◀", callback_data=f"reminder:page:{page - 1}"))
+            nav.append(
+                InlineKeyboardButton("◀", callback_data=f"reminder:page:{page - 1}")
+            )
         nav.append(
-            InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="reminder:noop")
+            InlineKeyboardButton(
+                f"{page + 1}/{total_pages}", callback_data="reminder:noop"
+            )
         )
         if page < total_pages - 1:
-            nav.append(InlineKeyboardButton("▶", callback_data=f"reminder:page:{page + 1}"))
+            nav.append(
+                InlineKeyboardButton("▶", callback_data=f"reminder:page:{page + 1}")
+            )
         keyboard.append(nav)
 
     keyboard.append(
@@ -54,8 +60,12 @@ def get_task_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✅ Да, создавать задачу", callback_data="reminder:task_confirm:yes"),
-                InlineKeyboardButton("❌ Нет", callback_data="reminder:task_confirm:no"),
+                InlineKeyboardButton(
+                    "✅ Да, создавать задачу", callback_data="reminder:task_confirm:yes"
+                ),
+                InlineKeyboardButton(
+                    "❌ Нет", callback_data="reminder:task_confirm:no"
+                ),
             ],
             [InlineKeyboardButton("❌ Отмена", callback_data="reminder:cancel")],
         ]

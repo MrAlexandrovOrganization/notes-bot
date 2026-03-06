@@ -115,7 +115,9 @@ async def handle_menu_notifications(query: CallbackQuery, user_id: int) -> None:
     page = ctx.reminder_list_page
     keyboard = get_reminders_list_keyboard(reminders, page=page)
     await query.edit_message_text(
-        _reminder_list_text(reminders, page), reply_markup=keyboard, parse_mode="MarkdownV2"
+        _reminder_list_text(reminders, page),
+        reply_markup=keyboard,
+        parse_mode="MarkdownV2",
     )
     logger.info(f"User {user_id} opened reminders list")
 
@@ -126,7 +128,9 @@ async def handle_reminder_page(query: CallbackQuery, user_id: int, page: int) ->
     keyboard = get_reminders_list_keyboard(reminders, page=page)
     try:
         await query.edit_message_text(
-            _reminder_list_text(reminders, page), reply_markup=keyboard, parse_mode="MarkdownV2"
+            _reminder_list_text(reminders, page),
+            reply_markup=keyboard,
+            parse_mode="MarkdownV2",
         )
     except Exception as e:
         if "Message is not modified" not in str(e):
@@ -520,6 +524,7 @@ async def handle_reminder_done(
     if create_task_flag and date_str:
         try:
             from ..grpc_client import core_client
+
             msg_text = query.message.text or ""
             title = msg_text.removeprefix("🔔 Напоминание: ")
             tasks = core_client.get_tasks(date_str)
@@ -551,12 +556,15 @@ async def _handle_postpone(
         reminder_id=reminder_id, user_id=user_id, **{f"postpone_{unit}": amount}
     )
     next_fire = _format_local_time(result.get("next_fire_at", "")) if result else ""
-    next_fire_text = f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
+    next_fire_text = (
+        f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
+    )
     unit_label = "д" if unit == "days" else "ч"
     original = escape_markdown_v2(query.message.text or "")
     try:
         await query.edit_message_text(
-            f"{original}\n\n⏰ _Перенесено на {amount} {unit_label}\\._" + next_fire_text,
+            f"{original}\n\n⏰ _Перенесено на {amount} {unit_label}\\._"
+            + next_fire_text,
             parse_mode="MarkdownV2",
         )
     except Exception:
