@@ -21,39 +21,23 @@ logger = logging.getLogger(__name__)
 async def handle_text_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """
-    Handle text messages based on user state.
-
-    Processes text input differently depending on the current user state:
-    - WAITING_RATING: Validates and saves rating (0-10)
-    - WAITING_NEW_TASK: Adds new task to the note
-    - IDLE or other: Adds text to active note
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
     if not update.message or not update.effective_user or not update.message.text:
         return
 
     user_id = update.effective_user.id
     text = update.message.text.strip()
 
-    # Check authorization
     if ROOT_ID and user_id != ROOT_ID:
         await update.message.reply_text("⛔ Unauthorized access.")
         logger.warning(f"Unauthorized message from user {user_id}")
         return
 
-    # Get user context
     user_context = state_manager.get_context(user_id)
     current_state = user_context.state
     active_date = user_context.active_date
 
     try:
-        # Handle based on state
         if current_state == UserState.WAITING_RATING:
-            # Validate rating input
             try:
                 rating = int(text)
                 if rating < 0 or rating > 10:
@@ -63,18 +47,11 @@ async def handle_text_message(
                     )
                     return
 
-                # Update rating in note
                 if core_client.update_rating(active_date, rating):
-                    # Reset state to IDLE
                     state_manager.update_context(user_id, state=UserState.IDLE)
-
-                    # Send confirmation with main menu
-                    confirmation_text = f"✅ Оценка {rating} сохранена\\!"
-                    keyboard = get_main_menu_keyboard(active_date)
-
                     await update.message.reply_text(
-                        confirmation_text,
-                        reply_markup=keyboard,
+                        f"✅ Оценка {rating} сохранена\\!",
+                        reply_markup=get_main_menu_keyboard(active_date),
                         parse_mode="MarkdownV2",
                     )
                     logger.info(f"User {user_id} set rating {rating} for {active_date}")
@@ -101,24 +78,16 @@ async def handle_text_message(
             await handle_reminder_param_input(update, user_id, text)
 
         elif current_state == UserState.WAITING_NEW_TASK:
-            # Add new task
             if core_client.add_task(active_date, text):
-                # Return to tasks view
                 state_manager.update_context(user_id, state=UserState.TASKS_VIEW)
-
-                # Send confirmation
-                confirmation_text = f"✅ Задача добавлена: {escape_markdown_v2(text)}"
-
                 await update.message.reply_text(
-                    confirmation_text, parse_mode="MarkdownV2"
+                    f"✅ Задача добавлена: {escape_markdown_v2(text)}",
+                    parse_mode="MarkdownV2",
                 )
                 logger.info(f"User {user_id} added task: {text}")
-
-                keyboard = get_main_menu_keyboard(active_date)
-                # Show tasks menu again (will be handled by callback handler)
                 await update.message.reply_text(
                     'Используйте кнопку "Задачи" для просмотра\\.',
-                    reply_markup=keyboard,
+                    reply_markup=get_main_menu_keyboard(active_date),
                     parse_mode="MarkdownV2",
                 )
             else:
@@ -127,15 +96,11 @@ async def handle_text_message(
                 )
 
         else:
-            # IDLE or other states - add text to active note
             if core_client.append_to_note(active_date, text):
-                confirmation_text = (
-                    f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}"
-                )
-                keyboard = get_main_menu_keyboard(active_date)
-
                 await update.message.reply_text(
-                    confirmation_text, reply_markup=keyboard, parse_mode="MarkdownV2"
+                    f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}",
+                    reply_markup=get_main_menu_keyboard(active_date),
+                    parse_mode="MarkdownV2",
                 )
                 logger.info(f"User {user_id} added text to {active_date}")
             else:

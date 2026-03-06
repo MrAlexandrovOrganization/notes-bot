@@ -37,16 +37,55 @@ logger = logging.getLogger(__name__)
 NOTE_PREVIEW_MAX_CHARS = 3800
 
 
+def _step_month(month: int, year: int, delta: int) -> tuple[int, int]:
+    month += delta
+    if month < 1:
+        return 12, year - 1
+    if month > 12:
+        return 1, year + 1
+    return month, year
+
+
+async def _show_tasks(query: CallbackQuery, user_id: int) -> None:
+    ctx = state_manager.get_context(user_id)
+    tasks = core_client.get_tasks(ctx.active_date)
+    keyboard = get_tasks_keyboard(tasks, current_page=ctx.task_page)
+    text = (
+        f"✅ Задачи на {escape_markdown_v2(ctx.active_date)}:\n\nВсего задач: {len(tasks)}"
+        if tasks
+        else f"✅ Задачи на {escape_markdown_v2(ctx.active_date)}:\n\nЗадач пока нет\\."
+    )
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+
+
+async def _show_calendar(query: CallbackQuery, user_id: int) -> None:
+    ctx = state_manager.get_context(user_id)
+    existing_dates = core_client.get_existing_dates()
+    keyboard = get_calendar_keyboard(
+        ctx.calendar_year, ctx.calendar_month, ctx.active_date, existing_dates
+    )
+    text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(ctx.active_date)}"
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+    except Exception as e:
+        if "Message is not modified" not in str(e):
+            raise
+
+
+async def _show_main_menu(query: CallbackQuery, user_id: int) -> None:
+    active_date = state_manager.get_context(user_id).active_date
+    text = f"📅 Активная дата: {escape_markdown_v2(active_date)}\n\nВыберите действие:"
+    await query.edit_message_text(
+        text, reply_markup=get_main_menu_keyboard(active_date), parse_mode="MarkdownV2"
+    )
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Main callback query router.
 
     Parses callback_data and routes to appropriate handler based on action prefix.
     Format: "action:param1:param2:..."
-
-    Args:
-        update: Telegram update object
-        context: Bot context
     """
     query = update.callback_query
     if not query or not query.data or not update.effective_user:
@@ -56,7 +95,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     user_id = update.effective_user.id
 
-    # Check authorization
     if ROOT_ID and user_id != ROOT_ID:
         await query.edit_message_text("⛔ Unauthorized access.")
         logger.warning(f"Unauthorized callback from user {user_id}")
@@ -72,7 +110,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     action = parts[0]
 
     try:
-        # Route to appropriate handler
         if action == "menu":
             if len(parts) < 2:
                 logger.error(f"Invalid menu callback: {callback_data}")
@@ -111,7 +148,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             elif task_action == "cancel":
                 await handle_task_cancel(query, user_id)
             elif task_action == "noop":
-                pass  # No operation for pagination display
+                pass
 
         elif action == "cal":
             if len(parts) < 2:
@@ -132,7 +169,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             elif cal_action == "back":
                 await handle_cal_back(query, user_id)
             elif cal_action == "noop":
-                pass  # No operation for header/weekday display
+                pass
 
         elif action == "reminder":
             if len(parts) < 2:
@@ -205,61 +242,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
 
-# Menu handlers
+# ── Menu handlers ──────────────────────────────────────────────────────────────
 
 
 async def handle_menu_rating(query: CallbackQuery, user_id: int) -> None:
-    """Handle rating menu button - request rating input."""
-    state_manager.get_context(user_id)
-
-    # Update state to waiting for rating
     state_manager.update_context(user_id, state=UserState.WAITING_RATING)
-
-    # Send rating request
-    text = "📊 Введите оценку дня \\(0\\-10\\):"
-
-    await query.edit_message_text(text, parse_mode="MarkdownV2")
-
+    await query.edit_message_text(
+        "📊 Введите оценку дня \\(0\\-10\\):", parse_mode="MarkdownV2"
+    )
     logger.info(f"User {user_id} requested rating input")
 
 
 async def handle_menu_tasks(query: CallbackQuery, user_id: int) -> None:
-    """Handle tasks menu button - show tasks list."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Update state
+    active_date = state_manager.get_context(user_id).active_date
     state_manager.update_context(user_id, state=UserState.TASKS_VIEW, task_page=0)
-
-    # Ensure note exists
     core_client.ensure_note(active_date)
-
-    # Get tasks
-    tasks = core_client.get_tasks(active_date)
-
-    # Generate tasks keyboard
-    keyboard = get_tasks_keyboard(tasks, current_page=0)
-
-    # Prepare message
-    if tasks:
-        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
-    else:
-        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nЗадач пока нет\\."
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_tasks(query, user_id)
     logger.info(f"User {user_id} opened tasks view")
 
 
 async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
-    """Handle note menu button - display current note."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Ensure note exists
+    active_date = state_manager.get_context(user_id).active_date
     core_client.ensure_note(active_date)
-
-    # Read note
     content = core_client.get_note(active_date)
     if not content:
         await query.edit_message_text(
@@ -267,306 +271,123 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
         )
         return
 
-    # Get rating if exists
     rating = core_client.get_rating(active_date)
-    rating_text = (
-        f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
-    )
-
-    # Prepare note preview
+    rating_text = f"Оценка: {rating}" if rating is not None else "Оценка: не установлена"
     preview = content[:NOTE_PREVIEW_MAX_CHARS]
     if len(content) > NOTE_PREVIEW_MAX_CHARS:
         preview += "..."
 
-    # Escape for MarkdownV2
-    preview_escaped = escape_markdown_v2(preview)
-    rating_escaped = escape_markdown_v2(rating_text)
-
     text = (
         f"📝 Заметка {escape_markdown_v2(active_date)}\n\n"
-        f"{rating_escaped}\n\n"
-        f"```\n{preview_escaped}\n```"
+        f"{escape_markdown_v2(rating_text)}\n\n"
+        f"```\n{escape_markdown_v2(preview)}\n```"
     )
-
-    # Get main menu keyboard
-    keyboard = get_main_menu_keyboard(active_date)
-
     try:
-        # TODO: Check if text and keyboard are the same
         await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+            text, reply_markup=get_main_menu_keyboard(active_date), parse_mode="MarkdownV2"
         )
     except Exception as e:
         logger.warning(f"Error editing message, probably note did not changed: {e}")
-
     logger.info(f"User {user_id} viewed note for {active_date}")
 
 
 async def handle_menu_calendar(query: CallbackQuery, user_id: int) -> None:
-    """Handle calendar menu button - show calendar."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Update state
     state_manager.update_context(user_id, state=UserState.CALENDAR_VIEW)
-
-    # Get existing dates
-    existing_dates = core_client.get_existing_dates()
-
-    # Generate calendar keyboard
-    keyboard = get_calendar_keyboard(
-        user_context.calendar_year,
-        user_context.calendar_month,
-        active_date,
-        existing_dates,
-    )
-
-    text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(active_date)}"
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_calendar(query, user_id)
     logger.info(f"User {user_id} opened calendar")
 
 
-# Task handlers
+# ── Task handlers ──────────────────────────────────────────────────────────────
 
 
 async def handle_task_toggle(
     query: CallbackQuery, user_id: int, task_index: int
 ) -> None:
-    """Handle task toggle button - switch task completion status."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Toggle task
+    active_date = state_manager.get_context(user_id).active_date
     if core_client.toggle_task(active_date, task_index):
-        # Re-fetch and display updated tasks
-        tasks = core_client.get_tasks(active_date)
-        keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
-
-        text = f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
-
-        await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
-        )
-
+        await _show_tasks(query, user_id)
         logger.info(f"User {user_id} toggled task {task_index}")
     else:
         await query.answer("❌ Ошибка при переключении задачи", show_alert=True)
 
 
 async def handle_task_add(query: CallbackQuery, user_id: int) -> None:
-    """Handle add task button - request new task text."""
-    # Update state
     state_manager.update_context(user_id, state=UserState.WAITING_NEW_TASK)
-
-    # Request task text
-    text = "➕ Введите текст новой задачи:"
-    keyboard = get_task_add_keyboard()
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await query.edit_message_text(
+        "➕ Введите текст новой задачи:",
+        reply_markup=get_task_add_keyboard(),
+        parse_mode="MarkdownV2",
+    )
     logger.info(f"User {user_id} started adding new task")
 
 
 async def handle_task_page(query: CallbackQuery, user_id: int, page: int) -> None:
-    """Handle task pagination - change page."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Update page
     state_manager.update_context(user_id, task_page=page)
-
-    # Fetch tasks
-    tasks = core_client.get_tasks(active_date)
-    keyboard = get_tasks_keyboard(tasks, current_page=page)
-
-    text = (
-        f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
-    )
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_tasks(query, user_id)
     logger.info(f"User {user_id} changed to task page {page}")
 
 
 async def handle_task_back(query: CallbackQuery, user_id: int) -> None:
-    """Handle task back button - return to main menu."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Reset state
     state_manager.update_context(user_id, state=UserState.IDLE)
-
-    # Show main menu
-    text = f"📅 Активная дата: {escape_markdown_v2(active_date)}\n\nВыберите действие:"
-    keyboard = get_main_menu_keyboard(active_date)
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_main_menu(query, user_id)
     logger.info(f"User {user_id} returned to main menu from tasks")
 
 
 async def handle_task_cancel(query: CallbackQuery, user_id: int) -> None:
-    """Handle task cancel button - cancel adding new task."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Return to tasks view
     state_manager.update_context(user_id, state=UserState.TASKS_VIEW)
-
-    # Fetch tasks
-    tasks = core_client.get_tasks(active_date)
-    keyboard = get_tasks_keyboard(tasks, current_page=user_context.task_page)
-
-    text = (
-        f"✅ Задачи на {escape_markdown_v2(active_date)}:\n\nВсего задач: {len(tasks)}"
-    )
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_tasks(query, user_id)
     logger.info(f"User {user_id} cancelled adding task")
 
 
-# Calendar handlers
+# ── Calendar handlers ──────────────────────────────────────────────────────────
 
 
 async def handle_cal_prev(query: CallbackQuery, user_id: int) -> None:
-    """Handle calendar previous month button."""
-    user_context = state_manager.get_context(user_id)
-
-    # Calculate previous month
-    month = user_context.calendar_month
-    year = user_context.calendar_year
-
-    if month == 1:
-        month = 12
-        year -= 1
-    else:
-        month -= 1
-
-    # Update context
+    ctx = state_manager.get_context(user_id)
+    month, year = _step_month(ctx.calendar_month, ctx.calendar_year, -1)
     state_manager.update_context(user_id, calendar_month=month, calendar_year=year)
-
-    # Get existing dates
-    existing_dates = core_client.get_existing_dates()
-
-    # Generate calendar
-    keyboard = get_calendar_keyboard(
-        year, month, user_context.active_date, existing_dates
-    )
-
-    text = (
-        f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(user_context.active_date)}"
-    )
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_calendar(query, user_id)
     logger.info(f"User {user_id} navigated to {month}/{year}")
 
 
 async def handle_cal_next(query: CallbackQuery, user_id: int) -> None:
-    """Handle calendar next month button."""
-    user_context = state_manager.get_context(user_id)
-
-    # Calculate next month
-    month = user_context.calendar_month
-    year = user_context.calendar_year
-
-    if month == 12:
-        month = 1
-        year += 1
-    else:
-        month += 1
-
-    # Update context
+    ctx = state_manager.get_context(user_id)
+    month, year = _step_month(ctx.calendar_month, ctx.calendar_year, +1)
     state_manager.update_context(user_id, calendar_month=month, calendar_year=year)
-
-    # Get existing dates
-    existing_dates = core_client.get_existing_dates()
-
-    # Generate calendar
-    keyboard = get_calendar_keyboard(
-        year, month, user_context.active_date, existing_dates
-    )
-
-    text = (
-        f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(user_context.active_date)}"
-    )
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_calendar(query, user_id)
     logger.info(f"User {user_id} navigated to {month}/{year}")
 
 
 async def handle_cal_select(query: CallbackQuery, user_id: int, date: str) -> None:
-    """Handle calendar date selection."""
-    # Set as active date
     state_manager.set_active_date(user_id, date)
-
-    # Create note if doesn't exist
     core_client.ensure_note(date)
-
-    # Reset to IDLE state
     state_manager.update_context(user_id, state=UserState.IDLE)
-
-    # Show main menu with new active date
     text = (
         f"✅ Выбрана дата: {escape_markdown_v2(date)}\n\n"
         f"📅 Активная дата: {escape_markdown_v2(date)}\n\n"
         f"Выберите действие:"
     )
-    keyboard = get_main_menu_keyboard(date)
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await query.edit_message_text(
+        text, reply_markup=get_main_menu_keyboard(date), parse_mode="MarkdownV2"
+    )
     logger.info(f"User {user_id} selected date {date}")
 
 
 async def handle_cal_today(query: CallbackQuery, user_id: int) -> None:
-    """Handle calendar today button - return to current date."""
-    # Get today's date
     today_date = core_client.get_today_date()
-
-    # Set as active date
     state_manager.set_active_date(user_id, today_date)
-
-    # Update calendar to current month
     now = datetime.now()
     state_manager.update_context(
         user_id, calendar_month=now.month, calendar_year=now.year
     )
-
-    # Get existing dates
-    existing_dates = core_client.get_existing_dates()
-
-    # Generate calendar
-    keyboard = get_calendar_keyboard(now.year, now.month, today_date, existing_dates)
-
-    text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(today_date)}"
-
     try:
-        await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
-        )
+        await _show_calendar(query, user_id)
     except Exception as e:
         logger.warning(f"Error editing date, probably date did not changed: {e}")
-
     logger.info(f"User {user_id} returned to today: {today_date}")
 
 
 async def handle_cal_back(query: CallbackQuery, user_id: int) -> None:
-    """Handle calendar back button - return to main menu."""
-    user_context = state_manager.get_context(user_id)
-    active_date = user_context.active_date
-
-    # Reset state
     state_manager.update_context(user_id, state=UserState.IDLE)
-
-    # Show main menu
-    text = f"📅 Активная дата: {escape_markdown_v2(active_date)}\n\nВыберите действие:"
-    keyboard = get_main_menu_keyboard(active_date)
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
-
+    await _show_main_menu(query, user_id)
     logger.info(f"User {user_id} returned to main menu from calendar")

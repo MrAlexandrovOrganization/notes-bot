@@ -1,40 +1,18 @@
 """Reminders keyboards for the Telegram bot."""
 
 import calendar
+import datetime as dt_module
+from typing import Any
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..config import TIMEZONE_OFFSET_HOURS
-
-_MONTH_NAMES = {
-    1: "Январь",
-    2: "Февраль",
-    3: "Март",
-    4: "Апрель",
-    5: "Май",
-    6: "Июнь",
-    7: "Июль",
-    8: "Август",
-    9: "Сентябрь",
-    10: "Октябрь",
-    11: "Ноябрь",
-    12: "Декабрь",
-}
-
-_SCHEDULE_TYPE_LABELS = {
-    "daily": "Каждый день",
-    "weekly": "По дням недели",
-    "monthly": "Каждый месяц",
-    "yearly": "Каждый год",
-    "once": "Один раз",
-    "custom_days": "Каждые N дней",
-}
+from .calendar import MONTH_NAMES
 
 
 def get_reminders_list_keyboard(
-    reminders: List[Dict[str, Any]],
+    reminders: list[dict[str, Any]],
     page: int = 0,
     per_page: int = 5,
 ) -> InlineKeyboardMarkup:
@@ -44,7 +22,7 @@ def get_reminders_list_keyboard(
     start = page * per_page
     end = min(start + per_page, total)
 
-    keyboard: Sequence[Sequence[InlineKeyboardButton]] = []
+    keyboard: list[list[InlineKeyboardButton]] = []
     for r in reminders[start:end]:
         label = r["title"][:30]
         keyboard.append(
@@ -55,7 +33,7 @@ def get_reminders_list_keyboard(
         )
 
     if total_pages > 1:
-        nav: List[InlineKeyboardButton] = []
+        nav: list[InlineKeyboardButton] = []
         if page > 0:
             nav.append(InlineKeyboardButton("◀", callback_data=f"reminder:page:{page - 1}"))
         nav.append(
@@ -125,8 +103,7 @@ def get_reminder_calendar_keyboard(
 
     keyboard: list[list[InlineKeyboardButton]] = []
 
-    # Header with navigation
-    month_name = _MONTH_NAMES[month]
+    month_name = MONTH_NAMES[month]
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -139,15 +116,12 @@ def get_reminder_calendar_keyboard(
         ]
     )
 
-    # Weekday headers
     keyboard.append(
         [
             InlineKeyboardButton(d, callback_data="reminder:noop")
             for d in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         ]
     )
-
-    import datetime as dt_module
 
     for week in calendar.monthcalendar(year, month):
         row: list[InlineKeyboardButton] = []

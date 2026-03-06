@@ -1,47 +1,38 @@
 """Tasks keyboard for the Telegram bot."""
 
-from typing import List, Dict, Any
+from typing import Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def get_tasks_keyboard(
-    tasks: List[Dict[str, Any]], current_page: int = 0, tasks_per_page: int = 5
+    tasks: list[dict[str, Any]], current_page: int = 0, tasks_per_page: int = 5
 ) -> InlineKeyboardMarkup:
     """
     Generate keyboard for displaying and managing tasks.
 
     Args:
-        tasks: List of task dictionaries with keys 'text', 'completed', 'index'
+        tasks: List of task dicts with keys 'text', 'completed', 'index'
         current_page: Current page number (0-based)
-        tasks_per_page: Number of tasks to display per page
-
-    Returns:
-        InlineKeyboardMarkup with task buttons and navigation
+        tasks_per_page: Number of tasks per page
     """
-    keyboard: List[List[InlineKeyboardButton]] = []
+    keyboard: list[list[InlineKeyboardButton]] = []
 
-    # Calculate pagination
     total_pages = (len(tasks) + tasks_per_page - 1) // tasks_per_page
     start_idx = current_page * tasks_per_page
     end_idx = min(start_idx + tasks_per_page, len(tasks))
 
-    # Add task buttons
     for task in tasks[start_idx:end_idx]:
         checkbox = "✅" if task["completed"] else "❌"
-        button_text = f"{checkbox} {task['text']}"
-        callback_data = f"task:toggle:{task['index']}"
         keyboard.append(
-            [InlineKeyboardButton(button_text, callback_data=callback_data)]
+            [InlineKeyboardButton(f"{checkbox} {task['text']}", callback_data=f"task:toggle:{task['index']}")]
         )
 
-    # Add "Add Task" button
     keyboard.append(
         [InlineKeyboardButton("➕ Добавить задачу", callback_data="task:add")]
     )
 
-    # Add pagination if needed
     if total_pages > 1:
-        nav_buttons: List[InlineKeyboardButton] = []
+        nav_buttons: list[InlineKeyboardButton] = []
         if current_page > 0:
             nav_buttons.append(
                 InlineKeyboardButton("◀", callback_data=f"task:page:{current_page - 1}")
@@ -57,19 +48,12 @@ def get_tasks_keyboard(
             )
         keyboard.append(nav_buttons)
 
-    # Add back button
     keyboard.append([InlineKeyboardButton("◀ Назад", callback_data="task:back")])
 
     return InlineKeyboardMarkup(keyboard)
 
 
 def get_task_add_keyboard() -> InlineKeyboardMarkup:
-    """
-    Generate keyboard for adding a new task.
-
-    Returns:
-        InlineKeyboardMarkup with cancel button
-    """
-    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="task:cancel")]]
-
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("❌ Отмена", callback_data="task:cancel")]]
+    )

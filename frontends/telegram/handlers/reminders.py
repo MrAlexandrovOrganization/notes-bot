@@ -3,7 +3,6 @@
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List
 
 import grpc
 from telegram import CallbackQuery, Update
@@ -66,6 +65,21 @@ def _cal_month_year(user_id: int) -> tuple[int, int]:
     return month, year
 
 
+def _reminder_list_text(reminders: list, page: int = 0) -> str:
+    if not reminders:
+        return "🔔 Уведомления:\n\nНапоминаний пока нет\\."
+    per_page = 5
+    start = page * per_page
+    end = min(start + per_page, len(reminders))
+    lines = [
+        f"• {escape_markdown_v2(r['title'])} "
+        f"\\({escape_markdown_v2(_schedule_label(r['schedule_type']))}\\) "
+        f"— {escape_markdown_v2(_format_local_time(r['next_fire_at']))}"
+        for r in reminders[start:end]
+    ]
+    return "🔔 Уведомления:\n\n" + "\n".join(lines)
+
+
 async def _reply(update_or_query: Update | CallbackQuery, text: str, keyboard):
     if hasattr(update_or_query, "message") and update_or_query.message:
         await update_or_query.message.reply_text(
@@ -100,24 +114,9 @@ async def handle_menu_notifications(query: CallbackQuery, user_id: int) -> None:
     reminders = notifications_client.list_reminders(user_id)
     page = ctx.reminder_list_page
     keyboard = get_reminders_list_keyboard(reminders, page=page)
-
-    if reminders:
-        per_page = 5
-        start = page * per_page
-        end = min(start + per_page, len(reminders))
-        lines: List[str] = []
-        for r in reminders[start:end]:
-            next_fire = _format_local_time(r["next_fire_at"])
-            lines.append(
-                f"• {escape_markdown_v2(r['title'])} "
-                f"\\({escape_markdown_v2(_schedule_label(r['schedule_type']))}\\) "
-                f"— {escape_markdown_v2(next_fire)}"
-            )
-        text = "🔔 Уведомления:\n\n" + "\n".join(lines)
-    else:
-        text = "🔔 Уведомления:\n\nНапоминаний пока нет\\."
-
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+    await query.edit_message_text(
+        _reminder_list_text(reminders, page), reply_markup=keyboard, parse_mode="MarkdownV2"
+    )
     logger.info(f"User {user_id} opened reminders list")
 
 
@@ -125,25 +124,10 @@ async def handle_reminder_page(query: CallbackQuery, user_id: int, page: int) ->
     state_manager.update_context(user_id, reminder_list_page=page)
     reminders = notifications_client.list_reminders(user_id)
     keyboard = get_reminders_list_keyboard(reminders, page=page)
-
-    per_page = 5
-    start = page * per_page
-    end = min(start + per_page, len(reminders))
-    if reminders:
-        lines: List[str] = []
-        for r in reminders[start:end]:
-            next_fire = _format_local_time(r["next_fire_at"])
-            lines.append(
-                f"• {escape_markdown_v2(r['title'])} "
-                f"\\({escape_markdown_v2(_schedule_label(r['schedule_type']))}\\) "
-                f"— {escape_markdown_v2(next_fire)}"
-            )
-        text = "🔔 Уведомления:\n\n" + "\n".join(lines)
-    else:
-        text = "🔔 Уведомления:\n\nНапоминаний пока нет\\."
-
     try:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+        await query.edit_message_text(
+            _reminder_list_text(reminders, page), reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
     except Exception as e:
         if "Message is not modified" not in str(e):
             raise
@@ -221,7 +205,6 @@ async def handle_reminder_type_select(
         )
 
     elif schedule_type in ("once", "yearly"):
-        # Show calendar picker
         state_manager.update_context(
             user_id,
             state=UserState.REMINDER_CREATE_DATE,
@@ -313,7 +296,6 @@ async def handle_reminder_cal_select(
     cancel_kb = get_reminder_cancel_keyboard()
 
     if context_name == "pp":
-        # Postpone flow
         reminder_id = ctx.pending_postpone_reminder_id
         if reminder_id:
             notifications_client.postpone_reminder(
@@ -330,7 +312,6 @@ async def handle_reminder_cal_select(
         return
 
     if context_name == "yr":
-        # yearly: extract month and day
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             draft["month"] = dt.month
@@ -455,7 +436,6 @@ async def _finalize_reminder_creation(
     title = draft.pop("title", "Напоминание")
     schedule_type = draft.pop("schedule_type", "daily")
     create_task = draft.pop("create_task", False)
-    # Embed the client's timezone offset so the server uses the correct local time
     draft["tz_offset"] = TIMEZONE_OFFSET_HOURS
     params_json = json.dumps(draft)
 
@@ -538,7 +518,6 @@ async def handle_reminder_done(
     date_str: str = "",
 ) -> None:
     if create_task_flag and date_str:
-        # Find and toggle the task created for this reminder
         try:
             from ..grpc_client import core_client
             msg_text = query.message.text or ""
@@ -561,42 +540,40 @@ async def handle_reminder_done(
     logger.info(f"User {user_id} acknowledged reminder {reminder_id}")
 
 
-async def handle_reminder_postpone_days(
-    query: CallbackQuery, user_id: int, days: int, reminder_id: int
+async def _handle_postpone(
+    query: CallbackQuery,
+    user_id: int,
+    reminder_id: int,
+    amount: int,
+    unit: str,
 ) -> None:
     result = notifications_client.postpone_reminder(
-        reminder_id=reminder_id, user_id=user_id, postpone_days=days
+        reminder_id=reminder_id, user_id=user_id, **{f"postpone_{unit}": amount}
     )
     next_fire = _format_local_time(result.get("next_fire_at", "")) if result else ""
     next_fire_text = f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
+    unit_label = "д" if unit == "days" else "ч"
     original = escape_markdown_v2(query.message.text or "")
     try:
         await query.edit_message_text(
-            f"{original}\n\n⏰ _Перенесено на {days} д\\._" + next_fire_text,
+            f"{original}\n\n⏰ _Перенесено на {amount} {unit_label}\\._" + next_fire_text,
             parse_mode="MarkdownV2",
         )
     except Exception:
         pass
-    logger.info(f"User {user_id} postponed reminder {reminder_id} by {days} days")
+    logger.info(f"User {user_id} postponed reminder {reminder_id} by {amount} {unit}")
+
+
+async def handle_reminder_postpone_days(
+    query: CallbackQuery, user_id: int, days: int, reminder_id: int
+) -> None:
+    await _handle_postpone(query, user_id, reminder_id, days, "days")
 
 
 async def handle_reminder_postpone_hours(
     query: CallbackQuery, user_id: int, hours: int, reminder_id: int
 ) -> None:
-    result = notifications_client.postpone_reminder(
-        reminder_id=reminder_id, user_id=user_id, postpone_hours=hours
-    )
-    next_fire = _format_local_time(result.get("next_fire_at", "")) if result else ""
-    next_fire_text = f" \\(следующее: {escape_markdown_v2(next_fire)}\\)" if next_fire else ""
-    original = escape_markdown_v2(query.message.text or "")
-    try:
-        await query.edit_message_text(
-            f"{original}\n\n⏰ _Перенесено на {hours} ч\\._" + next_fire_text,
-            parse_mode="MarkdownV2",
-        )
-    except Exception:
-        pass
-    logger.info(f"User {user_id} postponed reminder {reminder_id} by {hours} hours")
+    await _handle_postpone(query, user_id, reminder_id, hours, "hours")
 
 
 async def handle_reminder_custom_date(
@@ -611,7 +588,6 @@ async def handle_reminder_custom_date(
         reminder_cal_year=now.year,
     )
     cal_kb = get_reminder_calendar_keyboard(now.year, now.month, "pp")
-    # Edit the notification message to show the calendar inline
     await query.edit_message_text("📅 Выберите дату переноса:", reply_markup=cal_kb)
     logger.info(f"User {user_id} started custom postpone for reminder {reminder_id}")
 
