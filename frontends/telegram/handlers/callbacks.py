@@ -293,7 +293,7 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
             parse_mode="MarkdownV2",
         )
     except Exception as e:
-        logger.warning(f"Error editing message, probably note did not changed: {e}")
+        logger.info(f"Error editing message, probably note did not changed: {e}")
     logger.info(f"User {user_id} viewed note for {active_date}")
 
 
