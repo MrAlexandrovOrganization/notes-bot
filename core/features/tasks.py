@@ -133,7 +133,7 @@ def toggle_task(filepath: Path, task_index: int) -> bool:
         lines = content.split("\n")
 
         # Toggle the task (line_number is 1-based, list is 0-based)
-        line_idx = line_number - 1
+        line_idx = int(line_number - 1)
         if line_idx < 0 or line_idx >= len(lines):
             logger.error(f"Invalid line number: {line_number}")
             return False

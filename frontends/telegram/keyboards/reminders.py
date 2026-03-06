@@ -2,7 +2,7 @@
 
 import calendar
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -44,7 +44,7 @@ def get_reminders_list_keyboard(
     start = page * per_page
     end = min(start + per_page, total)
 
-    keyboard = []
+    keyboard: Sequence[Sequence[InlineKeyboardButton]] = []
     for r in reminders[start:end]:
         label = r["title"][:30]
         keyboard.append(

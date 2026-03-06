@@ -3,6 +3,7 @@
 import json
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import List
 
 import grpc
 from telegram import CallbackQuery, Update
@@ -79,7 +80,7 @@ async def handle_menu_notifications(query: CallbackQuery, user_id: int) -> None:
         per_page = 5
         start = page * per_page
         end = min(start + per_page, len(reminders))
-        lines = []
+        lines: List[str] = []
         for r in reminders[start:end]:
             next_fire = _format_local_time(r["next_fire_at"])
             lines.append(
@@ -104,7 +105,7 @@ async def handle_reminder_page(query: CallbackQuery, user_id: int, page: int) ->
     start = page * per_page
     end = min(start + per_page, len(reminders))
     if reminders:
-        lines = []
+        lines: List[str] = []
         for r in reminders[start:end]:
             next_fire = _format_local_time(r["next_fire_at"])
             lines.append(
