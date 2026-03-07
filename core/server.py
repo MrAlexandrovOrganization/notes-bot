@@ -16,23 +16,23 @@ logger = logging.getLogger(__name__)
 
 
 class NotesServicer(notes_pb2_grpc.NotesServiceServicer):
-    def GetTodayDate(self, request, context):
+    def GetTodayDate(self, request: notes_pb2.Empty, context):
         filename = get_today_filename()
         date = filename.replace(".md", "")
         return notes_pb2.DateResponse(date=date)
 
-    def GetExistingDates(self, request, context):
+    def GetExistingDates(self, request: notes_pb2.Empty, context):
         dates = get_existing_dates(NOTES_DIR)
         return notes_pb2.ExistingDatesResponse(dates=list(dates))
 
-    def EnsureNote(self, request, context):
+    def EnsureNote(self, request: notes_pb2.DateRequest, context):
         date = request.date
         filepath = DAILY_NOTES_DIR / f"{date}.md"
         if not filepath.exists():
             create_daily_note_from_template(filepath, date)
         return notes_pb2.SuccessResponse(success=True)
 
-    def GetNote(self, request, context):
+    def GetNote(self, request: notes_pb2.DateRequest, context):
         content = read_note(f"{request.date}.md")
         if content is None:
             context.set_code(grpc.StatusCode.NOT_FOUND)
@@ -40,7 +40,7 @@ class NotesServicer(notes_pb2_grpc.NotesServiceServicer):
             return notes_pb2.NoteResponse()
         return notes_pb2.NoteResponse(content=content)
 
-    def GetRating(self, request, context):
+    def GetRating(self, request: notes_pb2.DateRequest, context) -> notes_pb2.RatingResponse:
         content = read_note(f"{request.date}.md")
         if content is None:
             return notes_pb2.RatingResponse(has_rating=False, rating=0)
@@ -49,12 +49,12 @@ class NotesServicer(notes_pb2_grpc.NotesServiceServicer):
             return notes_pb2.RatingResponse(has_rating=False, rating=0)
         return notes_pb2.RatingResponse(has_rating=True, rating=rating)
 
-    def UpdateRating(self, request, context):
+    def UpdateRating(self, request: notes_pb2.UpdateRatingRequest, context):
         filepath = DAILY_NOTES_DIR / f"{request.date}.md"
         success = update_rating(filepath, request.rating)
         return notes_pb2.SuccessResponse(success=success)
 
-    def GetTasks(self, request, context):
+    def GetTasks(self, request: notes_pb2.DateRequest, context):
         content = read_note(f"{request.date}.md")
         if content is None:
             return notes_pb2.TasksResponse(tasks=[])
@@ -70,17 +70,17 @@ class NotesServicer(notes_pb2_grpc.NotesServiceServicer):
         ]
         return notes_pb2.TasksResponse(tasks=tasks)
 
-    def ToggleTask(self, request, context):
+    def ToggleTask(self, request: notes_pb2.ToggleTaskRequest, context):
         filepath = DAILY_NOTES_DIR / f"{request.date}.md"
         success = toggle_task(filepath, request.task_index)
         return notes_pb2.SuccessResponse(success=success)
 
-    def AddTask(self, request, context):
+    def AddTask(self, request: notes_pb2.AddTaskRequest, context):
         filepath = DAILY_NOTES_DIR / f"{request.date}.md"
         success = add_task(filepath, request.task_text)
         return notes_pb2.SuccessResponse(success=success)
 
-    def AppendToNote(self, request, context):
+    def AppendToNote(self, request: notes_pb2.AppendRequest, context):
         date = request.date
         filepath = DAILY_NOTES_DIR / f"{date}.md"
         if not filepath.exists():

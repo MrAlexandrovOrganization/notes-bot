@@ -347,7 +347,7 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
     ctx = state_manager.get_context(user_id)
     state = ctx.state
     draft = dict(ctx.reminder_draft)
-    schedule_type = draft.get("schedule_type", "")
+    schedule_type = str(draft.get("schedule_type", ""))
     cancel_kb = get_reminder_cancel_keyboard()
 
     if state == UserState.REMINDER_CREATE_DAY:
@@ -440,9 +440,9 @@ async def _finalize_reminder_creation(
 ) -> None:
     ctx = state_manager.get_context(user_id)
     draft = dict(ctx.reminder_draft)
-    title = draft.pop("title", "Напоминание")
-    schedule_type = draft.pop("schedule_type", "daily")
-    create_task = draft.pop("create_task", False)
+    title = str(draft.pop("title", "Напоминание"))
+    schedule_type = str(draft.pop("schedule_type", "daily"))
+    create_task = bool(draft.pop("create_task", False))
     draft["tz_offset"] = TIMEZONE_OFFSET_HOURS
     params_json = json.dumps(draft)
 
@@ -528,11 +528,11 @@ async def handle_reminder_done(
     create_task_flag: int = 0,
     date_str: str = "",
 ) -> None:
+    msg_text = str(query.message.text) or ""
     if create_task_flag and date_str:
         try:
             from ..grpc_client import core_client
 
-            msg_text = query.message.text or ""
             title = msg_text.removeprefix("🔔 Напоминание: ")
             tasks = core_client.get_tasks(date_str)
             for task in tasks:
@@ -542,7 +542,7 @@ async def handle_reminder_done(
         except Exception as e:
             logger.error(f"Failed to toggle task on reminder done: {e}")
 
-    original = escape_markdown_v2(query.message.text or "")
+    original = escape_markdown_v2(msg_text)
     try:
         await reply_message(
             update_or_query=query,

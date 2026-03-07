@@ -5,7 +5,6 @@ import logging
 import threading
 import time
 import urllib.request
-import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -157,7 +156,7 @@ def _compute_next_fire(
     return None
 
 
-def _send_telegram_message(chat_id: int, text: str, keyboard: Dict) -> None:
+def _send_telegram_message(chat_id: int, text: str, keyboard: dict[str, list[list[dict[str, str]]]]) -> None:
     if not BOT_TOKEN:
         logger.warning("BOT_TOKEN not set, skipping message send")
         return
@@ -182,7 +181,7 @@ def _send_telegram_message(chat_id: int, text: str, keyboard: Dict) -> None:
         logger.error(f"Failed to send notification to {chat_id}: {e}")
 
 
-def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str = "") -> Dict:
+def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str = "") -> dict[str, list[list[dict[str, str]]]]:
     done_cb = (
         f"reminder:done:{reminder_id}:1:{today_date}"
         if create_task and today_date
