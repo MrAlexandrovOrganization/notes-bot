@@ -1,221 +1,145 @@
 # Telegram Notes Bot
 
-Телеграм-бот для сохранения текстовых сообщений в дневные заметки Obsidian.
+Личный Telegram-бот для управления дневными заметками в формате Obsidian: текст, задачи, оценка дня, напоминания, голосовые сообщения.
 
 ## Возможности
 
-- Принимает текстовые сообщения от авторизованного пользователя
-- Сохраняет сообщения в дневные заметки (Daily notes) в формате Obsidian
-- Автоматически создает новые дневные заметки из шаблона `Templates/Daily.md`
-- Если заметка за день уже существует, добавляет сообщение в конец файла
-- Заметки сохраняются в папку `Daily/` в формате `dd-Mmm-yyyy.md` (например, `09-Nov-2025.md`)
-- Поддерживает интеграцию с существующим хранилищем Obsidian
-- Команды для получения заметок:
-  - `/today` - получить заметку текущего дня
-  - `/get dd-Mmm-yyyy` - получить заметку указанного дня
+- **Заметки** — сохранение текстовых сообщений в дневную заметку Obsidian (`Daily/DD-Mmm-YYYY.md`)
+- **Задачи** — просмотр, отметка выполнения, добавление задач из заметки (`- [ ]` / `- [x]`)
+- **Оценка дня** — запись числа от 0 до 10 в поле `Оценка:` в frontmatter заметки
+- **Календарь** — навигация по месяцам, выбор любой даты, работа с заметкой за любой день
+- **Напоминания** — создание напоминаний (once / daily / weekly / monthly) с хранением в PostgreSQL
+- **Голос** — транскрибация голосовых и видео-сообщений через OpenAI Whisper
 
-## Установка и запуск
+Интерфейс полностью на inline-кнопках. Авторизован единственный пользователь (`ROOT_ID`).
 
-### 1. Создайте Telegram бота
+## Архитектура
 
-1. Найдите [@BotFather](https://t.me/botfather) в Telegram
-2. Отправьте команду `/newbot`
-3. Следуйте инструкциям и получите токен бота
-4. Узнайте свой Telegram ID (можно через [@userinfobot](https://t.me/userinfobot))
+5 сервисов в Docker, взаимодействие через gRPC:
+
+```
+[Telegram Bot] ──gRPC──► [Core Service]          :50051
+               ──gRPC──► [Notifications Service]  :50052
+               ──gRPC──► [Whisper Service]         :50053
+                                  │
+                          [PostgreSQL]             :5432
+```
+
+| Сервис | Назначение |
+|--------|-----------|
+| `core` | Работа с заметками: задачи, оценки, контент |
+| `notifications` | Напоминания: создание, расписание, хранение в БД |
+| `whisper` | Голос → текст (faster-whisper) |
+| `telegram` | Telegram-бот, все обработчики, UI |
+| `postgres` | База данных напоминаний |
+
+Подробная документация для разработки — в `CLAUDE.md`.
+
+## Быстрый старт
+
+### 1. Создайте бота
+
+1. [@BotFather](https://t.me/botfather) → `/newbot` → получите токен
+2. Узнайте свой Telegram ID через [@userinfobot](https://t.me/userinfobot)
 
 ### 2. Настройте окружение
-
-Создайте файл `.env` на основе `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-Отредактируйте `.env` и укажите **все обязательные параметры**:
+Обязательные параметры в `.env`:
 
-```bash
-# Telegram Bot Configuration
+```env
 BOT_TOKEN=your_bot_token_here
 ROOT_ID=your_telegram_id_here
 
-# Database Configuration (REQUIRED)
-# These credentials are used by PostgreSQL and notifications service
 DB_NAME=notifications
 DB_USER=notif
-DB_PASSWORD=change_this_password_in_production
+DB_PASSWORD=change_this_password
 
-# Notes Directory Configuration (REQUIRED)
-# Path to your notes directory
-#
-# For local run: specify full path on your machine
-# Example: /home/maxim/Yandex.Disk/notes
-#
-# For Docker: same path will be automatically mapped to /notes inside container
-# (docker-compose.yml handles the path translation)
-NOTES_DIR=/path/to/your/notes
-
-# Template Subdirectory (OPTIONAL)
-# Relative path from NOTES_DIR to templates folder
-# Default: Templates
-# TEMPLATE_SUBDIR=Templates
+NOTES_DIR=/path/to/your/obsidian/vault
 ```
 
-**Параметры:**
-- `BOT_TOKEN` - токен вашего бота от BotFather (обязательно)
-- `ROOT_ID` - ваш Telegram ID (обязательно)
-- `DB_NAME` - имя базы данных PostgreSQL (обязательно)
-- `DB_USER` - имя пользователя базы данных (обязательно)
-- `DB_PASSWORD` - пароль базы данных (обязательно) - **обязательно измените в production!**
-- `NOTES_DIR` - **полный путь** к папке с заметками на хост-машине (обязательно)
-- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами от NOTES_DIR (опционально, по умолчанию `Templates`)
-
-**Примеры путей для `NOTES_DIR`:**
-- На локальном компьютере: `/Users/username/Yandex.Disk/notes`
-- На виртуальной машине: `/home/maxim/Yandex.Disk/notes`
-- На Windows: `C:/Users/username/Documents/ObsidianVault/notes`
-
-**⚠️ ВАЖНО для безопасности:**
-- **ОБЯЗАТЕЛЬНО** измените `DB_PASSWORD` на сильный пароль перед запуском в production
-- Файл `.env` с credentials НЕ должен попадать в git (он уже добавлен в `.gitignore`)
-- Никогда не коммитьте реальные пароли в репозиторий
-
-### 3. Запустите бота с Docker
+### 3. Запустите через Docker
 
 ```bash
 docker-compose up -d
 ```
 
-### 4. Альтернативный запуск без Docker
+### 4. Альтернативно — локальный запуск
 
-Если хотите запустить бота локально без Docker:
+Требуется запущенный PostgreSQL и все три gRPC-сервиса. Для простого запуска используйте Docker.
 
 ```bash
-# Установите Poetry, если еще не установлен
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Установите зависимости
 poetry install
-
-# Настройте переменные окружения для локального запуска
-export OBSIDIAN_VAULT_PATH="/home/maxim/Yandex.Disk"
-# Опционально, если структура отличается от стандартной:
-# export NOTES_SUBDIR="notes"
-# export TEMPLATE_SUBDIR="notes/Templates"
-
-# Запустите бота
-poetry run python main.py
-# или используя make
-make run
-```
-
-### 5. Проверьте работу
-
-Отправьте любое текстовое сообщение боту в Telegram. Оно должно:
-1. Создать новую дневную заметку из шаблона (если её ещё нет)
-2. Или добавить сообщение в конец существующей заметки
-3. Заметка будет сохранена в `Daily/dd-Mmm-yyyy.md`
-
-## Использование
-
-### Сохранение заметок
-
-Просто отправьте текстовое сообщение боту - оно автоматически сохранится в заметку текущего дня.
-
-### Команды
-
-- `/today` - получить содержимое заметки текущего дня
-  ```
-  Пример: /today
-  ```
-
-- `/get <дата>` - получить содержимое заметки указанного дня
-  ```
-  Пример: /get 11-Oct-2025
-  Пример: /get 25-Dec-2024
-  ```
-
-## Управление
-
-### Просмотр логов
-
-```bash
-docker-compose logs -f
-```
-
-### Остановка бота
-
-```bash
-docker-compose down
-```
-
-### Перезапуск бота
-
-```bash
-docker-compose restart
-```
-
-### Обновление зависимостей
-
-```bash
-poetry update
+make run   # запускает только telegram-бота
 ```
 
 ## Структура проекта
 
 ```
-telegram-notes-bot/
-├── src/                  # Исходный код бота
-│   ├── __init__.py      # Инициализация пакета
-│   ├── bot.py           # Главный модуль бота
-│   ├── config.py        # Конфигурация и настройки
-│   ├── handlers.py      # Обработчики команд и сообщений
-│   ├── notes.py         # Работа с заметками
-│   └── utils.py         # Вспомогательные функции
-├── main.py              # Точка входа в приложение
-├── bot.py.old           # Старая версия (резервная копия)
-├── pyproject.toml       # Poetry конфигурация и зависимости
-├── poetry.lock          # Зафиксированные версии зависимостей
-├── Makefile             # Команды для управления проектом
-├── Dockerfile           # Docker образ
-├── docker-compose.yml   # Docker Compose конфигурация
-├── .env                 # Переменные окружения (создать вручную)
-├── .env.example         # Шаблон для .env
-├── .gitignore           # Игнорируемые файлы
-└── notes/               # Папка с заметками (создается автоматически)
+notes_bot/
+├── core/                         # Core gRPC сервис (заметки)
+│   ├── main.py                   # Точка входа, порт 50051
+│   ├── server.py                 # NotesServicer (10 RPC)
+│   ├── notes.py                  # Чтение/запись markdown-файлов
+│   ├── utils.py                  # get_today_filename() с TZ
+│   ├── config.py                 # NOTES_DIR, TEMPLATE_DIR
+│   └── features/
+│       ├── rating.py             # Парсинг/обновление Оценка:
+│       ├── tasks.py              # Парсинг/тоггл/добавление задач
+│       └── calendar_ops.py       # Сканирование Daily/
+│
+├── notifications/                # Notifications gRPC сервис
+│   ├── main.py                   # Точка входа, порт 50052
+│   ├── server.py                 # NotificationsServicer (4 RPC)
+│   ├── db.py                     # PostgreSQL CRUD
+│   └── scheduler.py              # Фоновый поток, триггер напоминаний
+│
+├── whisper/                      # Whisper gRPC сервис
+│   ├── main.py                   # Точка входа, порт 50053
+│   └── server.py                 # TranscriptionServicer (1 RPC)
+│
+├── frontends/telegram/           # Telegram-бот
+│   ├── bot.py                    # Инициализация, регистрация хендлеров
+│   ├── grpc_client.py            # CoreClient синглтон
+│   ├── notifications_client.py   # NotificationsClient синглтон
+│   ├── whisper_client.py         # WhisperClient синглтон
+│   ├── middleware.py             # reply_message() абстракция
+│   ├── utils.py                  # escape_markdown_v2()
+│   ├── states/
+│   │   ├── context.py            # UserContext dataclass + UserState enum
+│   │   └── manager.py            # StateManager синглтон (in-memory)
+│   ├── handlers/
+│   │   ├── commands.py           # /start
+│   │   ├── messages.py           # Текст, роутинг по состоянию
+│   │   ├── callbacks.py          # Нажатия кнопок, навигация
+│   │   ├── voice.py              # Голосовые/видео-сообщения
+│   │   └── reminders.py          # Создание напоминаний (multi-step)
+│   └── keyboards/
+│       ├── main_menu.py          # 5 кнопок главного меню
+│       ├── tasks.py              # Список задач с пагинацией
+│       ├── calendar.py           # Месячный календарь
+│       └── reminders.py          # Управление напоминаниями
+│
+├── proto/                        # gRPC определения
+│   ├── notes.proto               # 10 RPC
+│   ├── notifications.proto       # 4 RPC
+│   ├── whisper.proto             # 1 RPC
+│   └── *_pb2.py, *_pb2_grpc.py  # Сгенерированные стабы (make proto)
+│
+├── tests/                        # pytest, 64+ тестов
+├── docker-compose.yml
+├── Makefile
+├── pyproject.toml                # Poetry зависимости
+├── CLAUDE.md                     # Документация для AI-агентов
+└── main.py                       # → frontends/telegram/bot.py
 ```
-
-### Описание модулей
-
-- **[`src/config.py`](src/config.py)** - Загрузка переменных окружения, настройка логирования, константы конфигурации
-- **[`src/utils.py`](src/utils.py)** - Вспомогательные функции (генерация имени файла, экранирование Markdown)
-- **[`src/notes.py`](src/notes.py)** - Функции для работы с заметками (сохранение и чтение)
-- **[`src/handlers.py`](src/handlers.py)** - Обработчики команд `/today`, `/get` и текстовых сообщений
-- **[`src/bot.py`](src/bot.py)** - Инициализация и запуск бота
-- **[`main.py`](main.py)** - Точка входа в приложение
 
 ## Формат заметок
 
-### Шаблон дневной заметки
-
-Бот использует шаблон из `Templates/Daily.md`:
-
-```markdown
----
-date: "[[{{date:DD-MMM-YYYY}}]]"
-title: "[[{{date:DD-MMM-YYYY}}]]"
-tags:
-  - daily
-Оценка:
----
-- [ ] Доброго утра!
-- [ ] Заполнить дневник
----
-
-```
-
-### Пример созданной заметки
-
-При создании новой заметки шаблон заполняется текущей датой. Например, `Daily/09-Nov-2025.md`:
+Заметки совместимы с Obsidian. Файлы: `$NOTES_DIR/Daily/DD-Mmm-YYYY.md`.
 
 ```markdown
 ---
@@ -223,96 +147,65 @@ date: "[[09-Nov-2025]]"
 title: "[[09-Nov-2025]]"
 tags:
   - daily
-Оценка:
+Оценка: 8
 ---
 - [ ] Доброго утра!
-- [ ] Заполнить дневник
+- [x] Заполнить дневник [completion:: 2025-03-07]
+- [ ] Новая задача
 ---
 
-Первое сообщение от бота
-Второе сообщение
-Третье сообщение
+Текстовое сообщение 1
+Текстовое сообщение 2
 ```
 
-Каждое новое сообщение добавляется в конец файла на новой строке.
+Три секции, разделённые `---`:
+1. **YAML frontmatter** — метаданные Obsidian + поле `Оценка:`
+2. **Задачи** — `- [ ]` невыполненные, `- [x]` выполненные
+3. **Контент** — тексты сообщений, добавляются в конец
 
-## Технологии
+Шаблон: `$NOTES_DIR/Templates/Daily.md`
 
-- **Python 3.11** - язык программирования
-- **Poetry** - управление зависимостями
-- **python-telegram-bot** - библиотека для работы с Telegram Bot API
-- **python-dotenv** - загрузка переменных окружения
-- **Docker & Docker Compose** - контейнеризация
+## Команды разработки
 
-## Конфигурация
-
-### Переменные окружения
-
-**Обязательные переменные:**
-
-- `BOT_TOKEN` - токен Telegram бота
-- `ROOT_ID` - ID авторизованного пользователя
-- `DB_NAME` - имя базы данных PostgreSQL
-- `DB_USER` - имя пользователя базы данных
-- `DB_PASSWORD` - пароль базы данных (используйте сильный пароль!)
-- `NOTES_DIR` - путь к папке с заметками на хост-машине
-
-**Опциональные переменные:**
-
-- `TEMPLATE_SUBDIR` - относительный путь к папке с шаблонами (по умолчанию: `Templates`)
-
-**⚠️ Важно для безопасности:**
-- Бот проверяет существование всех указанных путей при запуске и выдаст ошибку, если какой-то путь не найден или переменная не указана
-- **НИКОГДА** не коммитьте файл `.env` с реальными credentials в git
-- Используйте сильные пароли для базы данных в production окружении
-
-### Как работает Docker
-
-При запуске через Docker Compose:
-1. Ваша папка с заметками (указанная в `NOTES_DIR`) монтируется в контейнер по пути `/notes`
-2. Внутри контейнера переменная `NOTES_DIR` автоматически переопределяется на `/notes`
-3. Пути к шаблонам вычисляются относительно `/notes` внутри контейнера
-4. База данных PostgreSQL запускается в отдельном контейнере с credentials из `.env`
-
-Это позволяет использовать одинаковую конфигурацию как для локального запуска, так и для Docker.
-
-### Структура папки с заметками
-
-Бот ожидает следующую структуру (по умолчанию):
-
-```
-notes/                             # <- NOTES_DIR
-├── Daily/                         # Папка с дневными заметками (создается автоматически)
-│   ├── 09-Nov-2025.md
-│   ├── 10-Nov-2025.md
-│   └── ...
-└── Templates/                     # <- TEMPLATE_SUBDIR (по умолчанию)
-    └── Daily.md                  # Шаблон дневной заметки
+```bash
+make test        # pytest + coverage
+make proto       # регенерация gRPC стабов
+make format      # ruff format + check
+make up          # docker-compose build + up
+make down        # docker-compose down
+make logs        # docker-compose logs -f
+make restart     # полный перезапуск с пересборкой
 ```
 
-Если у вас другая структура, переопределите `TEMPLATE_SUBDIR` в `.env`.
+## Переменные окружения
+
+| Переменная | Обязательно | По умолчанию | Описание |
+|-----------|-------------|-------------|---------|
+| `BOT_TOKEN` | ✅ | — | Токен Telegram-бота |
+| `ROOT_ID` | ✅ | — | ID авторизованного пользователя |
+| `NOTES_DIR` | ✅ | — | Путь к папке с заметками |
+| `DB_NAME` | ✅ | — | Имя базы данных |
+| `DB_USER` | ✅ | — | Пользователь БД |
+| `DB_PASSWORD` | ✅ | — | Пароль БД |
+| `TEMPLATE_SUBDIR` | — | `Templates` | Путь к шаблонам (от NOTES_DIR) |
+| `TIMEZONE_OFFSET_HOURS` | — | `3` | UTC offset (Москва) |
+| `DAY_START_HOUR` | — | `7` | Час начала нового дня |
+| `WHISPER_MODEL` | — | `base` | Размер модели Whisper |
 
 ## Безопасность
 
-### Общие рекомендации
-- Бот обрабатывает сообщения только от пользователя с ID, указанным в `ROOT_ID`
-- Файл `.env` с токенами и паролями **НИКОГДА** не должен попадать в git (он уже в `.gitignore`)
-- При использовании Docker volume монтируется с правами на чтение и запись (`:rw`)
-- Убедитесь, что у контейнера есть права на запись в примонтированную директорию
+- Бот принимает сообщения **только** от пользователя с `ROOT_ID`
+- PostgreSQL доступна **только внутри Docker-сети** (порты не проброшены)
+- Файл `.env` в `.gitignore`
+- **ОБЯЗАТЕЛЬНО** смените `DB_PASSWORD` в production
 
-### База данных
-- **⚠️ КРИТИЧЕСКИ ВАЖНО:** В файле [`docker-compose.yml`](docker-compose.yml:1) используются переменные окружения для credentials БД
-- База данных PostgreSQL доступна **только внутри Docker-сети** (порты не проброшены наружу)
-- **ОБЯЗАТЕЛЬНО** измените `DB_PASSWORD` в файле `.env` перед запуском в production
-- Используйте сильный пароль (минимум 16 символов, включая буквы, цифры и специальные символы)
-- Не используйте пароль `notif` из примера в реальном окружении
+## Технологии
 
-### Что защищено
-✅ Файл `.env` с реальными credentials не попадает в git
-✅ База данных изолирована внутри Docker-сети
-✅ Порты БД не открыты наружу
-
-### Что нужно сделать
-⚠️ Изменить `DB_PASSWORD` в `.env` на сильный пароль
-⚠️ Никогда не коммитить файл `.env` в репозиторий
-⚠️ Не использовать слабые пароли типа `notif`, `password`, `123456` и т.д.
+- **Python 3.11**, Poetry
+- **python-telegram-bot 21.0** (polling)
+- **gRPC** (grpcio 1.62) — межсервисное взаимодействие
+- **PostgreSQL 16** + psycopg2 — напоминания
+- **faster-whisper 1.0** — транскрибация речи
+- **Docker & Docker Compose** — контейнеризация
+- **pytest** — тестирование
+- **ruff** — форматирование
