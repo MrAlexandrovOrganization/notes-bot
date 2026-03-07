@@ -18,8 +18,13 @@ async def handle_voice_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     if not update or not update.effective_message:
+        logger.warning("Something wrong with update")
         return
-    user_id = update.effective_user.id if update.effective_user else None
+    if not update.effective_user or not update.effective_user.id:
+        logger.warning("Something wrong with update.effective_user")
+        await update.effective_message.reply_text("Something went wrong\\.")
+        return
+    user_id = update.effective_user.id
     if ROOT_ID and user_id != ROOT_ID:
         return
 

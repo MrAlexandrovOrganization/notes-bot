@@ -12,6 +12,7 @@ from ..states import UserState, state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
 from ..keyboards.tasks import get_tasks_keyboard, get_task_add_keyboard
 from ..keyboards.calendar import get_calendar_keyboard
+from ..middleware import reply_message
 from ..utils import escape_markdown_v2
 from .reminders import (
     handle_menu_notifications,
@@ -55,7 +56,11 @@ async def _show_tasks(query: CallbackQuery, user_id: int) -> None:
         if tasks
         else f"✅ Задачи на {escape_markdown_v2(ctx.active_date)}:\n\nЗадач пока нет\\."
     )
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="MarkdownV2")
+    await reply_message(
+        update_or_query=query,
+        text=text,
+        keyboard=keyboard,
+    )
 
 
 async def _show_calendar(query: CallbackQuery, user_id: int) -> None:
@@ -66,8 +71,10 @@ async def _show_calendar(query: CallbackQuery, user_id: int) -> None:
     )
     text = f"📅 Календарь\n\nАктивная дата: {escape_markdown_v2(ctx.active_date)}"
     try:
-        await query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        await reply_message(
+            update_or_query=query,
+            text=text,
+            keyboard=keyboard,
         )
     except Exception as e:
         if "Message is not modified" not in str(e):
@@ -77,8 +84,10 @@ async def _show_calendar(query: CallbackQuery, user_id: int) -> None:
 async def _show_main_menu(query: CallbackQuery, user_id: int) -> None:
     active_date = state_manager.get_context(user_id).active_date
     text = f"📅 Активная дата: {escape_markdown_v2(active_date)}\n\nВыберите действие:"
-    await query.edit_message_text(
-        text, reply_markup=get_main_menu_keyboard(active_date), parse_mode="MarkdownV2"
+    await reply_message(
+        update_or_query=query,
+        text=text,
+        keyboard=get_main_menu_keyboard(active_date),
     )
 
 
@@ -98,7 +107,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = update.effective_user.id
 
     if ROOT_ID and user_id != ROOT_ID:
-        await query.edit_message_text("⛔ Unauthorized access.")
+        await reply_message(
+            update_or_query=query,
+            text="⛔ Unauthorized access.",
+        )
         logger.warning(f"Unauthorized callback from user {user_id}")
         return
 
@@ -233,14 +245,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.warning(f"Unknown callback action: {action}")
 
     except NotificationsUnavailableError:
-        await query.edit_message_text(
-            "⏳ Сервис уведомлений ещё запускается\\. Попробуйте через несколько секунд\\.",
-            parse_mode="MarkdownV2",
+        await reply_message(
+            update_or_query=query,
+            text="⏳ Сервис уведомлений ещё запускается\\. Попробуйте через несколько секунд\\.",
         )
     except Exception as e:
         logger.error(f"Error handling callback {callback_data}: {e}")
-        await query.edit_message_text(
-            "❌ Произошла ошибка при обработке действия\\.", parse_mode="MarkdownV2"
+        await reply_message(
+            update_or_query=query,
+            text="❌ Произошла ошибка при обработке действия\\.",
         )
 
 
@@ -249,8 +262,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def handle_menu_rating(query: CallbackQuery, user_id: int) -> None:
     state_manager.update_context(user_id, state=UserState.WAITING_RATING)
-    await query.edit_message_text(
-        "📊 Введите оценку дня \\(0\\-10\\):", parse_mode="MarkdownV2"
+    await reply_message(
+        update_or_query=query,
+        text="📊 Введите оценку дня \\(0\\-10\\):",
     )
     logger.info(f"User {user_id} requested rating input")
 
@@ -268,8 +282,9 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
     core_client.ensure_note(active_date)
     content = core_client.get_note(active_date)
     if not content:
-        await query.edit_message_text(
-            "❌ Не удалось прочитать заметку\\.", parse_mode="MarkdownV2"
+        await reply_message(
+            update_or_query=query,
+            text="❌ Не удалось прочитать заметку\\.",
         )
         return
 
@@ -287,10 +302,10 @@ async def handle_menu_note(query: CallbackQuery, user_id: int) -> None:
         f"```\n{escape_markdown_v2(preview)}\n```"
     )
     try:
-        await query.edit_message_text(
-            text,
-            reply_markup=get_main_menu_keyboard(active_date),
-            parse_mode="MarkdownV2",
+        await reply_message(
+            update_or_query=query,
+            text=text,
+            keyboard=get_main_menu_keyboard(active_date),
         )
     except Exception as e:
         logger.info(f"Error editing message, probably note did not changed: {e}")
@@ -319,10 +334,10 @@ async def handle_task_toggle(
 
 async def handle_task_add(query: CallbackQuery, user_id: int) -> None:
     state_manager.update_context(user_id, state=UserState.WAITING_NEW_TASK)
-    await query.edit_message_text(
-        "➕ Введите текст новой задачи:",
-        reply_markup=get_task_add_keyboard(),
-        parse_mode="MarkdownV2",
+    await reply_message(
+        update_or_query=query,
+        text="➕ Введите текст новой задачи:",
+        keyboard=get_task_add_keyboard(),
     )
     logger.info(f"User {user_id} started adding new task")
 
@@ -373,8 +388,10 @@ async def handle_cal_select(query: CallbackQuery, user_id: int, date: str) -> No
         f"📅 Активная дата: {escape_markdown_v2(date)}\n\n"
         f"Выберите действие:"
     )
-    await query.edit_message_text(
-        text, reply_markup=get_main_menu_keyboard(date), parse_mode="MarkdownV2"
+    await reply_message(
+        update_or_query=query,
+        text=text,
+        keyboard=get_main_menu_keyboard(date),
     )
     logger.info(f"User {user_id} selected date {date}")
 

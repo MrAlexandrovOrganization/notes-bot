@@ -9,6 +9,7 @@ from ..grpc_client import core_client
 from ..states.context import UserState
 from ..states import state_manager
 from ..keyboards.main_menu import get_main_menu_keyboard
+from ..middleware import reply_message
 from ..utils import escape_markdown_v2
 from .reminders import (
     handle_reminder_title_input,
@@ -28,7 +29,10 @@ async def handle_text_message(
     text = update.message.text.strip()
 
     if ROOT_ID and user_id != ROOT_ID:
-        await update.message.reply_text("⛔ Unauthorized access.")
+        await reply_message(
+            update_or_query=update,
+            text="⛔ Unauthorized access.",
+        )
         logger.warning(f"Unauthorized message from user {user_id}")
         return
 
@@ -41,29 +45,30 @@ async def handle_text_message(
             try:
                 rating = int(text)
                 if rating < 0 or rating > 10:
-                    await update.message.reply_text(
-                        "❌ Оценка должна быть от 0 до 10\\. Попробуйте снова\\.",
-                        parse_mode="MarkdownV2",
+                    await reply_message(
+                        update_or_query=update,
+                        text="❌ Оценка должна быть от 0 до 10\\. Попробуйте снова\\.",
                     )
                     return
 
                 if core_client.update_rating(active_date, rating):
                     state_manager.update_context(user_id, state=UserState.IDLE)
-                    await update.message.reply_text(
-                        f"✅ Оценка {rating} сохранена\\!",
-                        reply_markup=get_main_menu_keyboard(active_date),
-                        parse_mode="MarkdownV2",
+                    await reply_message(
+                        update_or_query=update,
+                        text=f"✅ Оценка {rating} сохранена\\!",
+                        keyboard=get_main_menu_keyboard(active_date),
                     )
                     logger.info(f"User {user_id} set rating {rating} for {active_date}")
                 else:
-                    await update.message.reply_text(
-                        "❌ Ошибка при сохранении оценки\\.", parse_mode="MarkdownV2"
+                    await reply_message(
+                        update_or_query=update,
+                        text="❌ Ошибка при сохранении оценки\\.",
                     )
 
             except ValueError:
-                await update.message.reply_text(
-                    "❌ Пожалуйста, введите число от 0 до 10\\.",
-                    parse_mode="MarkdownV2",
+                await reply_message(
+                    update_or_query=update,
+                    text="❌ Пожалуйста, введите число от 0 до 10\\.",
                 )
 
         elif current_state == UserState.REMINDER_CREATE_TITLE:
@@ -80,36 +85,39 @@ async def handle_text_message(
         elif current_state == UserState.WAITING_NEW_TASK:
             if core_client.add_task(active_date, text):
                 state_manager.update_context(user_id, state=UserState.TASKS_VIEW)
-                await update.message.reply_text(
-                    f"✅ Задача добавлена: {escape_markdown_v2(text)}",
-                    parse_mode="MarkdownV2",
+                await reply_message(
+                    update_or_query=update,
+                    text=f"✅ Задача добавлена: {escape_markdown_v2(text)}",
                 )
                 logger.info(f"User {user_id} added task: {text}")
-                await update.message.reply_text(
-                    'Используйте кнопку "Задачи" для просмотра\\.',
-                    reply_markup=get_main_menu_keyboard(active_date),
-                    parse_mode="MarkdownV2",
+                await reply_message(
+                    update_or_query=update,
+                    text='Используйте кнопку "Задачи" для просмотра\\.',
+                    keyboard=get_main_menu_keyboard(active_date),
                 )
             else:
-                await update.message.reply_text(
-                    "❌ Ошибка при добавлении задачи\\.", parse_mode="MarkdownV2"
+                await reply_message(
+                    update_or_query=update,
+                    text="❌ Ошибка при добавлении задачи\\.",
                 )
 
         else:
             if core_client.append_to_note(active_date, text):
-                await update.message.reply_text(
-                    f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}",
-                    reply_markup=get_main_menu_keyboard(active_date),
-                    parse_mode="MarkdownV2",
+                await reply_message(
+                    update_or_query=update,
+                    text=f"✅ Текст добавлен в заметку {escape_markdown_v2(active_date)}",
+                    keyboard=get_main_menu_keyboard(active_date),
                 )
                 logger.info(f"User {user_id} added text to {active_date}")
             else:
-                await update.message.reply_text(
-                    "❌ Ошибка при сохранении текста\\.", parse_mode="MarkdownV2"
+                await reply_message(
+                    update_or_query=update,
+                    text="❌ Ошибка при сохранении текста\\.",
                 )
 
     except Exception as e:
         logger.error(f"Error handling text message from user {user_id}: {e}")
-        await update.message.reply_text(
-            "❌ Произошла ошибка при обработке сообщения\\.", parse_mode="MarkdownV2"
+        await reply_message(
+            update_or_query=update,
+            text="❌ Произошла ошибка при обработке сообщения\\.",
         )

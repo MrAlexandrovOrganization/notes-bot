@@ -17,6 +17,8 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
+from telegram import Update
+
 # ---------------------------------------------------------------------------
 # Set required env vars before frontends.telegram.config is imported.
 # config.py raises ValueError if ROOT_ID is not set.
@@ -55,6 +57,7 @@ def make_callback_query(data: str, user_id: int = ROOT_USER_ID) -> MagicMock:
 def make_text_update(text: str, user_id: int = ROOT_USER_ID) -> MagicMock:
     """Build a mock Update carrying a plain-text message."""
     update = MagicMock()
+    update.__class__ = Update  # type: ignore
     update.effective_user.id = user_id
     update.message.text = text
     update.message.reply_text = AsyncMock()
