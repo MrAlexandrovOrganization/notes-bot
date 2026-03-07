@@ -11,6 +11,7 @@ from telegram.ext import (
     filters,
 )
 from .config import BOT_TOKEN, ROOT_ID
+from .kafka_consumer import start_kafka_consumer, stop_kafka_consumer
 
 # Handlers
 from .handlers import (
@@ -21,6 +22,14 @@ from .handlers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _post_init(app: Application) -> None:
+    await start_kafka_consumer(app)
+
+
+async def _post_stop(app: Application) -> None:
+    await stop_kafka_consumer(app)
 
 
 def main() -> None:
@@ -34,7 +43,13 @@ def main() -> None:
         return
 
     # Create application
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(_post_init)
+        .post_stop(_post_stop)
+        .build()
+    )
 
     # Register handlers
     application.add_handler(CommandHandler("start", cmd_start))

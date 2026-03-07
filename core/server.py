@@ -40,7 +40,9 @@ class NotesServicer(notes_pb2_grpc.NotesServiceServicer):
             return notes_pb2.NoteResponse()
         return notes_pb2.NoteResponse(content=content)
 
-    def GetRating(self, request: notes_pb2.DateRequest, context) -> notes_pb2.RatingResponse:
+    def GetRating(
+        self, request: notes_pb2.DateRequest, context
+    ) -> notes_pb2.RatingResponse:
         content = read_note(f"{request.date}.md")
         if content is None:
             return notes_pb2.RatingResponse(has_rating=False, rating=0)

@@ -4,14 +4,15 @@ import json
 import logging
 import threading
 import time
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import grpc
+from kafka import KafkaProducer
+from kafka.errors import KafkaError, NoBrokersAvailable
 
 from notifications.config import (
-    BOT_TOKEN,
+    KAFKA_BOOTSTRAP_SERVERS,
     SCHEDULER_INTERVAL_SECONDS,
     TIMEZONE_OFFSET_HOURS,
     CORE_GRPC_HOST,
@@ -23,6 +24,7 @@ from proto import notes_pb2, notes_pb2_grpc
 logger = logging.getLogger(__name__)
 
 _core_stub = None
+_producer: Optional[KafkaProducer] = None
 
 
 def _get_core_stub():
@@ -31,6 +33,46 @@ def _get_core_stub():
         channel = grpc.insecure_channel(f"{CORE_GRPC_HOST}:{CORE_GRPC_PORT}")
         _core_stub = notes_pb2_grpc.NotesServiceStub(channel)
     return _core_stub
+
+
+def _get_producer() -> KafkaProducer:
+    global _producer
+    if _producer is None:
+        for attempt in range(10):
+            try:
+                _producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+                )
+                logger.info("Kafka producer connected")
+                break
+            except (KafkaError, NoBrokersAvailable) as e:
+                logger.warning(f"Kafka not ready (attempt {attempt + 1}/10): {e}")
+                time.sleep(5)
+        else:
+            raise RuntimeError("Failed to connect to Kafka after 10 attempts")
+    return _producer
+
+
+def _publish_reminder_event(
+    user_id: int,
+    title: str,
+    reminder_id: int,
+    create_task: bool,
+    today_date: str,
+) -> None:
+    event = {
+        "user_id": user_id,
+        "title": title,
+        "reminder_id": reminder_id,
+        "create_task": create_task,
+        "today_date": today_date if create_task else "",
+    }
+    try:
+        _get_producer().send("reminders_due", event)
+        logger.info(f"Published reminder event for user {user_id}, reminder {reminder_id}")
+    except Exception as e:
+        logger.error(f"Failed to publish reminder event: {e}")
 
 
 def _get_today_date_str() -> str:
@@ -156,32 +198,9 @@ def _compute_next_fire(
     return None
 
 
-def _send_telegram_message(chat_id: int, text: str, keyboard: dict[str, list[list[dict[str, str]]]]) -> None:
-    if not BOT_TOKEN:
-        logger.warning("BOT_TOKEN not set, skipping message send")
-        return
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = json.dumps(
-        {
-            "chat_id": chat_id,
-            "text": text,
-            "reply_markup": keyboard,
-        }
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            logger.info(f"Sent notification to {chat_id}, status={resp.status}")
-    except Exception as e:
-        logger.error(f"Failed to send notification to {chat_id}: {e}")
-
-
-def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str = "") -> dict[str, list[list[dict[str, str]]]]:
+def _build_keyboard(
+    reminder_id: int, create_task: bool = False, today_date: str = ""
+) -> dict:
     done_cb = (
         f"reminder:done:{reminder_id}:1:{today_date}"
         if create_task and today_date
@@ -189,9 +208,7 @@ def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str
     )
     return {
         "inline_keyboard": [
-            [
-                {"text": "✅ Принято", "callback_data": done_cb},
-            ],
+            [{"text": "✅ Принято", "callback_data": done_cb}],
             [
                 {"text": "+1 ч", "callback_data": f"reminder:postpone_hours:1:{reminder_id}"},
                 {"text": "+3 ч", "callback_data": f"reminder:postpone_hours:3:{reminder_id}"},
@@ -200,9 +217,7 @@ def _build_keyboard(reminder_id: int, create_task: bool = False, today_date: str
                 {"text": "+1 д", "callback_data": f"reminder:postpone:1:{reminder_id}"},
                 {"text": "+3 д", "callback_data": f"reminder:postpone:3:{reminder_id}"},
             ],
-            [
-                {"text": "📅 Выбрать дату", "callback_data": f"reminder:custom_date:{reminder_id}"},
-            ],
+            [{"text": "📅 Выбрать дату", "callback_data": f"reminder:custom_date:{reminder_id}"}],
         ]
     }
 
@@ -226,9 +241,8 @@ def run_scheduler() -> None:
                     today_date = _get_today_date_str()
                     _add_task_to_today(title, today_date)
 
-                # Send notification
-                keyboard = _build_keyboard(rid, create_task=create_task, today_date=today_date)
-                _send_telegram_message(user_id, f"🔔 Напоминание: {title}", keyboard)
+                # Publish notification event to Kafka
+                _publish_reminder_event(user_id, title, rid, create_task, today_date)
 
                 # Compute next fire
                 next_fire = _compute_next_fire(schedule_type, params, _utc_now())

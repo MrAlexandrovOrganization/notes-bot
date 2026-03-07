@@ -14,6 +14,8 @@ grpcio = "^1.62"
 protobuf = ">=5.0"
 psycopg2-binary = "^2.9"
 faster-whisper = "^1.0"
+kafka-python = "^2.0"
+aiokafka = "^0.11"
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "^1.62"
@@ -23,6 +25,8 @@ pytest = "^8.0"
 pytest-cov = "^6.0"
 pytest-asyncio = "^0.23"
 mypy-protobuf = "^5.0.0"
+grpc-stubs = "^1.53.0.6"
+types-psycopg2 = "^2.9.21.20260223"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -40,3 +44,7 @@ skip_covered = false
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+ignore_missing_imports = true
+disable_error_code = ["type-arg"]
