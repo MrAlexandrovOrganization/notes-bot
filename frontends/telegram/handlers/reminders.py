@@ -89,12 +89,27 @@ async def _change_state_to_create_time(
     reply_markup: Optional[InlineKeyboardMarkup],
     text: str = "Введите время в формате `ЧЧ:ММ` \\(например `09:30`\\):",
 ):
-    if draft:
+    if draft is not None:
         state_manager.update_context(
             user_id, state=UserState.REMINDER_CREATE_TIME, reminder_draft=draft
         )
     await reply_message(
         update_or_query=update_or_query, text=text, keyboard=reply_markup
+    )
+
+
+async def _change_state_to_task_confirm(
+    user_id: int,
+    draft,
+    update_or_query: Update | CallbackQuery,
+) -> None:
+    state_manager.update_context(
+        user_id, state=UserState.REMINDER_CREATE_TASK_CONFIRM, reminder_draft=draft
+    )
+    await reply_message(
+        update_or_query=update_or_query,
+        text="➕ Создавать задачу в заметке при срабатывании напоминания?",
+        keyboard=get_task_confirm_keyboard(),
     )
 
 
@@ -221,12 +236,11 @@ async def handle_reminder_type_select(
         )
 
     else:
-        # daily — go straight to time
-        await _change_state_to_create_time(
+        # daily — ask about task creation first
+        await _change_state_to_task_confirm(
             user_id=user_id,
             draft=draft,
             update_or_query=query,
-            reply_markup=cancel_kb,
         )
     logger.info(f"User {user_id} selected schedule type: {schedule_type}")
 
@@ -331,11 +345,10 @@ async def handle_reminder_cal_select(
         # once: use full date
         draft["date"] = date_str
 
-    await _change_state_to_create_time(
+    await _change_state_to_task_confirm(
         user_id=user_id,
         draft=draft,
         update_or_query=query,
-        reply_markup=cancel_kb,
     )
     logger.info(f"User {user_id} selected date {date_str} (context={context_name})")
 
@@ -379,11 +392,10 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
                 return
             draft["day_of_month"] = day
 
-        await _change_state_to_create_time(
+        await _change_state_to_task_confirm(
             user_id=user_id,
             draft=draft,
             update_or_query=update,
-            reply_markup=cancel_kb,
         )
 
     elif state == UserState.REMINDER_CREATE_INTERVAL:
@@ -399,11 +411,10 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
             )
             return
         draft["interval_days"] = interval
-        await _change_state_to_create_time(
+        await _change_state_to_task_confirm(
             user_id=user_id,
             draft=draft,
             update_or_query=update,
-            reply_markup=cancel_kb,
         )
 
     elif state == UserState.REMINDER_CREATE_TIME:
@@ -423,16 +434,8 @@ async def handle_reminder_param_input(update: Update, user_id: int, text: str) -
             return
         draft["hour"] = hour
         draft["minute"] = minute
-        state_manager.update_context(
-            user_id,
-            state=UserState.REMINDER_CREATE_TASK_CONFIRM,
-            reminder_draft=draft,
-        )
-        await reply_message(
-            update_or_query=update,
-            text="➕ Создавать задачу в заметке при срабатывании напоминания?",
-            keyboard=get_task_confirm_keyboard(),
-        )
+        state_manager.update_context(user_id, reminder_draft=draft)
+        await _finalize_reminder_creation(update, user_id)
 
 
 async def _finalize_reminder_creation(
@@ -494,8 +497,12 @@ async def handle_reminder_task_confirm(
     ctx = state_manager.get_context(user_id)
     draft = dict(ctx.reminder_draft)
     draft["create_task"] = create_task
-    state_manager.update_context(user_id, reminder_draft=draft)
-    await _finalize_reminder_creation(query, user_id)
+    await _change_state_to_create_time(
+        user_id=user_id,
+        draft=draft,
+        update_or_query=query,
+        reply_markup=get_reminder_cancel_keyboard(),
+    )
 
 
 # ── Notification message actions ───────────────────────────────────────────────

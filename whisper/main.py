@@ -5,6 +5,7 @@ import os
 from concurrent import futures
 
 import grpc
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from proto import whisper_pb2_grpc
 from whisper.server import TranscriptionServicer
@@ -26,9 +27,15 @@ def serve():
             ("grpc.max_send_message_length", _50MB),
         ],
     )
+
     whisper_pb2_grpc.add_TranscriptionServiceServicer_to_server(
         TranscriptionServicer(), server
     )
+
+    health_servicer = health.HealthServicer()
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+
     server.add_insecure_port(f"[::]:{port}")
     server.start()
     logger.info(f"Whisper gRPC server started on port {port}")

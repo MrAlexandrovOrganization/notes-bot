@@ -1,4 +1,4 @@
-"""Health check for the core gRPC service via grpc.health.v1."""
+"""Health check for the notifications gRPC service via grpc.health.v1."""
 
 import os
 import sys
@@ -6,7 +6,7 @@ import sys
 import grpc
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-port = os.getenv("GRPC_PORT", "50051")
+port = os.getenv("GRPC_PORT", "50052")
 
 try:
     channel = grpc.insecure_channel(f"localhost:{port}")

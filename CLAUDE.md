@@ -12,19 +12,22 @@ make up          # docker-compose down + build + up + logs
 make format      # ruff format + check
 ```
 
-## Architecture: 6 Services
+## Architecture: 7 Services
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]         :50051
                ──gRPC──► [Notifications Service] :50052
                ──gRPC──► [Whisper Service]        :50053
+               ──────────[Redis]                  :6379  (user state)
                                  │
                          [PostgreSQL :5432]
 
 [Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
 ```
 
-All services run in Docker (`docker-compose.yml`). Startup order: postgres → core → kafka → notifications + telegram.
+All services run in Docker (`docker-compose.yml`). Startup order: postgres + redis → core → kafka → notifications + telegram.
+
+All three gRPC services expose the standard `grpc.health.v1` health check endpoint (registered via `grpcio-health-checking`). Healthcheck scripts: `core/healthcheck.py`, `notifications/healthcheck.py`, `whisper/healthcheck.py`.
 
 ## Service Map
 
@@ -36,6 +39,7 @@ All services run in Docker (`docker-compose.yml`). Startup order: postgres → c
 | telegram | `main.py` → `frontends/telegram/bot.py` | — | User-facing Telegram bot, Kafka consumer |
 | postgres | docker image | 5432 | Reminders storage |
 | kafka | confluentinc/cp-kafka | 9092 | Reminder event queue |
+| redis | redis:7-alpine | 6379 | User state persistence (TTL 7 days) |
 
 ## Key Files
 

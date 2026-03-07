@@ -11,11 +11,13 @@ python = "^3.11"
 python-telegram-bot = "^21.0"
 python-dotenv = "^1.0.0"
 grpcio = "^1.62"
+grpcio-health-checking = "^1.62"
 protobuf = ">=5.0"
 psycopg2-binary = "^2.9"
 faster-whisper = "^1.0"
 kafka-python = "^2.0"
 aiokafka = "^0.11"
+redis = ">=4.0"
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "^1.62"
@@ -27,6 +29,7 @@ pytest-asyncio = "^0.23"
 mypy-protobuf = "^5.0.0"
 grpc-stubs = "^1.53.0.6"
 types-psycopg2 = "^2.9.21.20260223"
+fakeredis = "^2.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

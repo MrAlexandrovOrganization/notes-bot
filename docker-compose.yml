@@ -1,4 +1,18 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -81,6 +95,12 @@ services:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    healthcheck:
+      test: ["CMD", "python", "-m", "notifications.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,6 +122,12 @@ services:
     environment:
       - GRPC_PORT=50053
       - WHISPER_MODEL=small # base/small/medium/large/turbo
+    healthcheck:
+      test: ["CMD", "python", "-m", "whisper.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -123,8 +149,12 @@ services:
       - WHISPER_GRPC_HOST=whisper
       - WHISPER_GRPC_PORT=50053
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       core:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       kafka:
         condition: service_started
