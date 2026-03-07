@@ -15,7 +15,7 @@
 
 ## Архитектура
 
-5 сервисов в Docker, взаимодействие через gRPC:
+6 сервисов в Docker, взаимодействие через gRPC и Kafka:
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]          :50051
@@ -23,15 +23,18 @@
                ──gRPC──► [Whisper Service]         :50053
                                   │
                           [PostgreSQL]             :5432
+
+[Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
 ```
 
 | Сервис | Назначение |
 |--------|-----------|
 | `core` | Работа с заметками: задачи, оценки, контент |
-| `notifications` | Напоминания: создание, расписание, хранение в БД |
+| `notifications` | Напоминания: создание, расписание, хранение в БД, публикация в Kafka |
 | `whisper` | Голос → текст (faster-whisper) |
-| `telegram` | Telegram-бот, все обработчики, UI |
+| `telegram` | Telegram-бот, все обработчики, UI, consumer Kafka |
 | `postgres` | База данных напоминаний |
+| `kafka` | Очередь событий напоминаний (confluentinc/cp-kafka) |
 
 Подробная документация для разработки — в `CLAUDE.md`.
 
@@ -103,6 +106,7 @@ notes_bot/
 │
 ├── frontends/telegram/           # Telegram-бот
 │   ├── bot.py                    # Инициализация, регистрация хендлеров
+│   ├── kafka_consumer.py         # AIOKafkaConsumer, отправка напоминаний
 │   ├── grpc_client.py            # CoreClient синглтон
 │   ├── notifications_client.py   # NotificationsClient синглтон
 │   ├── whisper_client.py         # WhisperClient синглтон
@@ -206,6 +210,7 @@ make restart     # полный перезапуск с пересборкой
 - **gRPC** (grpcio 1.62) — межсервисное взаимодействие
 - **PostgreSQL 16** + psycopg2 — напоминания
 - **faster-whisper 1.0** — транскрибация речи
+- **Kafka** (confluentinc/cp-kafka) + kafka-python + aiokafka — очередь напоминаний
 - **Docker & Docker Compose** — контейнеризация
 - **pytest** — тестирование
 - **ruff** — форматирование

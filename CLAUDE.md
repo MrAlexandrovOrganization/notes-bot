@@ -12,7 +12,7 @@ make up          # docker-compose down + build + up + logs
 make format      # ruff format + check
 ```
 
-## Architecture: 5 gRPC Microservices
+## Architecture: 6 Services
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]         :50051
@@ -20,19 +20,22 @@ make format      # ruff format + check
                ──gRPC──► [Whisper Service]        :50053
                                  │
                          [PostgreSQL :5432]
+
+[Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
 ```
 
-All services run in Docker (`docker-compose.yml`). Startup order: postgres → core → notifications + whisper → telegram.
+All services run in Docker (`docker-compose.yml`). Startup order: postgres → core → kafka → notifications + telegram.
 
 ## Service Map
 
 | Service | Entry Point | Port | Purpose |
 |---------|------------|------|---------|
 | core | `core/main.py` | 50051 | Notes CRUD, tasks, ratings |
-| notifications | `notifications/main.py` | 50052 | Reminders with DB persistence |
+| notifications | `notifications/main.py` | 50052 | Reminders with DB persistence, publishes to Kafka |
 | whisper | `whisper/main.py` | 50053 | Voice→text via faster-whisper |
-| telegram | `main.py` → `frontends/telegram/bot.py` | — | User-facing Telegram bot |
+| telegram | `main.py` → `frontends/telegram/bot.py` | — | User-facing Telegram bot, Kafka consumer |
 | postgres | docker image | 5432 | Reminders storage |
+| kafka | confluentinc/cp-kafka | 9092 | Reminder event queue |
 
 ## Key Files
 
@@ -48,13 +51,14 @@ All services run in Docker (`docker-compose.yml`). Startup order: postgres → c
 ### Notifications Service (`notifications/`)
 - `notifications/server.py` — NotificationsServicer (4 RPCs)
 - `notifications/db.py` — PostgreSQL schema + CRUD
-- `notifications/scheduler.py` — Background thread, fires due reminders
+- `notifications/scheduler.py` — Background thread, fires due reminders, publishes to Kafka topic `reminders_due`
 
 ### Whisper Service (`whisper/`)
 - `whisper/server.py` — TranscriptionServicer, 1 RPC (`Transcribe`)
 
 ### Telegram Frontend (`frontends/telegram/`)
-- `bot.py` — Initializes Application, registers all handlers
+- `bot.py` — Initializes Application, registers all handlers, wires Kafka consumer lifecycle
+- `kafka_consumer.py` — `AIOKafkaConsumer` for `reminders_due` topic, sends messages via `app.bot.send_message()`
 - `grpc_client.py` — `CoreClient` singleton (`core_client`)
 - `notifications_client.py` — `NotificationsClient` singleton
 - `whisper_client.py` — `WhisperClient` singleton
@@ -174,6 +178,7 @@ WHISPER_GRPC_HOST=whisper
 WHISPER_GRPC_PORT=50053
 WHISPER_MODEL=base            # small/base/medium/large/turbo
 SCHEDULER_INTERVAL_SECONDS=60
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # notifications + telegram
 ```
 
 ## Conventions and Patterns
