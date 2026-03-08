@@ -102,7 +102,8 @@ func ReminderCancel() tgbotapi.InlineKeyboardMarkup {
 // contextName: "once" | "yr" (yearly) | "pp" (postpone)
 func ReminderCalendar(year, month int, contextName string, tzOffsetHours int) tgbotapi.InlineKeyboardMarkup {
 	tz := time.FixedZone("local", tzOffsetHours*3600)
-	today := time.Now().In(tz).Truncate(24 * time.Hour)
+	now := time.Now().In(tz)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz)
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 
