@@ -35,10 +35,10 @@ jobs:
         run: make proto
 
       - name: Lint
-        run: poetry run ruff check core frontends/telegram tests
+        run: make format
 
       - name: Test
-        run: poetry run pytest -v
+        run: make test
 
   deploy:
     name: Deploy to VM
