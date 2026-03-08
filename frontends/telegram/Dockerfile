@@ -1,43 +1,21 @@
-FROM python:3.11-slim AS proto-builder
-
-RUN pip install --no-cache-dir grpcio-tools==1.62.3
-
-WORKDIR /proto-build
-COPY proto/ ./proto/
-
-RUN python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
-        proto/notes.proto && \
-    sed -i 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
-        proto/notifications.proto && \
-    sed -i 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
-        proto/whisper.proto && \
-    sed -i 's/^import whisper_pb2/from proto import whisper_pb2/' proto/whisper_pb2_grpc.py
-
-
-FROM python:3.11-slim
-
-RUN pip install --no-cache-dir poetry==2.2.1
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock* ./
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN poetry config virtualenvs.create false && \
-    poetry install --only main --no-interaction --no-ansi --no-root
-
+COPY proto/ ./proto/
 COPY frontends/ ./frontends/
-COPY --from=proto-builder /proto-build/proto/ ./proto/
-COPY main.py .
+COPY cmd/ ./cmd/
 
-CMD ["python", "main.py"]
+RUN go build -o /telegram ./cmd/telegram/
+
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /telegram /telegram
+
+CMD ["/telegram"]

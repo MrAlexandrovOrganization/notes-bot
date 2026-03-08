@@ -9,28 +9,35 @@ run:
 test:
 	poetry run pytest -v
 
+# All Go unit test packages (no integration)
+GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/...
+
+# All packages to instrument for coverage
+GO_COVERPKGS_UNIT = notes_bot/core,notes_bot/core/features,notes_bot/notifications
+GO_COVERPKGS_ALL  = notes_bot/core,notes_bot/core/features,notes_bot/notifications
+
 test-go:
-	go test ./core/... ./core/features/...
+	go test $(GO_UNIT_PKGS)
 
 test-go-cover:
-	go test -coverprofile=coverage.out ./core/... ./core/features/...
+	go test -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go tool cover -func=coverage.out
 	@rm -f coverage.out
 
 test-go-cover-html:
-	go test -coverprofile=coverage.out ./core/... ./core/features/...
+	go test -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go tool cover -html=coverage.out
 	@rm -f coverage.out
 
 cover-all:
-	go test -coverprofile=unit.out ./core/... ./core/features/...
+	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	go tool cover -func=combined.out
 	@rm -f unit.out integration.out combined.out
 
 cover-all-html:
-	go test -coverprofile=unit.out ./core/... ./core/features/...
+	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	go tool cover -html=combined.out
@@ -39,11 +46,21 @@ cover-all-html:
 test-integration:
 	go test ./integration/... -v
 
+test-notifications:
+	go test ./notifications/... -v
+
 test-all: test test-go test-integration
 
+build-notifications:
+	$(DOCKER_COMPOSE) build notifications
+
+build-telegram:
+	$(DOCKER_COMPOSE) build telegram
+
 format:
-	poetry run ruff check --fix --unsafe-fixes frontends/telegram tests notifications whisper
-	poetry run ruff format frontends/telegram tests notifications whisper
+	poetry run ruff check --fix --unsafe-fixes tests whisper
+	poetry run ruff format tests whisper
+	gofmt -w ./notifications/ ./frontends/telegram/ ./cmd/
 
 clean:
 	find . -type f -name '*.pyc' -delete
@@ -91,4 +108,4 @@ proto:
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
 
-.PHONY: install run test test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-all clean build-core up deploy down logs restart docker-clean proto
+.PHONY: install run test test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-notifications test-all clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto

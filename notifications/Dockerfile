@@ -1,32 +1,32 @@
-FROM python:3.11-slim AS proto-builder
-
-RUN pip install --no-cache-dir grpcio-tools==1.62.3
-
-WORKDIR /proto-build
-COPY proto/ ./proto/
-
-RUN python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=proto \
-        --grpc_python_out=proto \
-        proto/notifications.proto \
-        proto/notes.proto && \
-    sed -i 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && \
-    sed -i 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py
-
-
-FROM python:3.11-slim
-
-RUN pip install --no-cache-dir poetry==2.2.1
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock* ./
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN poetry config virtualenvs.create false && \
-    poetry install --only main --no-interaction --no-ansi --no-root
-
+COPY proto/ ./proto/
 COPY notifications/ ./notifications/
-COPY --from=proto-builder /proto-build/proto/ ./proto/
+COPY cmd/ ./cmd/
 
-CMD ["python", "-m", "notifications.main"]
+RUN go build -o /notifications ./cmd/notifications/
+
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  PROBE_ARCH=amd64 ;; \
+        aarch64) PROBE_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    wget -qO /grpc_health_probe \
+        "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.28/grpc_health_probe-linux-${PROBE_ARCH}" && \
+    chmod +x /grpc_health_probe
+
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /notifications /notifications
+COPY --from=builder /grpc_health_probe /grpc_health_probe
+
+CMD ["/notifications"]
