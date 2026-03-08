@@ -8,33 +8,35 @@
 - **Задачи** — просмотр, отметка выполнения, добавление задач из заметки (`- [ ]` / `- [x]`)
 - **Оценка дня** — запись числа от 0 до 10 в поле `Оценка:` в frontmatter заметки
 - **Календарь** — навигация по месяцам, выбор любой даты, работа с заметкой за любой день
-- **Напоминания** — создание напоминаний (once / daily / weekly / monthly) с хранением в PostgreSQL
-- **Голос** — транскрибация голосовых и видео-сообщений через OpenAI Whisper
+- **Напоминания** — создание напоминаний с расписанием (once / daily / weekly / monthly / yearly / каждые N дней), хранение в PostgreSQL
+- **Голос** — транскрибация голосовых и видео-сообщений через faster-whisper
 
 Интерфейс полностью на inline-кнопках. Авторизован единственный пользователь (`ROOT_ID`).
 
 ## Архитектура
 
-6 сервисов в Docker, взаимодействие через gRPC и Kafka:
+7 сервисов в Docker, взаимодействие через gRPC и Kafka:
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]          :50051
                ──gRPC──► [Notifications Service]  :50052
                ──gRPC──► [Whisper Service]         :50053
+               ──────────[Redis]                   :6379  (состояние пользователей)
                                   │
-                          [PostgreSQL]             :5432
+                          [PostgreSQL]              :5432
 
 [Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
 ```
 
-| Сервис | Назначение |
-|--------|-----------|
-| `core` | Работа с заметками: задачи, оценки, контент |
-| `notifications` | Напоминания: создание, расписание, хранение в БД, публикация в Kafka |
-| `whisper` | Голос → текст (faster-whisper) |
-| `telegram` | Telegram-бот, все обработчики, UI, consumer Kafka |
-| `postgres` | База данных напоминаний |
-| `kafka` | Очередь событий напоминаний (confluentinc/cp-kafka) |
+| Сервис | Язык | Назначение |
+|--------|------|-----------|
+| `core` | Go | Работа с заметками: задачи, оценки, контент |
+| `notifications` | Go | Напоминания: создание, расписание, хранение в БД, публикация в Kafka |
+| `whisper` | Python | Голос → текст (faster-whisper) |
+| `telegram` | Go | Telegram-бот, все обработчики, UI, consumer Kafka |
+| `postgres` | — | База данных напоминаний |
+| `kafka` | — | Очередь событий напоминаний |
+| `redis` | — | Состояние пользователей (TTL 7 дней) |
 
 Подробная документация для разработки — в `CLAUDE.md`.
 
@@ -70,75 +72,70 @@ NOTES_DIR=/path/to/your/obsidian/vault
 docker-compose up -d
 ```
 
-### 4. Альтернативно — локальный запуск
-
-Требуется запущенный PostgreSQL и все три gRPC-сервиса. Для простого запуска используйте Docker.
-
-```bash
-poetry install
-make run   # запускает только telegram-бота
-```
-
 ## Структура проекта
 
 ```
 notes_bot/
-├── core/                         # Core gRPC сервис (заметки)
-│   ├── main.py                   # Точка входа, порт 50051
-│   ├── server.py                 # NotesServicer (10 RPC)
-│   ├── notes.py                  # Чтение/запись markdown-файлов
-│   ├── utils.py                  # get_today_filename() с TZ
-│   ├── config.py                 # NOTES_DIR, TEMPLATE_DIR
+├── cmd/
+│   ├── core/main.go              # Точка входа core-сервиса (gRPC :50051)
+│   ├── notifications/main.go     # Точка входа notifications-сервиса (gRPC :50052)
+│   └── telegram/main.go          # Точка входа Telegram-бота
+│
+├── core/                         # Core gRPC сервис (заметки) — Go
+│   ├── server.go                 # NotesServer (10 RPC)
+│   ├── stores.go                 # DI-интерфейсы: CalendarStore, NoteStore, RatingStore, TaskStore
+│   ├── notes.go                  # Чтение/запись markdown-файлов
+│   ├── utils.go                  # get_today_filename() с TZ
 │   └── features/
-│       ├── rating.py             # Парсинг/обновление Оценка:
-│       ├── tasks.py              # Парсинг/тоггл/добавление задач
-│       └── calendar_ops.py       # Сканирование Daily/
+│       ├── rating.go             # Парсинг/обновление Оценка:
+│       ├── tasks.go              # Парсинг/тоггл/добавление задач
+│       └── calendar_ops.go       # Сканирование Daily/
 │
-├── notifications/                # Notifications gRPC сервис
-│   ├── main.py                   # Точка входа, порт 50052
-│   ├── server.py                 # NotificationsServicer (4 RPC)
-│   ├── db.py                     # PostgreSQL CRUD
-│   └── scheduler.py              # Фоновый поток, триггер напоминаний
+├── notifications/                # Notifications gRPC сервис — Go
+│   ├── server.go                 # NotificationsServer (4 RPC)
+│   ├── db.go                     # PostgreSQL CRUD (pgx/v5)
+│   ├── scheduler.go              # ComputeNextFire() + Scheduler.Run()
+│   ├── config.go                 # LoadConfig()
+│   └── scheduler_test.go         # Unit tests
 │
-├── whisper/                      # Whisper gRPC сервис
+├── whisper/                      # Whisper gRPC сервис — Python
 │   ├── main.py                   # Точка входа, порт 50053
 │   └── server.py                 # TranscriptionServicer (1 RPC)
 │
-├── frontends/telegram/           # Telegram-бот
-│   ├── bot.py                    # Инициализация, регистрация хендлеров
-│   ├── kafka_consumer.py         # AIOKafkaConsumer, отправка напоминаний
-│   ├── grpc_client.py            # CoreClient синглтон
-│   ├── notifications_client.py   # NotificationsClient синглтон
-│   ├── whisper_client.py         # WhisperClient синглтон
-│   ├── middleware.py             # reply_message() абстракция
-│   ├── utils.py                  # escape_markdown_v2()
-│   ├── states/
-│   │   ├── context.py            # UserContext dataclass + UserState enum
-│   │   └── manager.py            # StateManager синглтон (in-memory)
-│   ├── handlers/
-│   │   ├── commands.py           # /start
-│   │   ├── messages.py           # Текст, роутинг по состоянию
-│   │   ├── callbacks.py          # Нажатия кнопок, навигация
-│   │   ├── voice.py              # Голосовые/видео-сообщения
-│   │   └── reminders.py          # Создание напоминаний (multi-step)
-│   └── keyboards/
-│       ├── main_menu.py          # 5 кнопок главного меню
-│       ├── tasks.py              # Список задач с пагинацией
-│       ├── calendar.py           # Месячный календарь
-│       └── reminders.py          # Управление напоминаниями
+├── frontends/telegram/           # Telegram-бот — Go
+│   ├── config/config.go          # Load() — конфигурация бота
+│   ├── clients/
+│   │   ├── core.go               # CoreClient (10 методов)
+│   │   ├── notifications.go      # NotificationsClient (4 метода)
+│   │   └── whisper.go            # WhisperClient (50MB max)
+│   ├── tgstates/
+│   │   ├── context.go            # UserState + UserContext
+│   │   └── manager.go            # StateManager (Redis backend)
+│   ├── tgkeyboards/              # Inline-клавиатуры
+│   ├── tghandlers/               # Обработчики обновлений
+│   │   ├── app.go                # App struct (все зависимости)
+│   │   ├── commands.go           # /start
+│   │   ├── messages.go           # Текст, роутинг по состоянию
+│   │   ├── callbacks.go          # Нажатия кнопок
+│   │   ├── voice.go              # Голосовые/видео-сообщения
+│   │   └── reminders.go          # Создание напоминаний (multi-step)
+│   └── bot/
+│       ├── kafka_consumer.go     # RunKafkaConsumer()
+│       └── utils.go              # EscapeMarkdownV2()
 │
 ├── proto/                        # gRPC определения
 │   ├── notes.proto               # 10 RPC
 │   ├── notifications.proto       # 4 RPC
 │   ├── whisper.proto             # 1 RPC
-│   └── *_pb2.py, *_pb2_grpc.py  # Сгенерированные стабы (make proto)
+│   ├── notes/, notifications/, whisper/  # Сгенерированные Go stubs
+│   └── whisper_pb2*.py           # Сгенерированные Python stubs (только для Whisper)
 │
-├── tests/                        # pytest, 64+ тестов
+├── integration/                  # Integration tests (Go)
 ├── docker-compose.yml
 ├── Makefile
-├── pyproject.toml                # Poetry зависимости
-├── CLAUDE.md                     # Документация для AI-агентов
-└── main.py                       # → frontends/telegram/bot.py
+├── go.mod / go.sum
+├── pyproject.toml                # Poetry (только для Whisper)
+└── CLAUDE.md                     # Документация для AI-агентов
 ```
 
 ## Формат заметок
@@ -172,13 +169,16 @@ tags:
 ## Команды разработки
 
 ```bash
-make test        # pytest + coverage
-make proto       # регенерация gRPC стабов
-make format      # ruff format + check
-make up          # docker-compose build + up
-make down        # docker-compose down
-make logs        # docker-compose logs -f
-make restart     # полный перезапуск с пересборкой
+make test-go          # Go unit тесты (core + notifications)
+make test-go-cover    # Unit тесты + coverage
+make cover-all        # Суммарное покрытие (unit + integration)
+make test-integration # Integration тесты
+make proto            # Регенерация gRPC stubs
+make format           # gofmt + ruff
+make up               # docker-compose build + up
+make down             # docker-compose down
+make logs             # docker-compose logs -f
+make restart          # Полный перезапуск с пересборкой
 ```
 
 ## Переменные окружения
@@ -195,6 +195,8 @@ make restart     # полный перезапуск с пересборкой
 | `TIMEZONE_OFFSET_HOURS` | — | `3` | UTC offset (Москва) |
 | `DAY_START_HOUR` | — | `7` | Час начала нового дня |
 | `WHISPER_MODEL` | — | `base` | Размер модели Whisper |
+| `REDIS_HOST` | — | `redis` | Redis хост |
+| `KAFKA_BOOTSTRAP_SERVERS` | — | `kafka:9092` | Kafka брокер |
 
 ## Безопасность
 
@@ -205,12 +207,11 @@ make restart     # полный перезапуск с пересборкой
 
 ## Технологии
 
-- **Python 3.11**, Poetry
-- **python-telegram-bot 21.0** (polling)
-- **gRPC** (grpcio 1.62) — межсервисное взаимодействие
-- **PostgreSQL 16** + psycopg2 — напоминания
+- **Go 1.24** — core, notifications, telegram
+- **Python 3.11** — whisper (faster-whisper, нет Go-альтернативы)
+- **gRPC** (grpcio / google.golang.org/grpc) — межсервисное взаимодействие
+- **PostgreSQL 16** + pgx/v5 — напоминания
 - **faster-whisper 1.0** — транскрибация речи
-- **Kafka** (confluentinc/cp-kafka) + kafka-python + aiokafka — очередь напоминаний
+- **Kafka** (confluentinc/cp-kafka) + segmentio/kafka-go — очередь напоминаний
+- **Redis 7** + go-redis/v9 — состояние пользователей
 - **Docker & Docker Compose** — контейнеризация
-- **pytest** — тестирование
-- **ruff** — форматирование

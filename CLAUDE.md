@@ -5,11 +5,14 @@ A personal Telegram bot for managing daily Obsidian-style markdown notes, tasks,
 ## Quick Reference
 
 ```bash
-make test        # Run pytest (64+ tests)
-make proto       # Regenerate gRPC stubs from proto/*.proto
-make run         # Run telegram bot locally (poetry)
-make up          # docker-compose down + build + up + logs
-make format      # ruff format + check
+make test-go          # Run Go unit tests (core + notifications)
+make test-go-cover    # Go unit tests + coverage report
+make cover-all        # Combined unit + integration coverage
+make test-integration # Integration tests (requires running services)
+make test-notifications # Notifications package tests
+make proto            # Regenerate gRPC stubs from proto/*.proto
+make format           # gofmt (Go) + ruff (whisper Python)
+make up               # docker-compose down + build + up + logs
 ```
 
 ## Architecture: 7 Services
@@ -27,65 +30,68 @@ make format      # ruff format + check
 
 All services run in Docker (`docker-compose.yml`). Startup order: postgres + redis → core → kafka → notifications + telegram.
 
-All three gRPC services expose the standard `grpc.health.v1` health check endpoint (registered via `grpcio-health-checking`). Healthcheck scripts: `core/healthcheck.py`, `notifications/healthcheck.py`, `whisper/healthcheck.py`.
+Health checks use `grpc.health.v1`. Core, Notifications, and Telegram use `grpc_health_probe` binary. Whisper uses `whisper/healthcheck.py`.
 
 ## Service Map
 
-| Service | Entry Point | Port | Purpose |
-|---------|------------|------|---------|
-| core | `core/main.py` | 50051 | Notes CRUD, tasks, ratings |
-| notifications | `notifications/main.py` | 50052 | Reminders with DB persistence, publishes to Kafka |
-| whisper | `whisper/main.py` | 50053 | Voice→text via faster-whisper |
-| telegram | `main.py` → `frontends/telegram/bot.py` | — | User-facing Telegram bot, Kafka consumer |
-| postgres | docker image | 5432 | Reminders storage |
-| kafka | confluentinc/cp-kafka | 9092 | Reminder event queue |
-| redis | redis:7-alpine | 6379 | User state persistence (TTL 7 days) |
+| Service | Language | Entry Point | Port | Purpose |
+|---------|----------|------------|------|---------|
+| core | Go | `cmd/core/main.go` | 50051 | Notes CRUD, tasks, ratings |
+| notifications | Go | `cmd/notifications/main.go` | 50052 | Reminders with DB persistence, publishes to Kafka |
+| whisper | Python | `whisper/main.py` | 50053 | Voice→text via faster-whisper |
+| telegram | Go | `cmd/telegram/main.go` | — | User-facing Telegram bot, Kafka consumer |
+| postgres | docker image | — | 5432 | Reminders storage |
+| kafka | confluentinc/cp-kafka | — | 9092 | Reminder event queue |
+| redis | redis:7-alpine | — | 6379 | User state persistence (TTL 7 days) |
 
 ## Key Files
 
 ### Core Service (`core/`)
-- `core/server.py` — NotesServicer, implements all 10 gRPC RPCs
-- `core/notes.py` — File I/O: create note from template, append text
-- `core/features/rating.py` — Parse/update `Оценка:` in YAML frontmatter
-- `core/features/tasks.py` — Parse `- [ ]`/`- [x]`, toggle, add
-- `core/features/calendar_ops.py` — Scan `Daily/` for existing dates
-- `core/utils.py` — `get_today_filename()` with timezone-aware date
-- `core/config.py` — `NOTES_DIR`, `TEMPLATE_DIR`, timezone settings
+- `core/server.go` — `NewNotesServer()`, implements all 10 gRPC RPCs
+- `core/stores.go` — 4 DI interfaces: `CalendarStore`, `NoteStore`, `RatingStore`, `TaskStore`
+- `core/notes.go` — File I/O: create note from template, append text
+- `core/features/rating.go` — Parse/update `Оценка:` in YAML frontmatter
+- `core/features/tasks.go` — Parse `- [ ]`/`- [x]`, toggle, add
+- `core/features/calendar_ops.go` — Scan `Daily/` for existing dates
+- `cmd/core/main.go` — gRPC server entry point
 
 ### Notifications Service (`notifications/`)
-- `notifications/server.py` — NotificationsServicer (4 RPCs)
-- `notifications/db.py` — PostgreSQL schema + CRUD
-- `notifications/scheduler.py` — Background thread, fires due reminders, publishes to Kafka topic `reminders_due`
+- `notifications/server.go` — `NotificationsServer`, 4 gRPC RPCs
+- `notifications/db.go` — PostgreSQL CRUD via pgx/v5 (EnsureSchema, CreateReminder, ListReminders, DeleteReminder, GetDueReminders, UpdateNextFire, SetNextFireAt)
+- `notifications/scheduler.go` — `ComputeNextFire()` for 6 schedule types; `Scheduler.Run()` goroutine publishing to Kafka topic `reminders_due`
+- `notifications/config.go` — `LoadConfig()`, `Config` struct, `DSN()` helper
+- `notifications/scheduler_test.go` — unit tests for all schedule types
+- `cmd/notifications/main.go` — entry point
 
-### Whisper Service (`whisper/`)
-- `whisper/server.py` — TranscriptionServicer, 1 RPC (`Transcribe`)
+### Whisper Service (`whisper/`) — Python only
+- `whisper/server.py` — `TranscriptionServicer`, 1 RPC (`Transcribe`); model loaded eagerly at `__init__`
+- `whisper/main.py` — gRPC server, sets SERVING only after model is fully loaded
 
 ### Telegram Frontend (`frontends/telegram/`)
-- `bot.py` — Initializes Application, registers all handlers, wires Kafka consumer lifecycle
-- `kafka_consumer.py` — `AIOKafkaConsumer` for `reminders_due` topic, sends messages via `app.bot.send_message()`
-- `grpc_client.py` — `CoreClient` singleton (`core_client`)
-- `notifications_client.py` — `NotificationsClient` singleton
-- `whisper_client.py` — `WhisperClient` singleton
-- `middleware.py` — `reply_message()` abstraction (Update vs CallbackQuery)
-- `utils.py` — `escape_markdown_v2()`
-- `states/context.py` — `UserContext` dataclass + `UserState` enum
-- `states/manager.py` — `StateManager` singleton (in-memory `Dict[user_id, UserContext]`)
-- `handlers/commands.py` — `/start`
-- `handlers/messages.py` — Text input routing by current state
-- `handlers/callbacks.py` — Button press handler + calendar navigation
-- `handlers/voice.py` — Voice/video note transcription
-- `handlers/reminders.py` — Multi-step reminder creation workflow
-- `keyboards/main_menu.py` — 5 buttons: Rating, Tasks, Note, Calendar, Notifications
-- `keyboards/tasks.py` — Task list with pagination
-- `keyboards/calendar.py` — Month calendar with date selection
-- `keyboards/reminders.py` — Reminder management UI
+- `cmd/telegram/main.go` — entry point, polling loop, goroutine for Kafka consumer
+- `frontends/telegram/config/config.go` — `Load()` returns `*Config`
+- `frontends/telegram/clients/core.go` — `CoreClient` (10 methods)
+- `frontends/telegram/clients/notifications.go` — `NotificationsClient` (4 methods)
+- `frontends/telegram/clients/whisper.go` — `WhisperClient` (50MB max message)
+- `frontends/telegram/tgstates/context.go` — `UserState` constants + `UserContext` struct
+- `frontends/telegram/tgstates/manager.go` — `StateManager` backed by Redis (JSON, TTL 7 days)
+- `frontends/telegram/tgkeyboards/` — `MainMenu`, `Tasks`, `Calendar`, `RemindersList`, `ScheduleType`, `ReminderCalendar` keyboards
+- `frontends/telegram/tghandlers/app.go` — `App` struct with all clients + state manager
+- `frontends/telegram/tghandlers/commands.go` — `/start` with ROOT_ID check
+- `frontends/telegram/tghandlers/messages.go` — text routing by `UserState`
+- `frontends/telegram/tghandlers/callbacks.go` — callback_data routing
+- `frontends/telegram/tghandlers/voice.go` — Voice/VideoNote → Whisper → append to note
+- `frontends/telegram/tghandlers/reminders.go` — multi-step reminder creation wizard
+- `frontends/telegram/bot/kafka_consumer.go` — `RunKafkaConsumer()` goroutine
+- `frontends/telegram/bot/utils.go` — `EscapeMarkdownV2()`
 
 ### Proto / gRPC (`proto/`)
 - `proto/notes.proto` — 10 RPCs for notes
 - `proto/notifications.proto` — 4 RPCs for reminders
 - `proto/whisper.proto` — 1 RPC for transcription
-- `*_pb2.py`, `*_pb2_grpc.py` — generated stubs (run `make proto` to regenerate)
-- **Import patch**: generated files use `from proto import notes_pb2` (not `import notes_pb2`)
+- `proto/notes/`, `proto/notifications/`, `proto/whisper/` — generated Go stubs
+- `proto/whisper_pb2.py`, `proto/whisper_pb2_grpc.py` — generated Python stubs (Whisper service only)
+- `proto/__init__.py` — makes proto a Python package (needed for `from proto import whisper_pb2_grpc`)
 
 ## Note File Format
 
@@ -117,41 +123,48 @@ Template: `$NOTES_DIR/Templates/Daily.md` (uses `{{date:DD-MMM-YYYY}}` placehold
 
 ## User State Machine
 
-```python
-class UserState(Enum):
-    IDLE                          # Default, text messages → append to note
-    WAITING_RATING                # Expecting 0-10 integer input
-    TASKS_VIEW                    # Showing paginated task list
-    WAITING_NEW_TASK              # Expecting new task text
-    CALENDAR_VIEW                 # Showing month calendar
-    REMINDER_LIST                 # Showing reminder list
-    REMINDER_CREATE_TITLE         # Multi-step reminder creation
-    REMINDER_CREATE_TYPE          # (5+ states)
-    REMINDER_CREATE_TIME
-    REMINDER_CREATE_DATE
-    REMINDER_CREATE_CONFIRM
-    REMINDER_POSTPONE_DATE
-    REMINDER_POSTPONE_CAL
+```go
+const (
+    StateIdle                       UserState = "idle"
+    StateWaitingRating              UserState = "waiting_rating"
+    StateTasksView                  UserState = "tasks_view"
+    StateWaitingNewTask             UserState = "waiting_new_task"
+    StateCalendarView               UserState = "calendar_view"
+    StateReminderList               UserState = "reminder_list"
+    StateReminderCreateTitle        UserState = "reminder_create_title"
+    StateReminderCreateScheduleType UserState = "reminder_create_schedule_type"
+    StateReminderCreateTime         UserState = "reminder_create_time"
+    StateReminderCreateDay          UserState = "reminder_create_day"
+    StateReminderCreateInterval     UserState = "reminder_create_interval"
+    StateReminderCreateDate         UserState = "reminder_create_date"
+    StateReminderPostponeDate       UserState = "reminder_postpone_date"
+    StateReminderCreateTaskConfirm  UserState = "reminder_create_task_confirm"
+)
 ```
 
-`UserContext` stores: `user_id`, `state`, `active_date` (DD-MMM-YYYY), `calendar_month/year`, `task_page`, `last_message_id`, `reminder_draft` dict.
+`UserContext` stores: `user_id`, `state`, `active_date` (DD-MMM-YYYY), `calendar_month/year`, `task_page`, `last_message_id`, `reminder_draft` map, `pending_postpone_reminder_id`, `reminder_cal_month/year`, `reminder_list_page`.
 
-State is **in-memory only** — lost on bot restart.
+State is persisted in **Redis** — survives bot restarts (TTL 7 days). Key: `user_state:{user_id}`.
 
 ## Callback Data Format
 
 ```
-"menu:rating"            # Main menu → rating
-"menu:tasks"             # Main menu → tasks
-"task:toggle:0"          # Toggle task index 0
-"task:add"               # Add task
-"task:page:1"            # Tasks pagination
-"cal:select:09-Nov-2025" # Calendar date pick
-"cal:prev" / "cal:next"  # Month navigation
-"nav:menu"               # Back to main menu
-"notif:list"             # Reminder list
-"notif:delete:42"        # Delete reminder id=42
-"notif:postpone:42"      # Postpone reminder
+"menu:rating"              # Main menu → rating
+"menu:tasks"               # Main menu → tasks
+"task:toggle:0"            # Toggle task index 0
+"task:add"                 # Add task
+"task:page:1"              # Tasks pagination
+"cal:select:09-Nov-2025"   # Calendar date pick
+"cal:prev" / "cal:next"    # Month navigation
+"nav:menu"                 # Back to main menu
+"reminder:list"            # Reminder list
+"reminder:delete:42"       # Delete reminder id=42
+"reminder:postpone:42"     # Postpone reminder (days menu)
+"reminder:postpone_hours:1:42"  # Postpone by N hours
+"reminder:done:42:0"       # Mark done (no task)
+"reminder:done:42:1:DD-MMM-YYYY" # Mark done (create task for date)
+"reminder:custom_date:42"  # Pick custom postpone date
+"reminder:cal:select:YYYY-MM-DD:create" # Calendar date for creation
 ```
 
 ## Environment Variables
@@ -169,11 +182,9 @@ DB_PASSWORD=<strong_password>
 ### Optional (defaults shown)
 ```env
 TIMEZONE_OFFSET_HOURS=3     # UTC+3 Moscow
-DAY_START_HOUR=7             # Day "starts" at 7 AM (affects get_today_filename)
+DAY_START_HOUR=7             # Day "starts" at 7 AM
 TEMPLATE_SUBDIR=Templates    # Relative to NOTES_DIR
-GRPC_PORT=50051              # core
-# GRPC_PORT=50052            # notifications
-# GRPC_PORT=50053            # whisper
+GRPC_PORT=50051              # core / notifications / whisper (per service)
 CORE_GRPC_HOST=core
 CORE_GRPC_PORT=50051
 NOTIFICATIONS_GRPC_HOST=notifications
@@ -182,82 +193,56 @@ WHISPER_GRPC_HOST=whisper
 WHISPER_GRPC_PORT=50053
 WHISPER_MODEL=base            # small/base/medium/large/turbo
 SCHEDULER_INTERVAL_SECONDS=60
-KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # notifications + telegram
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+REDIS_HOST=redis
+REDIS_PORT=6379
 ```
 
 ## Conventions and Patterns
 
-### Adding a new gRPC method
-1. Add to `proto/notes.proto` (or relevant proto file)
+### Adding a new gRPC method (Go)
+1. Add to the relevant `proto/*.proto` file
 2. Run `make proto`
-3. Implement in `core/server.py` (NotesServicer)
-4. Add method to `frontends/telegram/grpc_client.py` (CoreClient)
-5. Call from a handler or keyboard
+3. Implement in the service's `server.go`
+4. Add method to the corresponding client in `frontends/telegram/clients/`
+5. Call from a handler
 
 ### Adding a new Telegram feature
-1. Add new `UserState` values if multi-step in `states/context.py`
+1. Add new `UserState` constants if multi-step in `tgstates/context.go`
 2. Add new fields to `UserContext` if needed
-3. Create/update keyboard in `keyboards/`
-4. Add handler in appropriate `handlers/` file
-5. Register handler in `bot.py`
-6. Route new state in `handlers/messages.py` or `handlers/callbacks.py`
+3. Create/update keyboard in `tgkeyboards/`
+4. Add handler function in appropriate `tghandlers/` file
+5. Register routing in `tghandlers/messages.go` or `tghandlers/callbacks.go`
+6. Wire up in `cmd/telegram/main.go` if needed
 
-### Adding a new service (microservice)
-1. Create `newservice/` directory with `main.py`, `server.py`, `config.py`, `Dockerfile`
-2. Define proto in `proto/newservice.proto`
-3. Run `make proto`
-4. Add service to `docker-compose.yml`
-5. Create `frontends/telegram/newservice_client.py` singleton
-6. Import and use in handlers
-
-### gRPC client pattern
-```python
-# Singleton at module level
-client = SomeClient(
-    host=os.environ.get("SERVICE_GRPC_HOST", "localhost"),
-    port=int(os.environ.get("SERVICE_GRPC_PORT", "50051"))
-)
-
-# Error handling decorator
-class SomeUnavailableError(Exception): ...
-
-def _handle_unavailable(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.UNAVAILABLE:
-                raise SomeUnavailableError() from e
-            raise
-    return wrapper
-```
-
-### Sending messages
-Always use `reply_message()` from `middleware.py` — it handles both `Update` and `CallbackQuery` contexts uniformly. For editing: use `context.bot.edit_message_text()` with `last_message_id` from `UserContext`.
+### Go package naming
+Telegram bot sub-packages use prefixed names to avoid conflicts:
+- `tgstates` — user state types and Redis manager
+- `tgkeyboards` — inline keyboard builders
+- `tghandlers` — update/callback handlers + `App` struct
 
 ### Markdown
-All Telegram messages use **MarkdownV2**. Always wrap user-provided text in `escape_markdown_v2()` from `utils.py`.
+All Telegram messages use **MarkdownV2**. Always wrap user-provided text in `EscapeMarkdownV2()` from `frontends/telegram/bot/utils.go`.
 
 ### Timezone
-Day boundary is at `DAY_START_HOUR` (7 AM), not midnight. `get_today_filename()` in `core/utils.py` applies this logic. Consistency is important across all services.
+Day boundary is at `DAY_START_HOUR` (7 AM), not midnight. Applied in `core/utils.go` and `tgstates/manager.go`. Consistency is important across all services.
 
 ## Testing
 
 ```bash
-make test                # run all tests with coverage
-poetry run pytest tests/test_notes.py   # run specific file
+make test-go               # Go unit tests: core + notifications
+make test-notifications    # Notifications package tests (verbose)
+make test-integration      # Integration tests (needs running services)
+make cover-all             # Combined unit + integration coverage
+make test-go-cover         # Unit tests with coverage report
 ```
 
-Tests are in `tests/`. Structure mirrors source:
-- `tests/test_notes.py`, `tests/test_server.py` — core service (direct, no gRPC)
-- `tests/features/` — rating, tasks, calendar_ops
-- `tests/telegram/` — state manager, keyboards, handlers
-- `tests/test_notifications_*.py` — notifications service
+Go tests:
+- `core/` + `core/features/` — unit tests, no gRPC
+- `notifications/scheduler_test.go` — ComputeNextFire for all 6 schedule types
+- `integration/core_test.go` — 22 integration tests
 
-Fixtures in `conftest.py` create temp directories with sample markdown files.
-
-Tests use **direct imports** of service modules — no gRPC calls in tests.
+Python tests: none (whisper has no automated tests).
 
 ## Notes Volume Structure (expected)
 
