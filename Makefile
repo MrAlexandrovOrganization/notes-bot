@@ -9,9 +9,41 @@ run:
 test:
 	poetry run pytest -v
 
+test-go:
+	go test ./core/... ./core/features/...
+
+test-go-cover:
+	go test -coverprofile=coverage.out ./core/... ./core/features/...
+	go tool cover -func=coverage.out
+	@rm -f coverage.out
+
+test-go-cover-html:
+	go test -coverprofile=coverage.out ./core/... ./core/features/...
+	go tool cover -html=coverage.out
+	@rm -f coverage.out
+
+cover-all:
+	go test -coverprofile=unit.out ./core/... ./core/features/...
+	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
+	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
+	go tool cover -func=combined.out
+	@rm -f unit.out integration.out combined.out
+
+cover-all-html:
+	go test -coverprofile=unit.out ./core/... ./core/features/...
+	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
+	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
+	go tool cover -html=combined.out
+	@rm -f unit.out integration.out combined.out
+
+test-integration:
+	go test ./integration/... -v
+
+test-all: test test-go test-integration
+
 format:
-	poetry run ruff check --fix --unsafe-fixes core frontends/telegram tests
-	poetry run ruff format core frontends/telegram tests
+	poetry run ruff check --fix --unsafe-fixes frontends/telegram tests notifications whisper
+	poetry run ruff format frontends/telegram tests notifications whisper
 
 clean:
 	find . -type f -name '*.pyc' -delete
@@ -40,6 +72,9 @@ restart:
 	$(DOCKER_COMPOSE) up -d
 	$(DOCKER_COMPOSE) logs -f
 
+build-core:
+	$(DOCKER_COMPOSE) build core
+
 docker-clean:
 	$(DOCKER_COMPOSE) down --rmi all --volumes --remove-orphans
 	docker system prune -f
@@ -52,4 +87,8 @@ proto:
 	sed -i.bak 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && rm -f proto/notifications_pb2_grpc.py.bak
 	sed -i.bak 's/^import whisper_pb2/from proto import whisper_pb2/' proto/whisper_pb2_grpc.py && rm -f proto/whisper_pb2_grpc.py.bak
 
-.PHONY: install run test clean up deploy down restart docker-clean proto
+	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notes.proto
+	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
+	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
+
+.PHONY: install run test test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-all clean build-core up deploy down logs restart docker-clean proto

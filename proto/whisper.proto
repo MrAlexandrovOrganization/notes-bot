@@ -1,12 +1,15 @@
 syntax = "proto3";
+
 package whisper;
+
+option go_package = "notes_bot/proto/whisper";
 
 service TranscriptionService {
   rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
 }
 message TranscribeRequest {
   bytes audio_data = 1;
-  string format    = 2;  // "ogg", "mp4"
+  string format    = 2; // "ogg", "mp4"
 }
 message TranscribeResponse {
   string text = 1;

@@ -48,3 +48,7 @@ notes/
 # OS
 .DS_Store
 Thumbs.db
+
+# Go
+*_grpc.pb.go
+*.pb.go

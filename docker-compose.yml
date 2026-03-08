@@ -45,7 +45,7 @@ services:
       - NOTES_DIR=/notes
       - GRPC_PORT=50051
     healthcheck:
-      test: ["CMD", "python", "-m", "core.healthcheck"]
+      test: ["CMD", "/grpc_health_probe", "-addr=:50051"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -104,8 +104,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      core:
-        condition: service_healthy
       kafka:
         condition: service_started
     logging:
@@ -152,8 +150,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
-      core:
-        condition: service_healthy
       redis:
         condition: service_healthy
       kafka:
