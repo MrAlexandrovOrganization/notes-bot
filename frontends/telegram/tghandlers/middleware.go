@@ -2,15 +2,16 @@ package tghandlers
 
 import (
 	"fmt"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // sendText sends a new text message to a chat with optional keyboard, using MarkdownV2.
-func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "MarkdownV2"
-	msg.DisableNotification = true
+	msg.DisableNotification = disableNotification
 	if keyboard != nil {
 		msg.ReplyMarkup = *keyboard
 	}
@@ -26,6 +27,9 @@ func editText(bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, ke
 		edit.ReplyMarkup = keyboard
 	}
 	_, err := bot.Send(edit)
+	if err != nil && strings.Contains(err.Error(), "message is not modified") {
+		return nil
+	}
 	return err
 }
 
@@ -34,7 +38,7 @@ func replyToUpdate(bot *tgbotapi.BotAPI, update *tgbotapi.Update, text string, k
 	if update.Message == nil {
 		return fmt.Errorf("update has no message")
 	}
-	return sendText(bot, update.Message.Chat.ID, text, keyboard)
+	return sendText(bot, update.Message.Chat.ID, text, keyboard, true)
 }
 
 // replyToCallback edits the message of a callback query.

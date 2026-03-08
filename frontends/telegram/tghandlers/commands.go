@@ -18,7 +18,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
-		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access\\.", nil)
+		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access\\.", nil, true)
 		a.Logger.Warn("unauthorized access attempt", zap.Int64("user_id", userID))
 		return
 	}

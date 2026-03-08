@@ -165,8 +165,10 @@ type Scheduler struct {
 
 func NewScheduler(pool *pgxpool.Pool, cfg *Config) *Scheduler {
 	w := &kafka.Writer{
-		Addr:  kafka.TCP(cfg.KafkaBootstrapServers),
-		Topic: "reminders_due",
+		Addr:                   kafka.TCP(cfg.KafkaBootstrapServers),
+		Topic:                  "reminders_due",
+		RequiredAcks:           kafka.RequireOne,
+		AllowAutoTopicCreation: true,
 	}
 	return &Scheduler{
 		pool:     pool,
@@ -236,9 +238,23 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		logger.Error("marshal event", zap.Error(err))
 		return
 	}
+	logger.Debug("publishing reminder event to kafka",
+		zap.Int64("reminder_id", ev.ReminderID),
+		zap.Int64("user_id", ev.UserID),
+		zap.String("title", ev.Title),
+		zap.String("payload", string(data)),
+	)
 	if err := s.producer.WriteMessages(ctx, kafka.Message{Value: data}); err != nil {
-		logger.Error("write kafka message", zap.Error(err))
+		logger.Error("write kafka message failed",
+			zap.Int64("reminder_id", ev.ReminderID),
+			zap.Error(err),
+		)
+		return
 	}
+	logger.Info("reminder event published to kafka",
+		zap.Int64("reminder_id", ev.ReminderID),
+		zap.Int64("user_id", ev.UserID),
+	)
 }
 
 func (s *Scheduler) tick(ctx context.Context) {

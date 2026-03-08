@@ -11,6 +11,30 @@ import (
 
 const remindersPerPage = 5
 
+// ReminderNotification builds the action keyboard attached to a fired reminder message.
+func ReminderNotification(reminderID int64, createTask bool, todayDate string) tgbotapi.InlineKeyboardMarkup {
+	doneCB := fmt.Sprintf("reminder:done:%d:0", reminderID)
+	if createTask && todayDate != "" {
+		doneCB = fmt.Sprintf("reminder:done:%d:1:%s", reminderID, todayDate)
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Принято", doneCB),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("+1 ч", fmt.Sprintf("reminder:postpone_hours:1:%d", reminderID)),
+			tgbotapi.NewInlineKeyboardButtonData("+3 ч", fmt.Sprintf("reminder:postpone_hours:3:%d", reminderID)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("+1 д", fmt.Sprintf("reminder:postpone:1:%d", reminderID)),
+			tgbotapi.NewInlineKeyboardButtonData("+3 д", fmt.Sprintf("reminder:postpone:3:%d", reminderID)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📅 Выбрать дату", fmt.Sprintf("reminder:custom_date:%d", reminderID)),
+		),
+	)
+}
+
 func RemindersList(reminders []*clients.ReminderInfo, page int) tgbotapi.InlineKeyboardMarkup {
 	total := len(reminders)
 	totalPages := (total + remindersPerPage - 1) / remindersPerPage

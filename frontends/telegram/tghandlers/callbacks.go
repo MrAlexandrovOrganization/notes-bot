@@ -2,6 +2,7 @@ package tghandlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -61,7 +62,8 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	}
 
 	if err != nil {
-		if _, ok := err.(*clients.ServiceUnavailableError); ok {
+		var svcErr *clients.ServiceUnavailableError
+		if errors.As(err, &svcErr) {
 			replyToCallback(tgBot, query, "⏳ Сервис уведомлений ещё запускается\\. Попробуйте через несколько секунд\\.", nil)
 			return
 		}

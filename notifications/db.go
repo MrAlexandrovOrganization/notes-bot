@@ -173,8 +173,8 @@ func UpdateNextFire(ctx context.Context, pool *pgxpool.Pool, reminderID int64, n
 
 func SetNextFireAt(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64, nextFireAt time.Time) (bool, error) {
 	tag, err := pool.Exec(ctx, `
-		UPDATE reminders SET next_fire_at = $1
-		WHERE id = $2 AND user_id = $3 AND is_active = TRUE
+		UPDATE reminders SET next_fire_at = $1, is_active = TRUE
+		WHERE id = $2 AND user_id = $3
 	`, nextFireAt, reminderID, userID)
 	if err != nil {
 		return false, fmt.Errorf("set next fire: %w", err)
