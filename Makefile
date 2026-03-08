@@ -1,8 +1,10 @@
 DOCKER_COMPOSE = docker compose
 
+# For mac
+# brew install go@1.25
 install:
 	poetry install
-	sudo snap install --classic go
+	snap install go --channel=1.25/stable --classic
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
@@ -40,10 +42,13 @@ cover-html:
 	go tool cover -html=combined.out
 	@rm -f unit.out integration.out combined.out
 
-test: test-go
+test-integration:
+	go test ./integration/... -v
 
-build-core:
-	$(DOCKER_COMPOSE) build core
+test-notifications:
+	go test ./notifications/... -v
+
+test: test-go test-integration
 
 build-notifications:
 	$(DOCKER_COMPOSE) build notifications
@@ -83,6 +88,9 @@ restart:
 	$(DOCKER_COMPOSE) up -d
 	$(DOCKER_COMPOSE) logs -f
 
+build-core:
+	$(DOCKER_COMPOSE) build core
+
 docker-clean:
 	$(DOCKER_COMPOSE) down --rmi all --volumes --remove-orphans
 	docker system prune -f
@@ -95,4 +103,4 @@ proto:
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format
