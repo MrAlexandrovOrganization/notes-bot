@@ -3,12 +3,6 @@ DOCKER_COMPOSE = docker compose
 install:
 	poetry install
 
-run:
-	poetry run python main.py
-
-test:
-	poetry run pytest -v
-
 # All Go unit test packages (no integration)
 GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/...
 
@@ -49,7 +43,7 @@ test-integration:
 test-notifications:
 	go test ./notifications/... -v
 
-test-all: test test-go test-integration
+test-all: test-go test-integration
 
 build-notifications:
 	$(DOCKER_COMPOSE) build notifications
@@ -58,8 +52,8 @@ build-telegram:
 	$(DOCKER_COMPOSE) build telegram
 
 format:
-	poetry run ruff check --fix --unsafe-fixes tests whisper
-	poetry run ruff format tests whisper
+	poetry run ruff check --fix --unsafe-fixes whisper
+	poetry run ruff format whisper
 	gofmt -w ./notifications/ ./frontends/telegram/ ./cmd/
 
 clean:
@@ -97,15 +91,11 @@ docker-clean:
 	docker system prune -f
 
 proto:
-	poetry run python -m grpc_tools.protoc -I proto --python_out=proto --grpc_python_out=proto --mypy_out=proto --mypy_grpc_out=proto proto/notes.proto
-	poetry run python -m grpc_tools.protoc -I proto --python_out=proto --grpc_python_out=proto --mypy_out=proto --mypy_grpc_out=proto proto/notifications.proto
 	poetry run python -m grpc_tools.protoc -I proto --python_out=proto --grpc_python_out=proto --mypy_out=proto --mypy_grpc_out=proto proto/whisper.proto
-	sed -i.bak 's/^import notes_pb2/from proto import notes_pb2/' proto/notes_pb2_grpc.py && rm -f proto/notes_pb2_grpc.py.bak
-	sed -i.bak 's/^import notifications_pb2/from proto import notifications_pb2/' proto/notifications_pb2_grpc.py && rm -f proto/notifications_pb2_grpc.py.bak
 	sed -i.bak 's/^import whisper_pb2/from proto import whisper_pb2/' proto/whisper_pb2_grpc.py && rm -f proto/whisper_pb2_grpc.py.bak
 
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notes.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
 
-.PHONY: install run test test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-notifications test-all clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto
+.PHONY: install test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-notifications test-all clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format

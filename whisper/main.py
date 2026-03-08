@@ -28,17 +28,20 @@ def serve():
         ],
     )
 
-    whisper_pb2_grpc.add_TranscriptionServiceServicer_to_server(
-        TranscriptionServicer(), server
-    )
-
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
 
     server.add_insecure_port(f"[::]:{port}")
     server.start()
-    logger.info(f"Whisper gRPC server started on port {port}")
+    logger.info(f"Whisper gRPC server started on port {port}, loading model...")
+
+    # Model loading happens here — container is NOT_SERVING until complete.
+    servicer = TranscriptionServicer()
+    whisper_pb2_grpc.add_TranscriptionServiceServicer_to_server(servicer, server)
+
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    logger.info("Whisper service ready.")
+
     server.wait_for_termination()
 
 
