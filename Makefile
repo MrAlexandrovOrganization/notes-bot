@@ -23,14 +23,14 @@ test-go-cover-html:
 	go tool cover -html=coverage.out
 	@rm -f coverage.out
 
-cover-all:
+cover:
 	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	go tool cover -func=combined.out
 	@rm -f unit.out integration.out combined.out
 
-cover-all-html:
+cover-html:
 	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
@@ -43,7 +43,7 @@ test-integration:
 test-notifications:
 	go test ./notifications/... -v
 
-test-all: test-go test-integration
+test: test-go test-integration
 
 build-notifications:
 	$(DOCKER_COMPOSE) build notifications
@@ -98,4 +98,4 @@ proto:
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover-all cover-all-html test-integration test-notifications test-all clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format
