@@ -22,16 +22,16 @@ const (
 
 // UserContext stores all session data for a user.
 type UserContext struct {
-	UserID                    int64          `json:"user_id"`
-	State                     UserState      `json:"state"`
-	ActiveDate                string         `json:"active_date"`
-	CalendarMonth             int            `json:"calendar_month"`
-	CalendarYear              int            `json:"calendar_year"`
-	TaskPage                  int            `json:"task_page"`
-	LastMessageID             int            `json:"last_message_id"`
-	ReminderDraft             map[string]any `json:"reminder_draft"`
-	PendingPostponeReminderID int64          `json:"pending_postpone_reminder_id"`
-	ReminderCalMonth          int            `json:"reminder_cal_month"`
-	ReminderCalYear           int            `json:"reminder_cal_year"`
-	ReminderListPage          int            `json:"reminder_list_page"`
+	UserID                    int64         `json:"user_id"`
+	State                     UserState     `json:"state"`
+	ActiveDate                string        `json:"active_date"`
+	CalendarMonth             int           `json:"calendar_month"`
+	CalendarYear              int           `json:"calendar_year"`
+	TaskPage                  int           `json:"task_page"`
+	LastMessageID             int           `json:"last_message_id"`
+	ReminderDraft             ReminderDraft `json:"reminder_draft"`
+	PendingPostponeReminderID int64         `json:"pending_postpone_reminder_id"`
+	ReminderCalMonth          int           `json:"reminder_cal_month"`
+	ReminderCalYear           int           `json:"reminder_cal_year"`
+	ReminderListPage          int           `json:"reminder_list_page"`
 }

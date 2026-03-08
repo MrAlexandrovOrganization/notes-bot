@@ -78,7 +78,7 @@ func main() {
 	logger.Info("bot authorized", zap.String("username", tgBot.Self.UserName))
 
 	// Start Kafka consumer in background
-	go bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, tgBot)
+	go bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, tgBot, logger)
 
 	// Start polling
 	u := tgbotapi.NewUpdate(0)

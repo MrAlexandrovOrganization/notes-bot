@@ -48,14 +48,14 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 	}
 
 	// Compute initial next fire
-	tzOffset := getParamInt(params, "tz_offset", s.cfg.TimezoneOffsetHours)
+	tzOffset := paramInt(params, "tz_offset", s.cfg.TimezoneOffsetHours)
 	nowUTC := time.Now().UTC()
 
 	var nextFireAt time.Time
 	if req.ScheduleType == "once" {
 		dateStr := getParamStr(params, "date", "")
-		hour := getParamInt(params, "hour", 9)
-		minute := getParamInt(params, "minute", 0)
+		hour := paramInt(params, "hour", 9)
+		minute := paramInt(params, "minute", 0)
 		loc := time.FixedZone("tz", tzOffset*3600)
 		d, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 		if err != nil {
@@ -146,10 +146,6 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 			NextFireAt: nextFireAt.UTC().Format(time.RFC3339),
 		},
 	}, nil
-}
-
-func getParamInt(params map[string]any, key string, def int) int {
-	return paramInt(params, key, def)
 }
 
 func getParamStr(params map[string]any, key string, def string) string {

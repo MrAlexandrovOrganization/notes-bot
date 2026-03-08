@@ -20,7 +20,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	}
 
 	userID := update.Message.From.ID
-	if a.Cfg.RootID != 0 && userID != a.Cfg.RootID {
+	if !a.authorized(userID) {
 		return
 	}
 
@@ -60,7 +60,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	text, err := a.Whisper.Transcribe(ctx, audioData, format)
 	if err != nil {
-		if _, ok := err.(*clients.WhisperUnavailableError); ok {
+		if _, ok := err.(*clients.ServiceUnavailableError); ok {
 			a.editStatus(tgBot, chatID, statusMsg.MessageID,
 				"⏳ Сервис распознавания ещё запускается\\. Попробуйте через несколько секунд\\.")
 			return

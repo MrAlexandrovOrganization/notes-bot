@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"notes_bot/internal/timeutil"
 	pb "notes_bot/proto/notes"
 )
 
@@ -155,6 +157,8 @@ type Scheduler struct {
 	pool     *pgxpool.Pool
 	producer *kafka.Writer
 	cfg      *Config
+
+	mu       sync.Mutex
 	coreConn *grpc.ClientConn
 	coreStub pb.NotesServiceClient
 }
@@ -172,6 +176,8 @@ func NewScheduler(pool *pgxpool.Pool, cfg *Config) *Scheduler {
 }
 
 func (s *Scheduler) getCoreStub() pb.NotesServiceClient {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.coreStub == nil {
 		addr := fmt.Sprintf("%s:%s", s.cfg.CoreGRPCHost, s.cfg.CoreGRPCPort)
 		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -199,8 +205,7 @@ func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 }
 
 func (s *Scheduler) localTodayDate() string {
-	tz := time.FixedZone("local", s.cfg.TimezoneOffsetHours*3600)
-	return time.Now().In(tz).Format("02-Jan-2006")
+	return timeutil.TodayDate(s.cfg.TimezoneOffsetHours, 0)
 }
 
 func (s *Scheduler) addTaskToToday(ctx context.Context, title, todayDate string) {
@@ -280,9 +285,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			logger.Info("scheduler stopped")
+			s.mu.Lock()
 			if s.coreConn != nil {
 				s.coreConn.Close()
 			}
+			s.mu.Unlock()
 			s.producer.Close()
 			return
 		case <-ticker.C:

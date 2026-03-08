@@ -163,17 +163,3 @@ func ReminderCalendar(year, month int, contextName string, tzOffsetHours int) tg
 
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

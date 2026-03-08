@@ -13,12 +13,6 @@ import (
 	pb "notes_bot/proto/notifications"
 )
 
-type NotificationsUnavailableError struct{}
-
-func (e *NotificationsUnavailableError) Error() string {
-	return "notifications service unavailable"
-}
-
 type ReminderInfo struct {
 	ID                 int64
 	UserID             int64
@@ -71,7 +65,7 @@ func (c *NotificationsClient) CreateReminder(ctx context.Context,
 	})
 	if err != nil {
 		if isUnavailable(err) {
-			return nil, &NotificationsUnavailableError{}
+			return nil, errUnavailable("notifications")
 		}
 		return nil, err
 	}
@@ -88,7 +82,7 @@ func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) (
 	resp, err := c.stub.ListReminders(timeoutCtx, &pb.ListRemindersRequest{UserId: userID})
 	if err != nil {
 		if isUnavailable(err) {
-			return nil, &NotificationsUnavailableError{}
+			return nil, errUnavailable("notifications")
 		}
 		return nil, err
 	}
@@ -109,7 +103,7 @@ func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, us
 	})
 	if err != nil {
 		if isUnavailable(err) {
-			return false, &NotificationsUnavailableError{}
+			return false, errUnavailable("notifications")
 		}
 		return false, err
 	}
@@ -131,7 +125,7 @@ func (c *NotificationsClient) PostponeReminder(ctx context.Context,
 	})
 	if err != nil {
 		if isUnavailable(err) {
-			return nil, &NotificationsUnavailableError{}
+			return nil, errUnavailable("notifications")
 		}
 		return nil, err
 	}

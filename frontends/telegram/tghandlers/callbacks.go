@@ -27,7 +27,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
 
 	userID := query.From.ID
-	if a.Cfg.RootID != 0 && userID != a.Cfg.RootID {
+	if !a.authorized(userID) {
 		replyToCallback(tgBot, query, "⛔ Unauthorized access\\.", nil)
 		a.Logger.Warn("unauthorized callback", zap.Int64("user_id", userID))
 		return
@@ -61,7 +61,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	}
 
 	if err != nil {
-		if _, ok := err.(*clients.NotificationsUnavailableError); ok {
+		if _, ok := err.(*clients.ServiceUnavailableError); ok {
 			replyToCallback(tgBot, query, "⏳ Сервис уведомлений ещё запускается\\. Попробуйте через несколько секунд\\.", nil)
 			return
 		}

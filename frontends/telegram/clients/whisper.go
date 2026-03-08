@@ -6,20 +6,12 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 
 	pb "notes_bot/proto/whisper"
 )
 
 const maxMsgSize = 50 * 1024 * 1024 // 50 MB
-
-type WhisperUnavailableError struct{}
-
-func (e *WhisperUnavailableError) Error() string {
-	return "whisper service unavailable"
-}
 
 type WhisperClient struct {
 	conn *grpc.ClientConn
@@ -54,10 +46,8 @@ func (c *WhisperClient) Transcribe(ctx context.Context, audioData []byte, format
 		Format:    format,
 	})
 	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
-				return "", &WhisperUnavailableError{}
-			}
+		if isUnavailable(err) {
+			return "", errUnavailable("whisper")
 		}
 		return "", err
 	}

@@ -6,6 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY proto/ ./proto/
+COPY internal/ ./internal/
 COPY frontends/ ./frontends/
 COPY cmd/ ./cmd/
 

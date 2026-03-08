@@ -11,9 +11,14 @@ import (
 // App holds shared dependencies for all handlers.
 type App struct {
 	Cfg           *config.Config
-	Core          *clients.CoreClient
-	Notifications *clients.NotificationsClient
-	Whisper       *clients.WhisperClient
+	Core          clients.CoreService
+	Notifications clients.NotificationsService
+	Whisper       clients.WhisperService
 	State         *tgstates.StateManager
 	Logger        *zap.Logger
+}
+
+// authorized returns true if the userID is allowed to use the bot.
+func (a *App) authorized(userID int64) bool {
+	return a.Cfg.RootID == 0 || userID == a.Cfg.RootID
 }

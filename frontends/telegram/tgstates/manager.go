@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"notes_bot/internal/timeutil"
 )
 
 const ttl = 7 * 24 * time.Hour
@@ -27,12 +29,7 @@ func (m *StateManager) key(userID int64) string {
 }
 
 func (m *StateManager) todayDate() string {
-	tz := time.FixedZone("local", m.timezoneOffsetHours*3600)
-	local := time.Now().In(tz)
-	if local.Hour() < m.dayStartHour {
-		local = local.AddDate(0, 0, -1)
-	}
-	return local.Format("02-Jan-2006")
+	return timeutil.TodayDate(m.timezoneOffsetHours, m.dayStartHour)
 }
 
 // GetContext retrieves or creates a UserContext for the given user.
@@ -52,7 +49,6 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 		ActiveDate:    m.todayDate(),
 		CalendarMonth: int(now.Month()),
 		CalendarYear:  now.Year(),
-		ReminderDraft: map[string]any{},
 	}
 	if err := m.save(ctx, uc); err != nil {
 		return nil, err

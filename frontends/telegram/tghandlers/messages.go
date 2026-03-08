@@ -20,7 +20,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	}
 
 	userID := update.Message.From.ID
-	if a.Cfg.RootID != 0 && userID != a.Cfg.RootID {
+	if !a.authorized(userID) {
 		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access\\.", nil)
 		a.Logger.Warn("unauthorized message", zap.Int64("user_id", userID))
 		return

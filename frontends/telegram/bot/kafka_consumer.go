@@ -11,6 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// RunKafkaConsumer reads from the reminders_due Kafka topic and sends Telegram notifications.
+// It retries on error with a fixed 5-second delay.
+
 type reminderEvent struct {
 	UserID     int64  `json:"user_id"`
 	Title      string `json:"title"`
@@ -42,8 +45,7 @@ func buildReminderKeyboard(reminderID int64, createTask bool, todayDate string) 
 	)
 }
 
-// RunKafkaConsumer reads from the reminders_due Kafka topic and sends Telegram notifications.
-func RunKafkaConsumer(ctx context.Context, bootstrapServers string, tgBot *tgbotapi.BotAPI) {
+func RunKafkaConsumer(ctx context.Context, bootstrapServers string, tgBot *tgbotapi.BotAPI, logger *zap.Logger) {
 	for {
 		if ctx.Err() != nil {
 			return
@@ -56,7 +58,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, tgBot *tgbot
 		})
 
 		logger.Info("kafka consumer started")
-		if err := consume(ctx, r, tgBot); err != nil {
+		if err := consume(ctx, r, tgBot, logger); err != nil {
 			logger.Warn("kafka consumer error, retrying in 5s", zap.Error(err))
 			r.Close()
 			select {
@@ -71,7 +73,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, tgBot *tgbot
 	}
 }
 
-func consume(ctx context.Context, r *kafka.Reader, tgBot *tgbotapi.BotAPI) error {
+func consume(ctx context.Context, r *kafka.Reader, tgBot *tgbotapi.BotAPI, logger *zap.Logger) error {
 	defer r.Close()
 	for {
 		msg, err := r.FetchMessage(ctx)
