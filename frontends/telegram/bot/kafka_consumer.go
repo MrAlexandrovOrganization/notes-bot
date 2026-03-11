@@ -33,10 +33,9 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 			zap.Int("attempt", attempt),
 		)
 		r := kafka.NewReader(kafka.ReaderConfig{
-			Brokers:     []string{bootstrapServers},
-			Topic:       "reminders_due",
-			Partition:   0,
-			StartOffset: kafka.LastOffset,
+			Brokers: []string{bootstrapServers},
+			Topic:   "reminders_due",
+			GroupID: "telegram-bot",
 		})
 
 		logger.Info("kafka consumer started, waiting for messages")
@@ -45,7 +44,6 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 				zap.Error(err),
 				zap.Int("attempt", attempt),
 			)
-			r.Close()
 			select {
 			case <-ctx.Done():
 				return
@@ -53,7 +51,6 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 			}
 			continue
 		}
-		r.Close()
 		return
 	}
 }
@@ -82,6 +79,9 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				zap.Error(err),
 				zap.String("raw_value", string(msg.Value)),
 			)
+			if err := r.CommitMessages(ctx, msg); err != nil {
+				logger.Warn("failed to commit invalid message", zap.Error(err))
+			}
 			continue
 		}
 
@@ -91,5 +91,9 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			zap.String("title", ev.Title),
 		)
 		handler(ctx, ev)
+
+		if err := r.CommitMessages(ctx, msg); err != nil {
+			logger.Warn("failed to commit message", zap.Error(err))
+		}
 	}
 }
