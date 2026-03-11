@@ -19,8 +19,11 @@ type ReminderEvent struct {
 }
 
 // RunKafkaConsumer reads from the reminders_due Kafka topic and invokes handler for each event.
-// It retries on error with a fixed 5-second delay.
+// It retries on error with a fixed 5-second delay, resuming from the last seen offset.
 func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func(context.Context, ReminderEvent), logger *zap.Logger) {
+	// nextOffset tracks where to resume after a transient error within the same session.
+	// Starts at LastOffset so we don't replay historical messages on bot startup.
+	nextOffset := kafka.LastOffset
 	attempt := 0
 	for {
 		if ctx.Err() != nil {
@@ -30,19 +33,28 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 		logger.Info("kafka consumer: creating reader",
 			zap.String("brokers", bootstrapServers),
 			zap.String("topic", "reminders_due"),
+			zap.Int64("start_offset", nextOffset),
 			zap.Int("attempt", attempt),
 		)
 		r := kafka.NewReader(kafka.ReaderConfig{
-			Brokers: []string{bootstrapServers},
-			Topic:   "reminders_due",
-			GroupID: "telegram-bot",
+			Brokers:     []string{bootstrapServers},
+			Topic:       "reminders_due",
+			Partition:   0,
+			StartOffset: nextOffset,
 		})
 
 		logger.Info("kafka consumer started, waiting for messages")
-		if err := consume(ctx, r, handler, logger); err != nil {
+		lastSeen, err := consume(ctx, r, handler, logger)
+		r.Close()
+		if lastSeen >= 0 {
+			// Resume from the message after the last successfully processed one.
+			nextOffset = lastSeen + 1
+		}
+		if err != nil {
 			logger.Warn("kafka consumer error, retrying in 5s",
 				zap.Error(err),
 				zap.Int("attempt", attempt),
+				zap.Int64("next_offset", nextOffset),
 			)
 			select {
 			case <-ctx.Done():
@@ -55,14 +67,16 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 	}
 }
 
-func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent), logger *zap.Logger) error {
-	defer r.Close()
+// consume reads messages until ctx is cancelled or an error occurs.
+// Returns the offset of the last successfully processed message (-1 if none), and any error.
+func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent), logger *zap.Logger) (int64, error) {
+	lastOffset := int64(-1)
 	for {
 		logger.Debug("kafka consumer: waiting for next message")
 		msg, err := r.FetchMessage(ctx)
 		if err != nil {
 			logger.Error("kafka FetchMessage error", zap.Error(err))
-			return err
+			return lastOffset, err
 		}
 
 		logger.Info("kafka consumer: message received",
@@ -79,9 +93,7 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				zap.Error(err),
 				zap.String("raw_value", string(msg.Value)),
 			)
-			if err := r.CommitMessages(ctx, msg); err != nil {
-				logger.Warn("failed to commit invalid message", zap.Error(err))
-			}
+			lastOffset = msg.Offset
 			continue
 		}
 
@@ -91,9 +103,6 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			zap.String("title", ev.Title),
 		)
 		handler(ctx, ev)
-
-		if err := r.CommitMessages(ctx, msg); err != nil {
-			logger.Warn("failed to commit message", zap.Error(err))
-		}
+		lastOffset = msg.Offset
 	}
 }

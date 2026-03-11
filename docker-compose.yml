@@ -59,6 +59,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:8.2.0
     restart: unless-stopped
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     environment:
       - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
       - KAFKA_NODE_ID=1
@@ -162,3 +164,4 @@ services:
 
 volumes:
   postgres_data:
+  kafka_data:
