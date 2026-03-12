@@ -37,12 +37,15 @@ func scheduleLabel(scheduleType string) string {
 }
 
 func reminderListText(reminders []*clients.ReminderInfo, page, tzOffset int) string {
-	if len(reminders) == 0 {
+	amountReminders := len(reminders)
+	if amountReminders == 0 {
 		return "🔔 Уведомления:\n\nНапоминаний пока нет\\."
 	}
 	perPage := 5
+	page = min((amountReminders-1)/perPage, page)
+
 	start := page * perPage
-	end := min(start+perPage, len(reminders))
+	end := min(start+perPage, amountReminders)
 	lines := make([]string, 0, end-start)
 	for _, r := range reminders[start:end] {
 		lines = append(lines, fmt.Sprintf("• %s \\(%s\\) — %s",
