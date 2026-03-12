@@ -9,7 +9,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/bot"
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
 )
@@ -47,14 +46,14 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
 	tgFile, err := tgBot.GetFile(fileConfig)
 	if err != nil {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла\\.")
+		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 
 	fileURL := tgFile.Link(tgBot.Token)
 	audioData, err := downloadFile(ctx, fileURL)
 	if err != nil {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла\\.")
+		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 
@@ -62,16 +61,16 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	if err != nil {
 		if _, ok := err.(*clients.ServiceUnavailableError); ok {
 			a.editStatus(tgBot, chatID, statusMsg.MessageID,
-				"⏳ Сервис распознавания ещё запускается\\. Попробуйте через несколько секунд\\.")
+				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
 		}
 		a.Logger.Error("transcribe error", zap.Error(err))
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения\\.")
+		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
 		return
 	}
 
 	if text == "" {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь\\.")
+		a.editStatus(tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь.")
 		return
 	}
 
@@ -85,7 +84,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	kb := tgkeyboards.MainMenu(uc.ActiveDate)
 	edit := tgbotapi.NewEditMessageText(chatID, statusMsg.MessageID,
-		fmt.Sprintf("🎙 Добавлено в заметку:\n\n_%s_", bot.EscapeMarkdownV2(text)))
+		fmt.Sprintf("🎙 Добавлено в заметку:\n\n_%s_", text))
 	edit.ParseMode = "MarkdownV2"
 	edit.ReplyMarkup = &kb
 	tgBot.Send(edit)

@@ -2,14 +2,22 @@ package tghandlers
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+var mdV2EscapeRe = regexp.MustCompile(`([_*\[\]()~>#\+\-=|{}.!])`)
+
+func EscapeMarkdownV2(text string) string {
+	return mdV2EscapeRe.ReplaceAllString(text, `\$1`)
+}
+
 // sendText sends a new text message to a chat with optional keyboard, using MarkdownV2.
 func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
-	msg := tgbotapi.NewMessage(chatID, text)
+	escapedText := EscapeMarkdownV2(text)
+	msg := tgbotapi.NewMessage(chatID, escapedText)
 	msg.ParseMode = "MarkdownV2"
 	msg.DisableNotification = disableNotification
 	if keyboard != nil {
@@ -21,7 +29,8 @@ func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotap
 
 // editText edits an existing message with optional keyboard, using MarkdownV2.
 func editText(bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	escapedText := EscapeMarkdownV2(text)
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, escapedText)
 	edit.ParseMode = "MarkdownV2"
 	if keyboard != nil {
 		edit.ReplyMarkup = keyboard

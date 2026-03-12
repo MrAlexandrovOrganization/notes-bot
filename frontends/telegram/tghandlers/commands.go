@@ -7,7 +7,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/bot"
 	"notes_bot/frontends/telegram/tgkeyboards"
 )
 
@@ -18,7 +17,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
-		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access\\.", nil, true)
+		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
 		a.Logger.Warn("unauthorized access attempt", zap.Int64("user_id", userID))
 		return
 	}
@@ -30,8 +29,8 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 	}
 
 	text := fmt.Sprintf(
-		"👋 Добро пожаловать\\!\n\n📅 Активная дата: %s\n\nВыберите действие:",
-		bot.EscapeMarkdownV2(uc.ActiveDate),
+		"👋 Добро пожаловать!\n\n📅 Активная дата: %s\n\nВыберите действие:",
+		uc.ActiveDate,
 	)
 	kb := tgkeyboards.MainMenu(uc.ActiveDate)
 	if err := replyToUpdate(tgBot, update, text, &kb); err != nil {
