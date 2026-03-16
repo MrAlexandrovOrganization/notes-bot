@@ -34,7 +34,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 		"👋 Добро пожаловать!\n\n📅 Активная дата: %s\n\nВыберите действие:",
 		uc.ActiveDate,
 	)
-	kb := a.getMainMenuKeyboard(ctx, userID)
+	kb := a.getMainMenuKeyboard(ctx)
 	if err := replyToUpdate(tgBot, update, text, &kb); err != nil {
 		a.Logger.Error("send start message", zap.Error(err))
 	}

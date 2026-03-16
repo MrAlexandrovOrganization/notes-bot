@@ -85,7 +85,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateIdle
 	})
-	kb := a.getMainMenuKeyboard(ctx, userID)
+	kb := a.getMainMenuKeyboard(ctx)
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Оценка %d сохранена!", rating), &kb, true)
 	a.Logger.Info("user set rating", zap.Int64("user_id", userID), zap.Int("rating", rating))
 }
@@ -103,7 +103,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 		uc.State = tgstates.StateTasksView
 	})
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Задача добавлена: %s", text), nil, true)
-	kb := a.getMainMenuKeyboard(ctx, userID)
+	kb := a.getMainMenuKeyboard(ctx)
 	sendText(tgBot, chatID, "Используйте кнопку \"Задачи\" для просмотра.", &kb, true)
 	a.Logger.Info("user added task", zap.Int64("user_id", userID))
 }
@@ -117,7 +117,7 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 		sendText(tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)
 		return
 	}
-	kb := a.getMainMenuKeyboard(ctx, userID)
+	kb := a.getMainMenuKeyboard(ctx)
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate), &kb, true)
 	a.Logger.Info("user appended text", zap.Int64("user_id", userID))
 }

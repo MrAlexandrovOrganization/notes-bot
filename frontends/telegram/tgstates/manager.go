@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"notes_bot/internal/telemetry"
 	"notes_bot/internal/timeutil"
 )
 
@@ -34,6 +35,8 @@ func (m *StateManager) todayDate() string {
 
 // GetContext retrieves or creates a UserContext for the given user.
 func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserContext, error) {
+	_, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	data, err := m.redis.Get(ctx, m.key(userID)).Bytes()
 	if err == nil {
 		var uc UserContext
@@ -58,6 +61,8 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 
 // UpdateContext applies field updates to the user context and persists it.
 func (m *StateManager) UpdateContext(ctx context.Context, userID int64, updates func(*UserContext)) error {
+	_, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, err := m.GetContext(ctx, userID)
 	if err != nil {
 		return err
@@ -68,6 +73,8 @@ func (m *StateManager) UpdateContext(ctx context.Context, userID int64, updates 
 
 // ResetContext resets the user to IDLE state, clearing task page and last message.
 func (m *StateManager) ResetContext(ctx context.Context, userID int64) error {
+	_, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	return m.UpdateContext(ctx, userID, func(uc *UserContext) {
 		uc.State = StateIdle
 		uc.TaskPage = 0
@@ -77,12 +84,16 @@ func (m *StateManager) ResetContext(ctx context.Context, userID int64) error {
 
 // SetActiveDate sets the active date for a user.
 func (m *StateManager) SetActiveDate(ctx context.Context, userID int64, date string) error {
+	_, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	return m.UpdateContext(ctx, userID, func(uc *UserContext) {
 		uc.ActiveDate = date
 	})
 }
 
 func (m *StateManager) save(ctx context.Context, uc *UserContext) error {
+	_, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	data, err := json.Marshal(uc)
 	if err != nil {
 		return fmt.Errorf("marshal context: %w", err)
