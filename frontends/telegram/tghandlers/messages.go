@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/telemetry"
 )
 
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -20,7 +20,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 		return
 	}
 
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleTextMessage")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	userID := update.Message.From.ID
@@ -68,8 +68,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 }
 
 func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleRatingInput")
-	span.SetAttributes(attribute.String("note.date", activeDate))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 
 	rating, err := strconv.Atoi(text)
@@ -93,8 +92,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 }
 
 func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleAddTaskInput")
-	span.SetAttributes(attribute.String("note.date", activeDate))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 
 	ok, err := a.Core.AddTask(ctx, activeDate, text)
@@ -112,8 +110,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 }
 
 func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleAppendNote")
-	span.SetAttributes(attribute.String("note.date", activeDate))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 
 	ok, err := a.Core.AppendToNote(ctx, activeDate, text)

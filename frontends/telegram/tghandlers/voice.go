@@ -7,12 +7,12 @@ import (
 	"net/http"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
+	"notes_bot/internal/telemetry"
 )
 
 func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -20,7 +20,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		return
 	}
 
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleVoiceMessage")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	userID := update.Message.From.ID
@@ -103,7 +103,7 @@ func (a *App) editStatus(tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text s
 }
 
 func downloadFile(ctx context.Context, url string) ([]byte, error) {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "downloadFile")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

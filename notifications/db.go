@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"notes_bot/internal/telemetry"
 	"time"
 
 	"github.com/exaring/otelpgx"
@@ -75,6 +76,8 @@ func CreateReminder(ctx context.Context, pool *pgxpool.Pool,
 	userID int64, title, scheduleType string,
 	params map[string]any, nextFireAt time.Time, createTask bool,
 ) (*Reminder, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("marshal params: %w", err)
@@ -90,6 +93,8 @@ func CreateReminder(ctx context.Context, pool *pgxpool.Pool,
 }
 
 func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Reminder, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	rows, err := pool.Query(ctx, `
 		SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
 		FROM reminders
@@ -113,6 +118,8 @@ func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Re
 }
 
 func DeleteReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	tag, err := pool.Exec(ctx, `
 		UPDATE reminders SET is_active = FALSE
 		WHERE id = $1 AND user_id = $2 AND is_active = TRUE
@@ -124,6 +131,8 @@ func DeleteReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID 
 }
 
 func GetDueReminders(ctx context.Context, pool *pgxpool.Pool) ([]*Reminder, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -161,6 +170,8 @@ func GetDueReminders(ctx context.Context, pool *pgxpool.Pool) ([]*Reminder, erro
 }
 
 func UpdateNextFire(ctx context.Context, pool *pgxpool.Pool, reminderID int64, nextFireAt *time.Time) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	var err error
 	if nextFireAt == nil {
 		_, err = pool.Exec(ctx,
@@ -178,6 +189,8 @@ func UpdateNextFire(ctx context.Context, pool *pgxpool.Pool, reminderID int64, n
 }
 
 func SetNextFireAt(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64, nextFireAt time.Time) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	tag, err := pool.Exec(ctx, `
 		UPDATE reminders SET next_fire_at = $1, is_active = TRUE
 		WHERE id = $2 AND user_id = $3

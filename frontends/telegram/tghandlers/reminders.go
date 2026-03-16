@@ -16,6 +16,7 @@ import (
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/telemetry"
 	"notes_bot/internal/timeutil"
 )
 
@@ -72,6 +73,8 @@ func calMonthYear(uc *tgstates.UserContext, tzOffset int) (int, int) {
 // ── List & Navigation ──────────────────────────────────────────────────────
 
 func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
@@ -95,6 +98,8 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 }
 
 func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, page int) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.ReminderListPage = page
 	})
@@ -109,6 +114,8 @@ func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 // ── Create wizard ──────────────────────────────────────────────────────────
 
 func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateTitle
@@ -121,6 +128,8 @@ func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 }
 
 func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateScheduleType
 		u.ReminderDraft.Title = text
@@ -132,6 +141,8 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, scheduleType string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	cancelKb := tgkeyboards.ReminderCancel()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 
@@ -181,6 +192,8 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
@@ -189,6 +202,8 @@ func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
@@ -197,6 +212,8 @@ func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgb
 }
 
 func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, createTask bool) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateTime
 		u.ReminderDraft.CreateTask = createTask
@@ -206,6 +223,8 @@ func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.Bot
 }
 
 func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 
@@ -270,6 +289,8 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	draft := uc.ReminderDraft
 
@@ -334,6 +355,8 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 // ── Calendar navigation ────────────────────────────────────────────────────
 
 func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	month, year := calMonthYear(uc, a.Cfg.TimezoneOffsetHours)
 	month, year = stepMonth(month, year, -1)
@@ -346,6 +369,8 @@ func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI,
 }
 
 func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	month, year := calMonthYear(uc, a.Cfg.TimezoneOffsetHours)
 	month, year = stepMonth(month, year, 1)
@@ -369,6 +394,8 @@ func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *tgbotapi.BotAPI
 }
 
 func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, dateStr, contextName string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	cancelKb := tgkeyboards.ReminderCancel()
 
 	if contextName == "pp" {
@@ -414,6 +441,8 @@ func calPrompt(contextName string) string {
 // ── Delete, Done, Postpone, Back ───────────────────────────────────────────
 
 func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.Notifications.DeleteReminder(ctx, reminderID, userID)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
@@ -429,6 +458,8 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 }
 
 func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64, createTaskFlag int, dateStr string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	if createTaskFlag == 1 && dateStr != "" && query.Message != nil {
 		msgText := query.Message.Text
 		title := strings.TrimPrefix(msgText, "🔔 Напоминание: ")
@@ -452,11 +483,15 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 }
 
 func (a *App) HandleReminderPostponeDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, days, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(days), "", 0)
 	a.sendPostponeResult(tgBot, query, result, days, "д", userID, reminderID)
 }
 
 func (a *App) HandleReminderPostponeHours(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, hours, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, "", int32(hours))
 	a.sendPostponeResult(tgBot, query, result, hours, "ч", userID, reminderID)
 }
@@ -479,6 +514,8 @@ func (a *App) sendPostponeResult(tgBot *tgbotapi.BotAPI, query *tgbotapi.Callbac
 }
 
 func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 	month, year := int(now.Month()), now.Year()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -492,6 +529,8 @@ func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	uc, _ := a.State.GetContext(ctx, userID)
 	activeDate := uc.ActiveDate
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -506,6 +545,8 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 }
 
 func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})

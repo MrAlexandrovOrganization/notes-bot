@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"notes_bot/internal/kafkacarrier"
+	"notes_bot/internal/telemetry"
 	"notes_bot/internal/timeutil"
 	pb "notes_bot/proto/notes"
 
@@ -289,6 +290,8 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 }
 
 func (s *Scheduler) tick(ctx context.Context) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	due, err := GetDueReminders(ctx, s.pool)
 	if err != nil {
 		logger.Error("get due reminders", zap.Error(err))
@@ -340,11 +343,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.producer.Close()
 			return
 		case <-ticker.C:
-			tickCtx, tickSpan := otel.Tracer("notifications/scheduler").Start(ctx, "scheduler.tick",
-				trace.WithSpanKind(trace.SpanKindInternal),
-			)
-			s.tick(tickCtx)
-			tickSpan.End()
+			s.tick(ctx)
 		}
 	}
 }

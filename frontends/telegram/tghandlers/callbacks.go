@@ -9,13 +9,13 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/telemetry"
 )
 
 const notePreviewMaxChars = 3800
@@ -26,8 +26,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 		return
 	}
 
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleCallback")
-	span.SetAttributes(attribute.String("callback.data", query.Data))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("callback.data", query.Data))
 	defer span.End()
 
 	tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
@@ -83,8 +82,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	if len(parts) < 2 {
 		return nil
 	}
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleMenuAction")
-	span.SetAttributes(attribute.String("menu.action", parts[1]))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("menu.action", parts[1]))
 	defer span.End()
 
 	switch parts[1] {
@@ -120,8 +118,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	if len(parts) < 2 {
 		return nil
 	}
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleTaskAction")
-	span.SetAttributes(attribute.String("task.action", parts[1]))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("task.action", parts[1]))
 	defer span.End()
 
 	switch parts[1] {
@@ -168,8 +165,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 	if len(parts) < 2 {
 		return nil
 	}
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleCalAction")
-	span.SetAttributes(attribute.String("cal.action", parts[1]))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("cal.action", parts[1]))
 	defer span.End()
 
 	switch parts[1] {
@@ -231,8 +227,7 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	}
 	sub := parts[1]
 
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleReminderAction")
-	span.SetAttributes(attribute.String("reminder.action", sub))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("reminder.action", sub))
 	defer span.End()
 
 	switch sub {
@@ -329,7 +324,7 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 // ── Shared display helpers ─────────────────────────────────────────────────
 
 func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showMainMenu")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	uc, _ := a.State.GetContext(ctx, userID)
@@ -339,7 +334,7 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 }
 
 func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showTasks")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	uc, _ := a.State.GetContext(ctx, userID)
@@ -353,7 +348,7 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 }
 
 func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showCalendar")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	uc, _ := a.State.GetContext(ctx, userID)
@@ -368,7 +363,7 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 }
 
 func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
-	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showNote")
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	uc, _ := a.State.GetContext(ctx, userID)

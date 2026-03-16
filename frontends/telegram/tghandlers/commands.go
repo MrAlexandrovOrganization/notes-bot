@@ -8,9 +8,12 @@ import (
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/tgkeyboards"
+	"notes_bot/internal/telemetry"
 )
 
 func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
 	if update.Message == nil || update.Message.From == nil {
 		return
 	}
