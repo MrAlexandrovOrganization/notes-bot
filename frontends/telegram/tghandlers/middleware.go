@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var mdV2EscapeRe = regexp.MustCompile(`([_*\[\]()~>#\+\-=|{}.!])`)
@@ -34,16 +35,26 @@ func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text stri
 
 // editText edits an existing message with optional keyboard, using MarkdownV2.
 func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
-	ctx, span := telemetry.StartSpan(ctx)
+	ctx, span := telemetry.StartSpan(ctx, attribute.Int64("chat_id", chatID), attribute.Int("message_id", messageID))
 	defer span.End()
 
 	escapedText := EscapeMarkdownV2(text)
+
+	_, buildSpan := telemetry.StartSpan(ctx,
+		attribute.Int("text_len", len(escapedText)),
+		attribute.Bool("has_keyboard", keyboard != nil),
+	)
 	edit := tgbotapi.NewEditMessageText(chatID, messageID, escapedText)
 	edit.ParseMode = "MarkdownV2"
 	if keyboard != nil {
 		edit.ReplyMarkup = keyboard
 	}
+	buildSpan.End()
+
+	_, sendSpan := telemetry.StartSpan(ctx)
 	_, err := bot.Send(edit)
+	sendSpan.End()
+
 	if err != nil && strings.Contains(err.Error(), "message is not modified") {
 		return nil
 	}
