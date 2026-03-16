@@ -44,6 +44,9 @@ type Reminder struct {
 }
 
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
@@ -60,6 +63,9 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 }
 
 func EnsureSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	_, err := pool.Exec(ctx, createTableSQL)
 	if err != nil {
 		return fmt.Errorf("create table: %w", err)
@@ -78,6 +84,7 @@ func CreateReminder(ctx context.Context, pool *pgxpool.Pool,
 ) (*Reminder, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("marshal params: %w", err)
@@ -89,12 +96,13 @@ func CreateReminder(ctx context.Context, pool *pgxpool.Pool,
 		RETURNING id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
 	`, userID, title, scheduleType, paramsJSON, nextFireAt, createTask)
 
-	return scanReminder(row)
+	return scanReminder(ctx, row)
 }
 
 func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Reminder, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	rows, err := pool.Query(ctx, `
 		SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
 		FROM reminders
@@ -108,7 +116,7 @@ func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Re
 
 	var result []*Reminder
 	for rows.Next() {
-		r, err := scanReminder(rows)
+		r, err := scanReminder(ctx, rows)
 		if err != nil {
 			return nil, err
 		}
@@ -120,6 +128,7 @@ func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Re
 func DeleteReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64) (bool, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	tag, err := pool.Exec(ctx, `
 		UPDATE reminders SET is_active = FALSE
 		WHERE id = $1 AND user_id = $2 AND is_active = TRUE
@@ -133,6 +142,7 @@ func DeleteReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID 
 func GetDueReminders(ctx context.Context, pool *pgxpool.Pool) ([]*Reminder, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -151,7 +161,7 @@ func GetDueReminders(ctx context.Context, pool *pgxpool.Pool) ([]*Reminder, erro
 
 	var result []*Reminder
 	for rows.Next() {
-		r, err := scanReminder(rows)
+		r, err := scanReminder(ctx, rows)
 		if err != nil {
 			rows.Close()
 			return nil, err
@@ -172,6 +182,7 @@ func GetDueReminders(ctx context.Context, pool *pgxpool.Pool) ([]*Reminder, erro
 func UpdateNextFire(ctx context.Context, pool *pgxpool.Pool, reminderID int64, nextFireAt *time.Time) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	var err error
 	if nextFireAt == nil {
 		_, err = pool.Exec(ctx,
@@ -191,6 +202,7 @@ func UpdateNextFire(ctx context.Context, pool *pgxpool.Pool, reminderID int64, n
 func SetNextFireAt(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64, nextFireAt time.Time) (bool, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	tag, err := pool.Exec(ctx, `
 		UPDATE reminders SET next_fire_at = $1, is_active = TRUE
 		WHERE id = $2 AND user_id = $3
@@ -205,7 +217,10 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanReminder(row rowScanner) (*Reminder, error) {
+func scanReminder(ctx context.Context, row rowScanner) (*Reminder, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	var r Reminder
 	var paramsJSON []byte
 

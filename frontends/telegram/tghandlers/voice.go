@@ -15,12 +15,12 @@ import (
 )
 
 func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	if update.Message == nil || update.Message.From == nil {
 		return
 	}
-
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
@@ -51,31 +51,31 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
 	tgFile, err := tgBot.GetFile(fileConfig)
 	if err != nil {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
+		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 
 	fileURL := tgFile.Link(tgBot.Token)
 	audioData, err := downloadFile(ctx, fileURL)
 	if err != nil {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
+		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 
 	text, err := a.Whisper.Transcribe(ctx, audioData, format)
 	if err != nil {
 		if _, ok := err.(*clients.ServiceUnavailableError); ok {
-			a.editStatus(tgBot, chatID, statusMsg.MessageID,
+			a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID,
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
 		}
 		a.Logger.Error("transcribe error", zap.Error(err))
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
+		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
 		return
 	}
 
 	if text == "" {
-		a.editStatus(tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь.")
+		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь.")
 		return
 	}
 
@@ -95,7 +95,10 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	tgBot.Send(edit)
 }
 
-func (a *App) editStatus(tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
+func (a *App) editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	edit := tgbotapi.NewEditMessageText(chatID, msgID, text)
 	edit.ParseMode = "MarkdownV2"
 	tgBot.Send(edit)

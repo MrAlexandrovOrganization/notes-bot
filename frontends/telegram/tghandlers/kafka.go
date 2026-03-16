@@ -17,7 +17,7 @@ func (a *App) MakeReminderHandler(tgBot *tgbotapi.BotAPI) func(context.Context, 
 	return func(ctx context.Context, ev bot.ReminderEvent) {
 		kb := tgkeyboards.ReminderNotification(ev.ReminderID, ev.CreateTask, ev.TodayDate)
 		text := fmt.Sprintf("🔔 Напоминание: %s", ev.Title)
-		if err := sendText(tgBot, ev.UserID, text, &kb, false); err != nil {
+		if err := sendText(ctx, tgBot, ev.UserID, text, &kb, false); err != nil {
 			a.Logger.Error("failed to send reminder notification",
 				zap.Int64("user_id", ev.UserID),
 				zap.Int64("reminder_id", ev.ReminderID),

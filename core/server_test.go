@@ -18,93 +18,93 @@ import (
 // Если поле nil — возвращается безопасное значение по умолчанию.
 
 type mockCalendarStore struct {
-	todayDateFn        func() string
-	getExistingDatesFn func() ([]string, error)
+	todayDateFn        func(ctx context.Context) string
+	getExistingDatesFn func(ctx context.Context) ([]string, error)
 }
 
-func (m *mockCalendarStore) TodayDate() string {
+func (m *mockCalendarStore) TodayDate(ctx context.Context) string {
 	if m.todayDateFn != nil {
-		return m.todayDateFn()
+		return m.todayDateFn(ctx)
 	}
 	return "01-Mar-2026"
 }
 
-func (m *mockCalendarStore) GetExistingDates() ([]string, error) {
+func (m *mockCalendarStore) GetExistingDates(ctx context.Context) ([]string, error) {
 	if m.getExistingDatesFn != nil {
-		return m.getExistingDatesFn()
+		return m.getExistingDatesFn(ctx)
 	}
 	return nil, nil
 }
 
 type mockNoteStore struct {
-	readNoteFn    func(date string) (string, error)
-	ensureNoteFn  func(date string) error
-	appendToNoteFn func(date, text string) error
+	readNoteFn     func(ctx context.Context, date string) (string, error)
+	ensureNoteFn   func(ctx context.Context, date string) error
+	appendToNoteFn func(ctx context.Context, date, text string) error
 }
 
-func (m *mockNoteStore) ReadNote(date string) (string, error) {
+func (m *mockNoteStore) ReadNote(ctx context.Context, date string) (string, error) {
 	if m.readNoteFn != nil {
-		return m.readNoteFn(date)
+		return m.readNoteFn(ctx, date)
 	}
 	return "", nil
 }
 
-func (m *mockNoteStore) EnsureNote(date string) error {
+func (m *mockNoteStore) EnsureNote(ctx context.Context, date string) error {
 	if m.ensureNoteFn != nil {
-		return m.ensureNoteFn(date)
+		return m.ensureNoteFn(ctx, date)
 	}
 	return nil
 }
 
-func (m *mockNoteStore) AppendToNote(date, text string) error {
+func (m *mockNoteStore) AppendToNote(ctx context.Context, date, text string) error {
 	if m.appendToNoteFn != nil {
-		return m.appendToNoteFn(date, text)
+		return m.appendToNoteFn(ctx, date, text)
 	}
 	return nil
 }
 
 type mockRatingStore struct {
-	getRatingFn    func(content string) *int
-	updateRatingFn func(date string, rating int) error
+	getRatingFn    func(ctx context.Context, content string) *int
+	updateRatingFn func(ctx context.Context, date string, rating int) error
 }
 
-func (m *mockRatingStore) GetRating(content string) *int {
+func (m *mockRatingStore) GetRating(ctx context.Context, content string) *int {
 	if m.getRatingFn != nil {
-		return m.getRatingFn(content)
+		return m.getRatingFn(ctx, content)
 	}
 	return nil
 }
 
-func (m *mockRatingStore) UpdateRating(date string, rating int) error {
+func (m *mockRatingStore) UpdateRating(ctx context.Context, date string, rating int) error {
 	if m.updateRatingFn != nil {
-		return m.updateRatingFn(date, rating)
+		return m.updateRatingFn(ctx, date, rating)
 	}
 	return nil
 }
 
 type mockTaskStore struct {
-	parseTasksFn func(content string) []features.Task
-	toggleTaskFn func(date string, index int) error
-	addTaskFn    func(date, text string) error
+	parseTasksFn func(ctx context.Context, content string) []features.Task
+	toggleTaskFn func(ctx context.Context, date string, index int) error
+	addTaskFn    func(ctx context.Context, date, text string) error
 }
 
-func (m *mockTaskStore) ParseTasks(content string) []features.Task {
+func (m *mockTaskStore) ParseTasks(ctx context.Context, content string) []features.Task {
 	if m.parseTasksFn != nil {
-		return m.parseTasksFn(content)
+		return m.parseTasksFn(ctx, content)
 	}
 	return nil
 }
 
-func (m *mockTaskStore) ToggleTask(date string, index int) error {
+func (m *mockTaskStore) ToggleTask(ctx context.Context, date string, index int) error {
 	if m.toggleTaskFn != nil {
-		return m.toggleTaskFn(date, index)
+		return m.toggleTaskFn(ctx, date, index)
 	}
 	return nil
 }
 
-func (m *mockTaskStore) AddTask(date, text string) error {
+func (m *mockTaskStore) AddTask(ctx context.Context, date, text string) error {
 	if m.addTaskFn != nil {
-		return m.addTaskFn(date, text)
+		return m.addTaskFn(ctx, date, text)
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func newServer(calendar CalendarStore, notes NoteStore, ratings RatingStore, tas
 
 func TestServer_GetTodayDate_ReturnsDate(t *testing.T) {
 	srv := newServer(&mockCalendarStore{
-		todayDateFn: func() string { return "08-Mar-2026" },
+		todayDateFn: func(ctx context.Context) string { return "08-Mar-2026" },
 	}, nil, nil, nil)
 
 	resp, err := srv.GetTodayDate(context.Background(), &pb.Empty{})
@@ -151,7 +151,7 @@ func TestServer_GetTodayDate_ReturnsDate(t *testing.T) {
 
 func TestServer_GetExistingDates_ReturnsDates(t *testing.T) {
 	srv := newServer(&mockCalendarStore{
-		getExistingDatesFn: func() ([]string, error) {
+		getExistingDatesFn: func(ctx context.Context) ([]string, error) {
 			return []string{"01-Mar-2026", "02-Mar-2026"}, nil
 		},
 	}, nil, nil, nil)
@@ -163,7 +163,7 @@ func TestServer_GetExistingDates_ReturnsDates(t *testing.T) {
 
 func TestServer_GetExistingDates_InternalError(t *testing.T) {
 	srv := newServer(&mockCalendarStore{
-		getExistingDatesFn: func() ([]string, error) {
+		getExistingDatesFn: func(ctx context.Context) ([]string, error) {
 			return nil, errors.New("disk error")
 		},
 	}, nil, nil, nil)
@@ -177,7 +177,7 @@ func TestServer_GetExistingDates_InternalError(t *testing.T) {
 
 func TestServer_EnsureNote_Success(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		ensureNoteFn: func(date string) error { return nil },
+		ensureNoteFn: func(ctx context.Context, date string) error { return nil },
 	}, nil, nil)
 
 	resp, err := srv.EnsureNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -187,7 +187,7 @@ func TestServer_EnsureNote_Success(t *testing.T) {
 
 func TestServer_EnsureNote_InternalError(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		ensureNoteFn: func(date string) error { return errors.New("write error") },
+		ensureNoteFn: func(ctx context.Context, date string) error { return errors.New("write error") },
 	}, nil, nil)
 
 	_, err := srv.EnsureNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -199,7 +199,7 @@ func TestServer_EnsureNote_InternalError(t *testing.T) {
 
 func TestServer_GetNote_ReturnsContent(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "note content", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "note content", nil },
 	}, nil, nil)
 
 	resp, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -209,7 +209,7 @@ func TestServer_GetNote_ReturnsContent(t *testing.T) {
 
 func TestServer_GetNote_NotFound(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
 	_, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -219,7 +219,7 @@ func TestServer_GetNote_NotFound(t *testing.T) {
 
 func TestServer_GetNote_InternalError(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "", errors.New("io error") },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", errors.New("io error") },
 	}, nil, nil)
 
 	_, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -232,9 +232,9 @@ func TestServer_GetNote_InternalError(t *testing.T) {
 func TestServer_GetRating_ReturnsRating(t *testing.T) {
 	rating := 7
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "content", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "content", nil },
 	}, &mockRatingStore{
-		getRatingFn: func(content string) *int { return &rating },
+		getRatingFn: func(ctx context.Context, content string) *int { return &rating },
 	}, nil)
 
 	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -245,9 +245,9 @@ func TestServer_GetRating_ReturnsRating(t *testing.T) {
 
 func TestServer_GetRating_NoRatingField(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "content", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "content", nil },
 	}, &mockRatingStore{
-		getRatingFn: func(content string) *int { return nil },
+		getRatingFn: func(ctx context.Context, content string) *int { return nil },
 	}, nil)
 
 	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
@@ -257,7 +257,7 @@ func TestServer_GetRating_NoRatingField(t *testing.T) {
 
 func TestServer_GetRating_MissingNote(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
 	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
@@ -271,7 +271,7 @@ func TestServer_UpdateRating_Success(t *testing.T) {
 	var receivedDate string
 	var receivedRating int
 	srv := newServer(nil, nil, &mockRatingStore{
-		updateRatingFn: func(date string, rating int) error {
+		updateRatingFn: func(ctx context.Context, date string, rating int) error {
 			receivedDate, receivedRating = date, rating
 			return nil
 		},
@@ -286,7 +286,7 @@ func TestServer_UpdateRating_Success(t *testing.T) {
 
 func TestServer_UpdateRating_Error(t *testing.T) {
 	srv := newServer(nil, nil, &mockRatingStore{
-		updateRatingFn: func(date string, rating int) error { return errors.New("write error") },
+		updateRatingFn: func(ctx context.Context, date string, rating int) error { return errors.New("write error") },
 	}, nil)
 
 	resp, err := srv.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
@@ -298,9 +298,9 @@ func TestServer_UpdateRating_Error(t *testing.T) {
 
 func TestServer_GetTasks_ReturnsMappedTasks(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "content", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "content", nil },
 	}, nil, &mockTaskStore{
-		parseTasksFn: func(content string) []features.Task {
+		parseTasksFn: func(ctx context.Context, content string) []features.Task {
 			return []features.Task{
 				{Text: "Buy milk", Completed: false, Index: 0, LineNumber: 5},
 				{Text: "Walk dog", Completed: true, Index: 1, LineNumber: 6},
@@ -320,7 +320,7 @@ func TestServer_GetTasks_ReturnsMappedTasks(t *testing.T) {
 
 func TestServer_GetTasks_EmptyWhenNoteNotFound(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		readNoteFn: func(date string) (string, error) { return "", nil },
+		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
 	resp, err := srv.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
@@ -333,7 +333,7 @@ func TestServer_GetTasks_EmptyWhenNoteNotFound(t *testing.T) {
 func TestServer_ToggleTask_Success(t *testing.T) {
 	var receivedIndex int
 	srv := newServer(nil, nil, nil, &mockTaskStore{
-		toggleTaskFn: func(date string, index int) error {
+		toggleTaskFn: func(ctx context.Context, date string, index int) error {
 			receivedIndex = index
 			return nil
 		},
@@ -347,7 +347,7 @@ func TestServer_ToggleTask_Success(t *testing.T) {
 
 func TestServer_ToggleTask_Error(t *testing.T) {
 	srv := newServer(nil, nil, nil, &mockTaskStore{
-		toggleTaskFn: func(date string, index int) error { return errors.New("index out of range") },
+		toggleTaskFn: func(ctx context.Context, date string, index int) error { return errors.New("index out of range") },
 	})
 
 	resp, err := srv.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
@@ -360,7 +360,7 @@ func TestServer_ToggleTask_Error(t *testing.T) {
 func TestServer_AddTask_Success(t *testing.T) {
 	var receivedText string
 	srv := newServer(nil, nil, nil, &mockTaskStore{
-		addTaskFn: func(date, text string) error {
+		addTaskFn: func(ctx context.Context, date, text string) error {
 			receivedText = text
 			return nil
 		},
@@ -374,7 +374,7 @@ func TestServer_AddTask_Success(t *testing.T) {
 
 func TestServer_AddTask_Error(t *testing.T) {
 	srv := newServer(nil, nil, nil, &mockTaskStore{
-		addTaskFn: func(date, text string) error { return errors.New("write error") },
+		addTaskFn: func(ctx context.Context, date, text string) error { return errors.New("write error") },
 	})
 
 	resp, err := srv.AddTask(context.Background(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "Task"})
@@ -387,7 +387,7 @@ func TestServer_AddTask_Error(t *testing.T) {
 func TestServer_AppendToNote_Success(t *testing.T) {
 	var receivedText string
 	srv := newServer(nil, &mockNoteStore{
-		appendToNoteFn: func(date, text string) error {
+		appendToNoteFn: func(ctx context.Context, date, text string) error {
 			receivedText = text
 			return nil
 		},
@@ -401,7 +401,7 @@ func TestServer_AppendToNote_Success(t *testing.T) {
 
 func TestServer_AppendToNote_Error(t *testing.T) {
 	srv := newServer(nil, &mockNoteStore{
-		appendToNoteFn: func(date, text string) error { return errors.New("disk full") },
+		appendToNoteFn: func(ctx context.Context, date, text string) error { return errors.New("disk full") },
 	}, nil, nil)
 
 	resp, err := srv.AppendToNote(context.Background(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})

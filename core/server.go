@@ -30,14 +30,14 @@ func NewNotesServer() *NotesServer {
 }
 
 func (s *NotesServer) GetTodayDate(ctx context.Context, req *pb.Empty) (*pb.DateResponse, error) {
-	return &pb.DateResponse{Date: s.calendar.TodayDate()}, nil
+	return &pb.DateResponse{Date: s.calendar.TodayDate(ctx)}, nil
 }
 
 func (s *NotesServer) GetExistingDates(ctx context.Context, req *pb.Empty) (*pb.ExistingDatesResponse, error) {
 	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	dates, err := s.calendar.GetExistingDates()
+	dates, err := s.calendar.GetExistingDates(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get dates: %v", err)
 	}
@@ -48,7 +48,7 @@ func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (*pb.
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	if err := s.notes.EnsureNote(req.Date); err != nil {
+	if err := s.notes.EnsureNote(ctx, req.Date); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create note: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
@@ -58,7 +58,7 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (*pb.Not
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	content, err := s.notes.ReadNote(req.Date)
+	content, err := s.notes.ReadNote(ctx, req.Date)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read note: %v", err)
 	}
@@ -72,11 +72,11 @@ func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (*pb.R
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	content, err := s.notes.ReadNote(req.Date)
+	content, err := s.notes.ReadNote(ctx, req.Date)
 	if err != nil || content == "" {
 		return &pb.RatingResponse{HasRating: false}, nil
 	}
-	rating := s.ratings.GetRating(content)
+	rating := s.ratings.GetRating(ctx, content)
 	if rating == nil {
 		return &pb.RatingResponse{HasRating: false}, nil
 	}
@@ -87,7 +87,7 @@ func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequ
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	if err := s.ratings.UpdateRating(req.Date, int(req.Rating)); err != nil {
+	if err := s.ratings.UpdateRating(ctx, req.Date, int(req.Rating)); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
 	return &pb.SuccessResponse{Success: true}, nil
@@ -97,11 +97,11 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (*pb.Ta
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	content, err := s.notes.ReadNote(req.Date)
+	content, err := s.notes.ReadNote(ctx, req.Date)
 	if err != nil || content == "" {
 		return &pb.TasksResponse{Tasks: []*pb.Task{}}, nil
 	}
-	rawTasks := s.tasks.ParseTasks(content)
+	rawTasks := s.tasks.ParseTasks(ctx, content)
 	tasks := make([]*pb.Task, len(rawTasks))
 	for i, t := range rawTasks {
 		tasks[i] = &pb.Task{
@@ -120,7 +120,7 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 		attribute.Int("task.index", int(req.TaskIndex)))
 	defer span.End()
 
-	if err := s.tasks.ToggleTask(req.Date, int(req.TaskIndex)); err != nil {
+	if err := s.tasks.ToggleTask(ctx, req.Date, int(req.TaskIndex)); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
 	return &pb.SuccessResponse{Success: true}, nil
@@ -130,7 +130,7 @@ func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (*pb.
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	if err := s.tasks.AddTask(req.Date, req.TaskText); err != nil {
+	if err := s.tasks.AddTask(ctx, req.Date, req.TaskText); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
 	return &pb.SuccessResponse{Success: true}, nil
@@ -140,7 +140,7 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	if err := s.notes.AppendToNote(req.Date, req.Text); err != nil {
+	if err := s.notes.AppendToNote(ctx, req.Date, req.Text); err != nil {
 		logger.Error("error appending to note")
 		return &pb.SuccessResponse{Success: false}, nil
 	}

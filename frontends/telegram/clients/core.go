@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
+	"notes_bot/internal/telemetry"
 	pb "notes_bot/proto/notes"
 )
 
@@ -28,7 +29,10 @@ type CoreClient struct {
 	stub pb.NotesServiceClient
 }
 
-func NewCoreClient(host, port string) (*CoreClient, error) {
+func NewCoreClient(ctx context.Context, host, port string) (*CoreClient, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	addr := fmt.Sprintf("%s:%s", host, port)
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -45,6 +49,9 @@ func (c *CoreClient) Close() {
 }
 
 func (c *CoreClient) GetTodayDate(ctx context.Context) (string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.GetTodayDate(ctx, &pb.Empty{})
@@ -55,6 +62,9 @@ func (c *CoreClient) GetTodayDate(ctx context.Context) (string, error) {
 }
 
 func (c *CoreClient) GetExistingDates(ctx context.Context) ([]string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.GetExistingDates(ctx, &pb.Empty{})
@@ -65,6 +75,9 @@ func (c *CoreClient) GetExistingDates(ctx context.Context) ([]string, error) {
 }
 
 func (c *CoreClient) EnsureNote(ctx context.Context, date string) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.EnsureNote(ctx, &pb.DateRequest{Date: date})
@@ -75,6 +88,9 @@ func (c *CoreClient) EnsureNote(ctx context.Context, date string) (bool, error) 
 }
 
 func (c *CoreClient) GetNote(ctx context.Context, date string) (string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.GetNote(ctx, &pb.DateRequest{Date: date})
@@ -88,6 +104,9 @@ func (c *CoreClient) GetNote(ctx context.Context, date string) (string, error) {
 }
 
 func (c *CoreClient) GetRating(ctx context.Context, date string) (int, bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.GetRating(ctx, &pb.DateRequest{Date: date})
@@ -98,6 +117,9 @@ func (c *CoreClient) GetRating(ctx context.Context, date string) (int, bool, err
 }
 
 func (c *CoreClient) UpdateRating(ctx context.Context, date string, rating int) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.UpdateRating(ctx, &pb.UpdateRatingRequest{Date: date, Rating: int32(rating)})
@@ -108,6 +130,9 @@ func (c *CoreClient) UpdateRating(ctx context.Context, date string, rating int) 
 }
 
 func (c *CoreClient) GetTasks(ctx context.Context, date string) ([]*Task, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.GetTasks(ctx, &pb.DateRequest{Date: date})
@@ -127,6 +152,9 @@ func (c *CoreClient) GetTasks(ctx context.Context, date string) ([]*Task, error)
 }
 
 func (c *CoreClient) ToggleTask(ctx context.Context, date string, taskIndex int) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.ToggleTask(ctx, &pb.ToggleTaskRequest{Date: date, TaskIndex: int32(taskIndex)})
@@ -137,6 +165,9 @@ func (c *CoreClient) ToggleTask(ctx context.Context, date string, taskIndex int)
 }
 
 func (c *CoreClient) AddTask(ctx context.Context, date, taskText string) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.AddTask(ctx, &pb.AddTaskRequest{Date: date, TaskText: taskText})
@@ -147,6 +178,9 @@ func (c *CoreClient) AddTask(ctx context.Context, date, taskText string) (bool, 
 }
 
 func (c *CoreClient) AppendToNote(ctx context.Context, date, text string) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, grpcTimeout)
 	defer cancel()
 	resp, err := c.stub.AppendToNote(ctx, &pb.AppendRequest{Date: date, Text: text})

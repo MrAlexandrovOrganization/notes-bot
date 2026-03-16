@@ -1,7 +1,9 @@
 package tgkeyboards
 
 import (
+	"context"
 	"fmt"
+	"notes_bot/internal/telemetry"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -20,7 +22,10 @@ func MonthName(month int) string {
 
 // Calendar builds the main calendar keyboard for date selection.
 // existingDates is a set of dates in DD-MMM-YYYY format that have notes.
-func Calendar(year, month int, activeDate string, existingDates map[string]bool) tgbotapi.InlineKeyboardMarkup {
+func Calendar(ctx context.Context, year, month int, activeDate string, existingDates map[string]bool) tgbotapi.InlineKeyboardMarkup {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	var rows [][]tgbotapi.InlineKeyboardButton
 
 	// Header row: prev / month+year / next

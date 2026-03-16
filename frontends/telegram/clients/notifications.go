@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
+	"notes_bot/internal/telemetry"
 	pb "notes_bot/proto/notifications"
 )
 
@@ -30,7 +31,10 @@ type NotificationsClient struct {
 	stub pb.NotificationsServiceClient
 }
 
-func NewNotificationsClient(host, port string) (*NotificationsClient, error) {
+func NewNotificationsClient(ctx context.Context, host, port string) (*NotificationsClient, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	addr := fmt.Sprintf("%s:%s", host, port)
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -57,6 +61,9 @@ func isUnavailable(err error) bool {
 func (c *NotificationsClient) CreateReminder(ctx context.Context,
 	userID int64, title, scheduleType, scheduleParamsJSON string, createTask bool,
 ) (*ReminderInfo, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -80,6 +87,9 @@ func (c *NotificationsClient) CreateReminder(ctx context.Context,
 }
 
 func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -98,6 +108,9 @@ func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) (
 }
 
 func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -117,6 +130,9 @@ func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, us
 func (c *NotificationsClient) PostponeReminder(ctx context.Context,
 	reminderID, userID int64, postponeDays int32, targetDate string, postponeHours int32,
 ) (*ReminderInfo, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 

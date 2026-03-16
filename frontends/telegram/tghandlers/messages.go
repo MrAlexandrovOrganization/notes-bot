@@ -24,7 +24,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
-		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
+		sendText(ctx, tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
 		a.Logger.Warn("unauthorized message", zap.Int64("user_id", userID))
 		return
 	}
@@ -72,13 +72,13 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 
 	rating, err := strconv.Atoi(text)
 	if err != nil || rating < 0 || rating > 10 {
-		sendText(tgBot, chatID, "❌ Оценка должна быть от 0 до 10. Попробуйте снова.", nil, true)
+		sendText(ctx, tgBot, chatID, "❌ Оценка должна быть от 0 до 10. Попробуйте снова.", nil, true)
 		return
 	}
 
 	ok, err := a.Core.UpdateRating(ctx, activeDate, rating)
 	if err != nil || !ok {
-		sendText(tgBot, chatID, "❌ Ошибка при сохранении оценки.", nil, true)
+		sendText(ctx, tgBot, chatID, "❌ Ошибка при сохранении оценки.", nil, true)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 		uc.State = tgstates.StateIdle
 	})
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	sendText(tgBot, chatID, fmt.Sprintf("✅ Оценка %d сохранена!", rating), &kb, true)
+	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Оценка %d сохранена!", rating), &kb, true)
 	a.Logger.Info("user set rating", zap.Int64("user_id", userID), zap.Int("rating", rating))
 }
 
@@ -96,15 +96,15 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 
 	ok, err := a.Core.AddTask(ctx, activeDate, text)
 	if err != nil || !ok {
-		sendText(tgBot, chatID, "❌ Ошибка при добавлении задачи.", nil, true)
+		sendText(ctx, tgBot, chatID, "❌ Ошибка при добавлении задачи.", nil, true)
 		return
 	}
 	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateTasksView
 	})
-	sendText(tgBot, chatID, fmt.Sprintf("✅ Задача добавлена: %s", text), nil, true)
+	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Задача добавлена: %s", text), nil, true)
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	sendText(tgBot, chatID, "Используйте кнопку \"Задачи\" для просмотра.", &kb, true)
+	sendText(ctx, tgBot, chatID, "Используйте кнопку \"Задачи\" для просмотра.", &kb, true)
 	a.Logger.Info("user added task", zap.Int64("user_id", userID))
 }
 
@@ -114,10 +114,10 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 
 	ok, err := a.Core.AppendToNote(ctx, activeDate, text)
 	if err != nil || !ok {
-		sendText(tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)
+		sendText(ctx, tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)
 		return
 	}
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	sendText(tgBot, chatID, fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate), &kb, true)
+	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate), &kb, true)
 	a.Logger.Info("user appended text", zap.Int64("user_id", userID))
 }

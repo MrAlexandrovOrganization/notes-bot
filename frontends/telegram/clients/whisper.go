@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"notes_bot/internal/telemetry"
 	pb "notes_bot/proto/whisper"
 )
 
@@ -19,7 +20,10 @@ type WhisperClient struct {
 	stub pb.TranscriptionServiceClient
 }
 
-func NewWhisperClient(host, port string) (*WhisperClient, error) {
+func NewWhisperClient(ctx context.Context, host, port string) (*WhisperClient, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	addr := fmt.Sprintf("%s:%s", host, port)
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -40,6 +44,9 @@ func (c *WhisperClient) Close() {
 }
 
 func (c *WhisperClient) Transcribe(ctx context.Context, audioData []byte, format string) (string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 

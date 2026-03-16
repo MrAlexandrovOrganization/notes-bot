@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"fmt"
+	"notes_bot/internal/telemetry"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,20 +33,23 @@ var (
 	once     sync.Once
 )
 
-func GetConfig() *Config {
+func GetConfig(ctx context.Context) *Config {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("GetConfig")
 
 	once.Do(func() {
-		notesDir := GetNotesDir()
+		notesDir := GetNotesDir(ctx)
 
-		if err := ValidateDir(notesDir); err != nil {
+		if err := ValidateDir(ctx, notesDir); err != nil {
 			logger.Fatal("NOTES_DIR invalid", zap.Error(err))
 		}
 
 		templateSubdir := goenv.GetEnvString(templateDirEnv, "Templates")
 		templateDir := filepath.Join(notesDir, templateSubdir)
 
-		if err := ValidateDir(templateDir); err != nil {
+		if err := ValidateDir(ctx, templateDir); err != nil {
 			logger.Fatal("template directory invalid", zap.Error(err))
 		}
 
@@ -70,7 +75,10 @@ func GetConfig() *Config {
 	return instance
 }
 
-func ValidateDir(path string) error {
+func ValidateDir(ctx context.Context, path string) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("ValidateDir")
 
 	info, err := os.Stat(path)
@@ -86,7 +94,10 @@ func ValidateDir(path string) error {
 	return nil
 }
 
-func GetNotesDir() string {
+func GetNotesDir(ctx context.Context) string {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("GetNotesDir")
 
 	notesDir := goenv.GetEnvString(notesDirEnv, "")

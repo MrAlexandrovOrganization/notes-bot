@@ -47,7 +47,7 @@ func main() {
 		logger.Fatal("failed to ensure schema", zap.Error(err))
 	}
 
-	scheduler := notifications.NewScheduler(pool, cfg)
+	scheduler := notifications.NewScheduler(ctx, pool, cfg)
 	go scheduler.Run(ctx)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))

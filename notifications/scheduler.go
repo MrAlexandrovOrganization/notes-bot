@@ -27,7 +27,7 @@ import (
 
 // ComputeNextFire computes the next fire time after afterUTC for the given schedule.
 // Returns nil for "once" (deactivate after firing).
-func ComputeNextFire(scheduleType string, params map[string]any, afterUTC time.Time, tzOffsetHours int) *time.Time {
+func ComputeNextFire(ctx context.Context, scheduleType string, params map[string]any, afterUTC time.Time, tzOffsetHours int) *time.Time {
 	tzOffset := time.Duration(tzOffsetHours) * time.Hour
 	afterLocal := afterUTC.In(time.FixedZone("local", int(tzOffset.Seconds())))
 
@@ -49,7 +49,7 @@ func ComputeNextFire(scheduleType string, params map[string]any, afterUTC time.T
 		return &utc
 
 	case "weekly":
-		days := paramIntSlice(params, "days", []int{0})
+		days := paramIntSlice(ctx, params, "days", []int{0})
 		candidate := time.Date(afterLocal.Year(), afterLocal.Month(), afterLocal.Day(), hour, minute, 0, 0, tz)
 		if !candidate.After(afterLocal) {
 			candidate = candidate.AddDate(0, 0, 1)
@@ -140,7 +140,7 @@ func paramInt(params map[string]any, key string, def int) int {
 	return def
 }
 
-func paramIntSlice(params map[string]any, key string, def []int) []int {
+func paramIntSlice(ctx context.Context, params map[string]any, key string, def []int) []int {
 	v, ok := params[key]
 	if !ok {
 		return def
@@ -171,7 +171,10 @@ type Scheduler struct {
 	coreStub pb.NotesServiceClient
 }
 
-func NewScheduler(pool *pgxpool.Pool, cfg *Config) *Scheduler {
+func NewScheduler(ctx context.Context, pool *pgxpool.Pool, cfg *Config) *Scheduler {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP(cfg.KafkaBootstrapServers),
 		Topic:                  "reminders_due",
@@ -185,7 +188,10 @@ func NewScheduler(pool *pgxpool.Pool, cfg *Config) *Scheduler {
 	}
 }
 
-func (s *Scheduler) getCoreStub() pb.NotesServiceClient {
+func (s *Scheduler) getCoreStub(ctx context.Context) pb.NotesServiceClient {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.coreStub == nil {
@@ -205,24 +211,33 @@ func (s *Scheduler) getCoreStub() pb.NotesServiceClient {
 }
 
 func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
-	stub := s.getCoreStub()
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	stub := s.getCoreStub(ctx)
 	if stub == nil {
-		return s.localTodayDate()
+		return s.localTodayDate(ctx)
 	}
 	resp, err := stub.GetTodayDate(ctx, &pb.Empty{})
 	if err != nil {
 		logger.Error("failed to get today date from core", zap.Error(err))
-		return s.localTodayDate()
+		return s.localTodayDate(ctx)
 	}
 	return resp.Date
 }
 
-func (s *Scheduler) localTodayDate() string {
+func (s *Scheduler) localTodayDate(ctx context.Context) string {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	return timeutil.TodayDate(s.cfg.TimezoneOffsetHours, 0)
 }
 
 func (s *Scheduler) addTaskToToday(ctx context.Context, title, todayDate string) {
-	stub := s.getCoreStub()
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	stub := s.getCoreStub(ctx)
 	if stub == nil {
 		return
 	}
@@ -292,6 +307,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 func (s *Scheduler) tick(ctx context.Context) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	due, err := GetDueReminders(ctx, s.pool)
 	if err != nil {
 		logger.Error("get due reminders", zap.Error(err))
@@ -313,7 +329,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 			TodayDate:  todayDate,
 		})
 
-		nextFire := ComputeNextFire(r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
+		nextFire := ComputeNextFire(ctx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
 		if err := UpdateNextFire(ctx, s.pool, r.ID, nextFire); err != nil {
 			logger.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
 		}
@@ -326,6 +342,9 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	interval := time.Duration(s.cfg.SchedulerIntervalSecs) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

@@ -1,6 +1,7 @@
 package features
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,31 +18,31 @@ const (
 // --- GetRatingImpl ---
 
 func TestGetRatingImpl_ReturnsValue(t *testing.T) {
-	rating := GetRatingImpl(frontmatterWithRating)
+	rating := GetRatingImpl(context.Background(), frontmatterWithRating)
 	require.NotNil(t, rating)
 	assert.Equal(t, 7, *rating)
 }
 
 func TestGetRatingImpl_NoRatingField(t *testing.T) {
-	assert.Nil(t, GetRatingImpl(frontmatterWithoutRating))
+	assert.Nil(t, GetRatingImpl(context.Background(), frontmatterWithoutRating))
 }
 
 func TestGetRatingImpl_EmptyRatingValue(t *testing.T) {
-	assert.Nil(t, GetRatingImpl(frontmatterEmptyRating))
+	assert.Nil(t, GetRatingImpl(context.Background(), frontmatterEmptyRating))
 }
 
 func TestGetRatingImpl_InvalidFrontmatter(t *testing.T) {
-	assert.Nil(t, GetRatingImpl(invalidFrontmatter))
+	assert.Nil(t, GetRatingImpl(context.Background(), invalidFrontmatter))
 }
 
 func TestGetRatingImpl_Zero(t *testing.T) {
-	rating := GetRatingImpl("---\nОценка: 0\n---\ncontent\n")
+	rating := GetRatingImpl(context.Background(), "---\nОценка: 0\n---\ncontent\n")
 	require.NotNil(t, rating)
 	assert.Equal(t, 0, *rating)
 }
 
 func TestGetRatingImpl_Ten(t *testing.T) {
-	rating := GetRatingImpl("---\nОценка: 10\n---\ncontent\n")
+	rating := GetRatingImpl(context.Background(), "---\nОценка: 10\n---\ncontent\n")
 	require.NotNil(t, rating)
 	assert.Equal(t, 10, *rating)
 }
@@ -49,33 +50,33 @@ func TestGetRatingImpl_Ten(t *testing.T) {
 // --- UpdateRatingImpl ---
 
 func TestUpdateRatingImpl_UpdatesExistingField(t *testing.T) {
-	result, ok := UpdateRatingImpl(frontmatterWithRating, 3)
+	result, ok := UpdateRatingImpl(context.TODO(), frontmatterWithRating, 3)
 	require.True(t, ok)
 	assert.Contains(t, result, "Оценка: 3")
 	assert.NotContains(t, result, "Оценка: 7")
 }
 
 func TestUpdateRatingImpl_AddsFieldWhenMissing(t *testing.T) {
-	result, ok := UpdateRatingImpl(frontmatterWithoutRating, 5)
+	result, ok := UpdateRatingImpl(context.TODO(), frontmatterWithoutRating, 5)
 	require.True(t, ok)
 	assert.Contains(t, result, "Оценка: 5")
 }
 
 func TestUpdateRatingImpl_Roundtrip(t *testing.T) {
-	result, ok := UpdateRatingImpl(frontmatterWithRating, 9)
+	result, ok := UpdateRatingImpl(context.TODO(), frontmatterWithRating, 9)
 	require.True(t, ok)
-	rating := GetRatingImpl(result)
+	rating := GetRatingImpl(context.Background(), result)
 	require.NotNil(t, rating)
 	assert.Equal(t, 9, *rating)
 }
 
 func TestUpdateRatingImpl_InvalidFrontmatter(t *testing.T) {
-	_, ok := UpdateRatingImpl(invalidFrontmatter, 5)
+	_, ok := UpdateRatingImpl(context.TODO(), invalidFrontmatter, 5)
 	assert.False(t, ok)
 }
 
 func TestUpdateRatingImpl_PreservesOtherFields(t *testing.T) {
-	result, ok := UpdateRatingImpl(frontmatterWithRating, 2)
+	result, ok := UpdateRatingImpl(context.TODO(), frontmatterWithRating, 2)
 	require.True(t, ok)
 	assert.Contains(t, result, "date: \"[[01-Mar-2026]]\"")
 	assert.Contains(t, result, "content")

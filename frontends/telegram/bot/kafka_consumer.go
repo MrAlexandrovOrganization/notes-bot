@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes_bot/internal/kafkacarrier"
+	"notes_bot/internal/telemetry"
 )
 
 // ReminderEvent is the payload published to the reminders_due Kafka topic.
@@ -75,6 +76,9 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 // consume reads messages until ctx is cancelled or an error occurs.
 // Returns the offset of the last successfully processed message (-1 if none), and any error.
 func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent), logger *zap.Logger) (int64, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	lastOffset := int64(-1)
 	for {
 		logger.Debug("kafka consumer: waiting for next message")

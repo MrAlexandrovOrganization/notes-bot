@@ -1,13 +1,18 @@
 package features
 
 import (
+	"context"
+	"notes_bot/internal/telemetry"
 	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
 )
 
-func UpdateRatingImpl(content string, rating int) (string, bool) {
+func UpdateRatingImpl(ctx context.Context, content string, rating int) (string, bool) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	parts := strings.Split(content, "---")
 	if len(parts) < 3 {
 		logger.Error("invalid frontmatter format in note")
@@ -41,7 +46,10 @@ func UpdateRatingImpl(content string, rating int) (string, bool) {
 	return strings.Join(parts, "---"), true
 }
 
-func GetRatingImpl(content string) *int {
+func GetRatingImpl(ctx context.Context, content string) *int {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	parts := strings.Split(content, "---")
 	if len(parts) < 3 {
 		logger.Error("invalid frontmatter format in note")

@@ -64,7 +64,7 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 			nextFireAt = time.Date(d.Year(), d.Month(), d.Day(), hour, minute, 0, 0, loc).UTC()
 		}
 	} else {
-		next := ComputeNextFire(req.ScheduleType, params, nowUTC, tzOffset)
+		next := ComputeNextFire(ctx, req.ScheduleType, params, nowUTC, tzOffset)
 		if next != nil {
 			nextFireAt = *next
 		} else {

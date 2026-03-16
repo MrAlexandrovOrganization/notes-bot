@@ -57,7 +57,7 @@ func runTests(m *testing.M) int {
 
 	// Устанавливаем env до первого вызова GetConfig (sync.Once)
 	os.Setenv("NOTES_DIR", tempDir)
-	core.GetConfig()
+	core.GetConfig(context.Background())
 
 	// Запускаем gRPC-сервер на случайном порту
 	lis, err := net.Listen("tcp", ":0")

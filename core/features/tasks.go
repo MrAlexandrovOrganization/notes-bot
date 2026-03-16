@@ -1,7 +1,9 @@
 package features
 
 import (
+	"context"
 	"fmt"
+	"notes_bot/internal/telemetry"
 	"strings"
 	"time"
 
@@ -15,7 +17,10 @@ type Task struct {
 	LineNumber int
 }
 
-func ParseTasks(content string) []Task {
+func ParseTasks(ctx context.Context, content string) []Task {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("ParseTasks")
 
 	tasks := []Task{}
@@ -67,8 +72,11 @@ func ParseTasks(content string) []Task {
 	return tasks
 }
 
-func ToggleTaskContent(content string, taskIndex int) (string, error) {
-	tasks := ParseTasks(content)
+func ToggleTaskContent(ctx context.Context, content string, taskIndex int) (string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	tasks := ParseTasks(ctx, content)
 
 	if taskIndex < 0 || taskIndex >= len(tasks) {
 		return "", fmt.Errorf("invalid task index: %d (total tasks: %d)", taskIndex, len(tasks))
@@ -105,7 +113,10 @@ func ToggleTaskContent(content string, taskIndex int) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-func AddTaskContent(content string, taskText string) (string, error) {
+func AddTaskContent(ctx context.Context, content string, taskText string) (string, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	parts := strings.Split(content, "---")
 	if len(parts) < 4 {
 		return "", fmt.Errorf("invalid format: need at least 3 '---' delimiters")

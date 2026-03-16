@@ -1,16 +1,24 @@
 package core
 
 import (
+	"context"
+	"notes_bot/internal/telemetry"
 	"time"
 )
 
-func GetTodayFilename() string {
+func GetTodayFilename(ctx context.Context) string {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("GetTodayFilename")
-	cfg := GetConfig()
-	return computeFilename(time.Now().UTC(), cfg.TimezoneOffsetHours, cfg.DayStartHour)
+	cfg := GetConfig(ctx)
+	return computeFilename(ctx, time.Now().UTC(), cfg.TimezoneOffsetHours, cfg.DayStartHour)
 }
 
-func computeFilename(now time.Time, tzOffsetHours, dayStartHour int) string {
+func computeFilename(ctx context.Context, now time.Time, tzOffsetHours, dayStartHour int) string {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	logger.Debug("computeFilename")
 	localTime := now.Add(time.Duration(tzOffsetHours) * time.Hour)
 	if localTime.Hour() < dayStartHour {

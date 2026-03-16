@@ -13,13 +13,14 @@ import (
 func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
 	if update.Message == nil || update.Message.From == nil {
 		return
 	}
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
-		sendText(tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
+		sendText(ctx, tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
 		a.Logger.Warn("unauthorized access attempt", zap.Int64("user_id", userID))
 		return
 	}
@@ -35,7 +36,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 		uc.ActiveDate,
 	)
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	if err := replyToUpdate(tgBot, update, text, &kb); err != nil {
+	if err := replyToUpdate(ctx, tgBot, update, text, &kb); err != nil {
 		a.Logger.Error("send start message", zap.Error(err))
 	}
 	a.Logger.Info("user started bot", zap.Int64("user_id", userID))

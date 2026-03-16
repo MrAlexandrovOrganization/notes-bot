@@ -25,7 +25,7 @@ func main() {
 		port = "50051"
 	}
 
-	core.GetConfig()
+	core.GetConfig(context.Background())
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

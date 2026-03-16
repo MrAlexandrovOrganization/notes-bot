@@ -1,7 +1,9 @@
 package tghandlers
 
 import (
+	"context"
 	"fmt"
+	"notes_bot/internal/telemetry"
 	"regexp"
 	"strings"
 
@@ -15,7 +17,10 @@ func EscapeMarkdownV2(text string) string {
 }
 
 // sendText sends a new text message to a chat with optional keyboard, using MarkdownV2.
-func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
+func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	escapedText := EscapeMarkdownV2(text)
 	msg := tgbotapi.NewMessage(chatID, escapedText)
 	msg.ParseMode = "MarkdownV2"
@@ -28,7 +33,10 @@ func sendText(bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotap
 }
 
 // editText edits an existing message with optional keyboard, using MarkdownV2.
-func editText(bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	escapedText := EscapeMarkdownV2(text)
 	edit := tgbotapi.NewEditMessageText(chatID, messageID, escapedText)
 	edit.ParseMode = "MarkdownV2"
@@ -43,17 +51,23 @@ func editText(bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, ke
 }
 
 // replyToUpdate sends a reply to a message update.
-func replyToUpdate(bot *tgbotapi.BotAPI, update *tgbotapi.Update, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	if update.Message == nil {
 		return fmt.Errorf("update has no message")
 	}
-	return sendText(bot, update.Message.Chat.ID, text, keyboard, true)
+	return sendText(ctx, bot, update.Message.Chat.ID, text, keyboard, true)
 }
 
 // replyToCallback edits the message of a callback query.
-func replyToCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToCallback(ctx context.Context, bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
 	if query.Message == nil {
 		return fmt.Errorf("callback has no message")
 	}
-	return editText(bot, query.Message.Chat.ID, query.Message.MessageID, text, keyboard)
+	return editText(ctx, bot, query.Message.Chat.ID, query.Message.MessageID, text, keyboard)
 }

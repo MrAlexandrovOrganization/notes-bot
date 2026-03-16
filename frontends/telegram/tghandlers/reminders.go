@@ -85,7 +85,7 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 	if err != nil {
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
-			replyToCallback(tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
+			replyToCallback(ctx, tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
 			return
 		}
 		a.Logger.Error("list reminders", zap.Error(err))
@@ -94,7 +94,7 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 
 	page := uc.ReminderListPage
 	kb := tgkeyboards.RemindersList(reminders, page)
-	replyToCallback(tgBot, query, reminderListText(reminders, page, a.Cfg.TimezoneOffsetHours), &kb)
+	replyToCallback(ctx, tgBot, query, reminderListText(reminders, page, a.Cfg.TimezoneOffsetHours), &kb)
 	a.Logger.Info("user opened reminders", zap.Int64("user_id", userID))
 }
 
@@ -109,7 +109,7 @@ func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		return
 	}
 	kb := tgkeyboards.RemindersList(reminders, page)
-	replyToCallback(tgBot, query, reminderListText(reminders, page, a.Cfg.TimezoneOffsetHours), &kb)
+	replyToCallback(ctx, tgBot, query, reminderListText(reminders, page, a.Cfg.TimezoneOffsetHours), &kb)
 }
 
 // ── Create wizard ──────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		u.ReminderCalYear = now.Year()
 	})
 	kb := tgkeyboards.ReminderCancel()
-	replyToCallback(tgBot, query, "🔔 Введите название напоминания:", &kb)
+	replyToCallback(ctx, tgBot, query, "🔔 Введите название напоминания:", &kb)
 }
 
 func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
@@ -136,7 +136,7 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 		u.ReminderDraft.Title = text
 	})
 	kb := tgkeyboards.ScheduleType()
-	replyToUpdate(tgBot, update,
+	replyToUpdate(ctx, tgBot, update,
 		fmt.Sprintf("Название: **%s**\n\nВыберите тип расписания:", text),
 		&kb)
 }
@@ -156,7 +156,7 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderCreateDay
 		})
-		replyToCallback(tgBot, query,
+		replyToCallback(ctx, tgBot, query,
 			"Введите дни недели через запятую (0=Пн, 1=Вт, …, 6=Вс).\nПример: `0,2,4`",
 			&cancelKb)
 
@@ -164,13 +164,13 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderCreateDay
 		})
-		replyToCallback(tgBot, query, "Введите число месяца (1–31):", &cancelKb)
+		replyToCallback(ctx, tgBot, query, "Введите число месяца (1–31):", &cancelKb)
 
 	case "custom_days":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderCreateInterval
 		})
-		replyToCallback(tgBot, query, "Введите интервал в днях (например `3`):", &cancelKb)
+		replyToCallback(ctx, tgBot, query, "Введите интервал в днях (например `3`):", &cancelKb)
 
 	case "once", "yearly":
 		ctxName := "once"
@@ -185,7 +185,7 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 			u.ReminderCalYear = now.Year()
 		})
 		kb := tgkeyboards.ReminderCalendar(now.Year(), int(now.Month()), ctxName, a.Cfg.TimezoneOffsetHours)
-		replyToCallback(tgBot, query, promptText, &kb)
+		replyToCallback(ctx, tgBot, query, promptText, &kb)
 
 	default: // daily
 		a.changeStateToTaskConfirm(ctx, tgBot, query, userID)
@@ -199,7 +199,7 @@ func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotA
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
 	kb := tgkeyboards.TaskConfirm()
-	replyToCallback(tgBot, query, "➕ Создавать задачу в заметке при срабатывании напоминания?", &kb)
+	replyToCallback(ctx, tgBot, query, "➕ Создавать задачу в заметке при срабатывании напоминания?", &kb)
 }
 
 func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
@@ -209,7 +209,7 @@ func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgb
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
 	kb := tgkeyboards.TaskConfirm()
-	replyToUpdate(tgBot, update, "➕ Создавать задачу в заметке при срабатывании напоминания?", &kb)
+	replyToUpdate(ctx, tgBot, update, "➕ Создавать задачу в заметке при срабатывании напоминания?", &kb)
 }
 
 func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, createTask bool) {
@@ -220,7 +220,7 @@ func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.Bot
 		u.ReminderDraft.CreateTask = createTask
 	})
 	kb := tgkeyboards.ReminderCancel()
-	replyToCallback(tgBot, query, "Введите время в формате `ЧЧ:ММ` (например `09:30`):", &kb)
+	replyToCallback(ctx, tgBot, query, "Введите время в формате `ЧЧ:ММ` (например `09:30`):", &kb)
 }
 
 func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
@@ -237,7 +237,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 			for part := range strings.SplitSeq(text, ",") {
 				d, err := strconv.Atoi(strings.TrimSpace(part))
 				if err != nil || d < 0 || d > 6 {
-					replyToUpdate(tgBot, update, "❌ Введите числа от 0 до 6 через запятую.", &cancelKb)
+					replyToUpdate(ctx, tgBot, update, "❌ Введите числа от 0 до 6 через запятую.", &cancelKb)
 					return
 				}
 				days = append(days, d)
@@ -249,7 +249,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 		case "monthly":
 			d, err := strconv.Atoi(strings.TrimSpace(text))
 			if err != nil || d < 1 || d > 31 {
-				replyToUpdate(tgBot, update, "❌ Введите число от 1 до 31.", &cancelKb)
+				replyToUpdate(ctx, tgBot, update, "❌ Введите число от 1 до 31.", &cancelKb)
 				return
 			}
 			a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -261,7 +261,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 	case tgstates.StateReminderCreateInterval:
 		interval, err := strconv.Atoi(strings.TrimSpace(text))
 		if err != nil || interval < 1 {
-			replyToUpdate(tgBot, update, "❌ Введите положительное целое число.", &cancelKb)
+			replyToUpdate(ctx, tgBot, update, "❌ Введите положительное целое число.", &cancelKb)
 			return
 		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -272,13 +272,13 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 	case tgstates.StateReminderCreateTime:
 		parts := strings.SplitN(strings.TrimSpace(text), ":", 2)
 		if len(parts) != 2 {
-			replyToUpdate(tgBot, update, "❌ Введите время в формате ЧЧ:ММ.", &cancelKb)
+			replyToUpdate(ctx, tgBot, update, "❌ Введите время в формате ЧЧ:ММ.", &cancelKb)
 			return
 		}
 		h, err1 := strconv.Atoi(parts[0])
 		m, err2 := strconv.Atoi(parts[1])
 		if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-			replyToUpdate(tgBot, update, "❌ Введите время в формате ЧЧ:ММ.", &cancelKb)
+			replyToUpdate(ctx, tgBot, update, "❌ Введите время в формате ЧЧ:ММ.", &cancelKb)
 			return
 		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -307,7 +307,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	paramsJSON, err := draft.ToParamsJSON(a.Cfg.TimezoneOffsetHours)
 	if err != nil {
 		a.Logger.Error("marshal reminder params", zap.Error(err))
-		replyToUpdate(tgBot, update, "❌ Не удалось создать напоминание.", nil)
+		replyToUpdate(ctx, tgBot, update, "❌ Не удалось создать напоминание.", nil)
 		return
 	}
 
@@ -319,13 +319,13 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 			a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 				u.State = tgstates.StateReminderCreateTime
 			})
-			replyToUpdate(tgBot, update,
+			replyToUpdate(ctx, tgBot, update,
 				"❌ Выбранное время уже прошло.\nВведите другое время в формате `ЧЧ:ММ`:",
 				&cancelKb)
 			return
 		}
 		a.Logger.Error("create reminder", zap.Error(err))
-		replyToUpdate(tgBot, update, "❌ Не удалось создать напоминание.", nil)
+		replyToUpdate(ctx, tgBot, update, "❌ Не удалось создать напоминание.", nil)
 		return
 	}
 
@@ -349,7 +349,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	} else {
 		msgText = "❌ Не удалось создать напоминание."
 	}
-	replyToUpdate(tgBot, update, msgText, &kb)
+	replyToUpdate(ctx, tgBot, update, msgText, &kb)
 	a.Logger.Info("created reminder", zap.Int64("user_id", userID), zap.String("title", title))
 }
 
@@ -366,7 +366,7 @@ func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI,
 		u.ReminderCalYear = year
 	})
 	kb := tgkeyboards.ReminderCalendar(year, month, contextName, a.Cfg.TimezoneOffsetHours)
-	replyToCallback(tgBot, query, calPrompt(contextName), &kb)
+	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
 func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
@@ -380,7 +380,7 @@ func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI,
 		u.ReminderCalYear = year
 	})
 	kb := tgkeyboards.ReminderCalendar(year, month, contextName, a.Cfg.TimezoneOffsetHours)
-	replyToCallback(tgBot, query, calPrompt(contextName), &kb)
+	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
 func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
@@ -391,7 +391,7 @@ func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *tgbotapi.BotAPI
 		u.ReminderCalYear = year
 	})
 	kb := tgkeyboards.ReminderCalendar(year, month, contextName, a.Cfg.TimezoneOffsetHours)
-	replyToCallback(tgBot, query, calPrompt(contextName), &kb)
+	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
 func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, dateStr, contextName string) {
@@ -409,14 +409,14 @@ func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAP
 			u.State = tgstates.StateIdle
 			u.PendingPostponeReminderID = 0
 		})
-		replyToCallback(tgBot, query, fmt.Sprintf("✅ Напоминание перенесено на %s.", dateStr), nil)
+		replyToCallback(ctx, tgBot, query, fmt.Sprintf("✅ Напоминание перенесено на %s.", dateStr), nil)
 		return
 	}
 
 	if contextName == "yr" {
 		dt, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
-			replyToCallback(tgBot, query, "❌ Неверная дата.", &cancelKb)
+			replyToCallback(ctx, tgBot, query, "❌ Неверная дата.", &cancelKb)
 			return
 		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -458,7 +458,7 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	} else {
 		text += "Напоминаний пока нет."
 	}
-	replyToCallback(tgBot, query, text, &kb)
+	replyToCallback(ctx, tgBot, query, text, &kb)
 	a.Logger.Info("deleted reminder", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -494,7 +494,7 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 	kb := a.getMainMenuKeyboard(ctx, userID)
 
-	replyToCallback(tgBot, query, original+"\n\n✅ Принято!", &kb)
+	replyToCallback(ctx, tgBot, query, original+"\n\n✅ Принято!", &kb)
 	a.Logger.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -528,7 +528,7 @@ func (a *App) sendPostponeResult(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	text := fmt.Sprintf("%s\n\n⏰ Перенесено на %d %s.", original, amount, unit) + nextFireText
 
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	replyToCallback(tgBot, query, text, &kb)
+	replyToCallback(ctx, tgBot, query, text, &kb)
 	a.Logger.Info("reminder postponed", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -544,7 +544,7 @@ func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotA
 		u.ReminderCalYear = year
 	})
 	kb := tgkeyboards.ReminderCalendar(year, month, "pp", a.Cfg.TimezoneOffsetHours)
-	replyToCallback(tgBot, query, "📅 Выберите дату переноса:", &kb)
+	replyToCallback(ctx, tgBot, query, "📅 Выберите дату переноса:", &kb)
 }
 
 func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
@@ -558,7 +558,7 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		u.PendingPostponeReminderID = 0
 	})
 	kb := a.getMainMenuKeyboard(ctx, userID)
-	replyToCallback(tgBot, query,
+	replyToCallback(ctx, tgBot, query,
 		fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", activeDate),
 		&kb)
 }
@@ -575,5 +575,5 @@ func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	if len(reminders) == 0 {
 		text += "\n\nНапоминаний пока нет."
 	}
-	replyToCallback(tgBot, query, text, &kb)
+	replyToCallback(ctx, tgBot, query, text, &kb)
 }
