@@ -91,8 +91,11 @@ func main() {
 	}
 	logger.Info("bot authorized", zap.String("username", tgBot.Self.UserName))
 
-	// Start Kafka consumer in background
-	go bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
+	// Start Kafka consumer in background.
+	// The offset store persists the last consumed offset in Redis so restarts
+	// do not replay historical reminder events.
+	offsetStore := bot.NewRedisOffsetStore(rdb, logger)
+	go bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, offsetStore, app.MakeReminderHandler(tgBot), logger)
 
 	// Start polling
 	u := tgbotapi.NewUpdate(0)
