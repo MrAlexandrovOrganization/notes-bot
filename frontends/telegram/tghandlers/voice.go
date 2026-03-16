@@ -87,7 +87,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	a.Core.AppendToNote(ctx, uc.ActiveDate, text)
 
-	kb := a.getMainMenuKeyboard(ctx, userID)
+	kb := a.getMainMenuKeyboard(ctx)
 	edit := tgbotapi.NewEditMessageText(chatID, statusMsg.MessageID,
 		fmt.Sprintf("🎙 Добавлено в заметку:\n\n_%s_", text))
 	edit.ParseMode = "MarkdownV2"
