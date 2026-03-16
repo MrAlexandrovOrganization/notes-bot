@@ -8,13 +8,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"notes_bot/notifications"
-	pb "notes_bot/proto/notifications"
-
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"notes_bot/internal/telemetry"
+	"notes_bot/notifications"
+	pb "notes_bot/proto/notifications"
 )
 
 var logger *zap.Logger
@@ -28,6 +30,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdown, err := telemetry.InitTracer(ctx, "notifications")
+	if err != nil {
+		logger.Fatal("failed to init tracer", zap.Error(err))
+	}
+	defer shutdown(context.Background()) //nolint:errcheck
 
 	pool, err := notifications.NewPool(ctx, cfg.DSN())
 	if err != nil {
@@ -47,7 +55,9 @@ func main() {
 		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
 	pb.RegisterNotificationsServiceServer(grpcServer, notifications.NewNotificationsServer(pool, cfg))
 
 	healthServer := health.NewServer()

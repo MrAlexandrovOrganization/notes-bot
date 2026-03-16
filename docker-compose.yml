@@ -1,4 +1,19 @@
 services:
+  jaeger:
+    image: jaegertracing/jaeger:2.4.0
+    restart: unless-stopped
+    command: ["--config=/etc/jaeger/config.yaml"]
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    volumes:
+      - ./jaeger.yaml:/etc/jaeger/config.yaml:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -44,6 +59,10 @@ services:
     environment:
       - NOTES_DIR=/notes
       - GRPC_PORT=50051
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+    depends_on:
+      jaeger:
+        condition: service_started
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50051"]
       interval: 30s
@@ -97,6 +116,7 @@ services:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
       interval: 30s
@@ -107,6 +127,8 @@ services:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_started
+      jaeger:
         condition: service_started
     logging:
       driver: "json-file"
@@ -151,11 +173,14 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     depends_on:
       redis:
         condition: service_healthy
       core:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     logging:
       driver: "json-file"
       options:

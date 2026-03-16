@@ -6,7 +6,12 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"notes_bot/internal/kafkacarrier"
 )
 
 // ReminderEvent is the payload published to the reminders_due Kafka topic.
@@ -102,7 +107,19 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			zap.Int64("reminder_id", ev.ReminderID),
 			zap.String("title", ev.Title),
 		)
-		handler(ctx, ev)
+
+		carrier := kafkacarrier.HeaderCarrier(msg.Headers)
+		propagatedCtx := otel.GetTextMapPropagator().Extract(ctx, &carrier)
+		msgCtx, span := otel.Tracer("telegram/kafka").Start(propagatedCtx, "kafka.consume reminders_due",
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(
+				attribute.String("messaging.system", "kafka"),
+				attribute.Int64("messaging.kafka.offset", msg.Offset),
+				attribute.Int64("reminder_id", ev.ReminderID),
+			),
+		)
+		handler(msgCtx, ev)
+		span.End()
 		lastOffset = msg.Offset
 	}
 }

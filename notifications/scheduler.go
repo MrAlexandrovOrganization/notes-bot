@@ -9,12 +9,19 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"notes_bot/internal/kafkacarrier"
 	"notes_bot/internal/timeutil"
 	pb "notes_bot/proto/notes"
+
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 // ComputeNextFire computes the next fire time after afterUTC for the given schedule.
@@ -182,7 +189,10 @@ func (s *Scheduler) getCoreStub() pb.NotesServiceClient {
 	defer s.mu.Unlock()
 	if s.coreStub == nil {
 		addr := fmt.Sprintf("%s:%s", s.cfg.CoreGRPCHost, s.cfg.CoreGRPCPort)
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		)
 		if err != nil {
 			logger.Error("failed to dial core", zap.Error(err))
 			return nil
@@ -233,22 +243,43 @@ type reminderEvent struct {
 }
 
 func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
+	ctx, span := otel.Tracer("notifications/scheduler").Start(ctx, "kafka.produce reminders_due",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination", "reminders_due"),
+			attribute.Int64("reminder_id", ev.ReminderID),
+		),
+	)
+	defer span.End()
+
 	data, err := json.Marshal(ev)
 	if err != nil {
 		logger.Error("marshal event", zap.Error(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
+
+	headers := make(kafkacarrier.HeaderCarrier, 0)
+	otel.GetTextMapPropagator().Inject(ctx, &headers)
+
 	logger.Debug("publishing reminder event to kafka",
 		zap.Int64("reminder_id", ev.ReminderID),
 		zap.Int64("user_id", ev.UserID),
 		zap.String("title", ev.Title),
 		zap.String("payload", string(data)),
 	)
-	if err := s.producer.WriteMessages(ctx, kafka.Message{Value: data}); err != nil {
+	if err := s.producer.WriteMessages(ctx, kafka.Message{
+		Value:   data,
+		Headers: []kafka.Header(headers),
+	}); err != nil {
 		logger.Error("write kafka message failed",
 			zap.Int64("reminder_id", ev.ReminderID),
 			zap.Error(err),
 		)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 	logger.Info("reminder event published to kafka",
@@ -309,7 +340,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.producer.Close()
 			return
 		case <-ticker.C:
-			s.tick(ctx)
+			tickCtx, tickSpan := otel.Tracer("notifications/scheduler").Start(ctx, "scheduler.tick",
+				trace.WithSpanKind(trace.SpanKindInternal),
+			)
+			s.tick(tickCtx)
+			tickSpan.End()
 		}
 	}
 }

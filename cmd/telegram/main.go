@@ -9,7 +9,11 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/bot"
@@ -17,6 +21,7 @@ import (
 	"notes_bot/frontends/telegram/config"
 	"notes_bot/frontends/telegram/tghandlers"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/telemetry"
 )
 
 var logger *zap.Logger
@@ -33,6 +38,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdown, err := telemetry.InitTracer(ctx, "telegram")
+	if err != nil {
+		logger.Fatal("failed to init tracer", zap.Error(err))
+	}
+	defer shutdown(context.Background()) //nolint:errcheck
 
 	// Clients
 	coreClient, err := clients.NewCoreClient(cfg.CoreGRPCHost, cfg.CoreGRPCPort)
@@ -58,6 +69,9 @@ func main() {
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 	})
 	defer rdb.Close()
+	if err := redisotel.InstrumentTracing(rdb); err != nil {
+		logger.Fatal("failed to instrument redis", zap.Error(err))
+	}
 
 	stateManager := tgstates.NewStateManager(rdb, cfg.TimezoneOffsetHours, cfg.DayStartHour)
 
@@ -98,8 +112,48 @@ func main() {
 			if !ok {
 				return
 			}
-			go handleUpdate(ctx, app, tgBot, &update)
+			go handleUpdateTraced(ctx, app, tgBot, &update)
 		}
+	}
+}
+
+func handleUpdateTraced(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	updateType, userID := classifyUpdate(update)
+	ctx, span := otel.Tracer("telegram").Start(ctx, "telegram.update "+updateType,
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("telegram.update_type", updateType),
+			attribute.Int64("telegram.user_id", userID),
+		),
+	)
+	defer span.End()
+	handleUpdate(ctx, app, tgBot, update)
+}
+
+func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
+	switch {
+	case update.Message != nil && update.Message.IsCommand():
+		if update.Message.From != nil {
+			userID = update.Message.From.ID
+		}
+		return "command", userID
+	case update.Message != nil && (update.Message.Voice != nil || update.Message.VideoNote != nil):
+		if update.Message.From != nil {
+			userID = update.Message.From.ID
+		}
+		return "voice", userID
+	case update.Message != nil:
+		if update.Message.From != nil {
+			userID = update.Message.From.ID
+		}
+		return "text", userID
+	case update.CallbackQuery != nil:
+		if update.CallbackQuery.From.ID != 0 {
+			userID = update.CallbackQuery.From.ID
+		}
+		return "callback", userID
+	default:
+		return "unknown", 0
 	}
 }
 
