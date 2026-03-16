@@ -37,9 +37,10 @@ func scheduleLabel(scheduleType string) string {
 }
 
 func reminderListText(reminders []*clients.ReminderInfo, page, tzOffset int) string {
+	text := "🔔 Уведомления:\n\n"
 	amountReminders := len(reminders)
 	if amountReminders == 0 {
-		return "🔔 Уведомления:\n\nНапоминаний пока нет."
+		return text + "Напоминаний пока нет."
 	}
 	perPage := 5
 	page = min((amountReminders-1)/perPage, page)
@@ -54,7 +55,7 @@ func reminderListText(reminders []*clients.ReminderInfo, page, tzOffset int) str
 			timeutil.FormatLocalTime(r.NextFireAt, tzOffset),
 		))
 	}
-	return "🔔 Уведомления:\n\n" + strings.Join(lines, "\n")
+	return text + strings.Join(lines, "\n")
 }
 
 func calMonthYear(uc *tgstates.UserContext, tzOffset int) (int, int) {
@@ -449,12 +450,24 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	})
 	reminders, _ := a.Notifications.ListReminders(ctx, userID)
 	kb := tgkeyboards.RemindersList(reminders, 0)
-	text := "🔔 Уведомления:\n\nНапоминание удалено."
+	text := "Напоминание удалено.\n\n"
+	text += "🔔 Уведомления:\n\n"
+	remindersText := reminderListText(reminders, 0, a.Cfg.TimezoneOffsetHours)
 	if len(reminders) > 0 {
-		text = "🔔 Уведомления:"
+		text += remindersText
+	} else {
+		text += "Напоминаний пока нет."
 	}
 	replyToCallback(tgBot, query, text, &kb)
 	a.Logger.Info("deleted reminder", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+}
+
+func (a *App) getMainMenuKeyboard(ctx context.Context, userID int64) tgbotapi.InlineKeyboardMarkup {
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		a.Logger.Error("get context", zap.Error(err))
+	}
+	return tgkeyboards.MainMenu(uc.ActiveDate)
 }
 
 func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64, createTaskFlag int, dateStr string) {
@@ -478,7 +491,10 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	if query.Message != nil {
 		original = query.Message.Text
 	}
-	replyToCallback(tgBot, query, original+"\n\n✅ _Принято!_", nil)
+
+	kb := a.getMainMenuKeyboard(ctx, userID)
+
+	replyToCallback(tgBot, query, original+"\n\n✅ Принято!", &kb)
 	a.Logger.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -486,17 +502,18 @@ func (a *App) HandleReminderPostponeDays(ctx context.Context, tgBot *tgbotapi.Bo
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(days), "", 0)
-	a.sendPostponeResult(tgBot, query, result, days, "д", userID, reminderID)
+	a.sendPostponeResult(ctx, tgBot, query, result, days, "д", userID, reminderID)
 }
 
 func (a *App) HandleReminderPostponeHours(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, hours, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, "", int32(hours))
-	a.sendPostponeResult(tgBot, query, result, hours, "ч", userID, reminderID)
+	a.sendPostponeResult(ctx, tgBot, query, result, hours, "ч", userID, reminderID)
 }
 
-func (a *App) sendPostponeResult(tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, result *clients.ReminderInfo, amount int64, unit string, userID, reminderID int64) {
+func (a *App) sendPostponeResult(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, result *clients.ReminderInfo, amount int64, unit string, userID, reminderID int64) {
+	a.Logger.Debug("sendPostponeResult")
 	nextFireText := ""
 	if result != nil {
 		nextFire := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours)
@@ -508,8 +525,10 @@ func (a *App) sendPostponeResult(tgBot *tgbotapi.BotAPI, query *tgbotapi.Callbac
 	if query.Message != nil {
 		original = query.Message.Text
 	}
-	text := fmt.Sprintf("%s\n\n⏰ _Перенесено на %d %s._", original, amount, unit) + nextFireText
-	replyToCallback(tgBot, query, text, nil)
+	text := fmt.Sprintf("%s\n\n⏰ Перенесено на %d %s.", original, amount, unit) + nextFireText
+
+	kb := a.getMainMenuKeyboard(ctx, userID)
+	replyToCallback(tgBot, query, text, &kb)
 	a.Logger.Info("reminder postponed", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -538,7 +557,7 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		u.ReminderDraft = tgstates.ReminderDraft{}
 		u.PendingPostponeReminderID = 0
 	})
-	kb := tgkeyboards.MainMenu(activeDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	replyToCallback(tgBot, query,
 		fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", activeDate),
 		&kb)
@@ -554,7 +573,7 @@ func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	kb := tgkeyboards.RemindersList(reminders, 0)
 	text := "🔔 Уведомления:"
 	if len(reminders) == 0 {
-		text = "🔔 Уведомления:\n\nНапоминаний пока нет."
+		text += "\n\nНапоминаний пока нет."
 	}
 	replyToCallback(tgBot, query, text, &kb)
 }

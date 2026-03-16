@@ -49,18 +49,19 @@ func GetRatingImpl(content string) *int {
 	}
 
 	frontmatter := parts[1]
-	lines := strings.Split(frontmatter, "\n")
+	lines := strings.SplitSeq(frontmatter, "\n")
 
-	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "Оценка:") {
-			ratingStr := strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
-			rating, err := strconv.Atoi(ratingStr)
-			if err != nil {
-				logger.Warn("invalid rating value", zap.String("value", ratingStr))
-				return nil
-			}
-			return &rating
+	for line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "Оценка:") {
+			continue
 		}
+		ratingStr := strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+		rating, err := strconv.Atoi(ratingStr)
+		if err != nil {
+			logger.Warn("invalid rating value", zap.String("value", ratingStr))
+			return nil
+		}
+		return &rating
 	}
 
 	return nil

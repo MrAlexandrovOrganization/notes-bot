@@ -87,5 +87,5 @@ func (m *StateManager) save(ctx context.Context, uc *UserContext) error {
 	if err != nil {
 		return fmt.Errorf("marshal context: %w", err)
 	}
-	return m.redis.SetEx(ctx, m.key(uc.UserID), data, ttl).Err()
+	return m.redis.Set(ctx, m.key(uc.UserID), data, ttl).Err()
 }

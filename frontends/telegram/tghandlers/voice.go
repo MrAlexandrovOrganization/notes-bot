@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/internal/telemetry"
 )
 
@@ -88,7 +87,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	a.Core.AppendToNote(ctx, uc.ActiveDate, text)
 
-	kb := tgkeyboards.MainMenu(uc.ActiveDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	edit := tgbotapi.NewEditMessageText(chatID, statusMsg.MessageID,
 		fmt.Sprintf("🎙 Добавлено в заметку:\n\n_%s_", text))
 	edit.ParseMode = "MarkdownV2"

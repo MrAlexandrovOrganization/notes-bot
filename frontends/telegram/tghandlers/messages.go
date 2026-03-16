@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
 	"notes_bot/internal/telemetry"
 )
@@ -86,7 +85,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateIdle
 	})
-	kb := tgkeyboards.MainMenu(activeDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Оценка %d сохранена!", rating), &kb, true)
 	a.Logger.Info("user set rating", zap.Int64("user_id", userID), zap.Int("rating", rating))
 }
@@ -104,7 +103,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 		uc.State = tgstates.StateTasksView
 	})
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Задача добавлена: %s", text), nil, true)
-	kb := tgkeyboards.MainMenu(activeDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	sendText(tgBot, chatID, "Используйте кнопку \"Задачи\" для просмотра.", &kb, true)
 	a.Logger.Info("user added task", zap.Int64("user_id", userID))
 }
@@ -118,7 +117,7 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 		sendText(tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)
 		return
 	}
-	kb := tgkeyboards.MainMenu(activeDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	sendText(tgBot, chatID, fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate), &kb, true)
 	a.Logger.Info("user appended text", zap.Int64("user_id", userID))
 }

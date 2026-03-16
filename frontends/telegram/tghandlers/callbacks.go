@@ -197,7 +197,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		text := fmt.Sprintf("✅ Выбрана дата: %s\n\n📅 Активная дата: %s\n\nВыберите действие:",
 			date, date)
-		kb := tgkeyboards.MainMenu(date)
+		kb := a.getMainMenuKeyboard(ctx, userID)
 		return replyToCallback(tgBot, query, text, &kb)
 
 	case "today":
@@ -329,7 +329,7 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 
 	uc, _ := a.State.GetContext(ctx, userID)
 	text := fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate)
-	kb := tgkeyboards.MainMenu(uc.ActiveDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	return replyToCallback(tgBot, query, text, &kb)
 }
 
@@ -390,7 +390,7 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 		ratingText,
 		preview,
 	)
-	kb := tgkeyboards.MainMenu(activeDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	return replyToCallback(tgBot, query, text, &kb)
 }
 
