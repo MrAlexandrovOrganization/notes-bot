@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -313,32 +314,47 @@ func (s *Scheduler) tick(ctx context.Context) {
 		logger.Error("get due reminders", zap.Error(err))
 		return
 	}
+	if len(due) == 0 {
+		return
+	}
 
+	// Resolve today's date once — used by all reminders that need CreateTask.
+	todayDate := ""
 	for _, r := range due {
-		todayDate := ""
 		if r.CreateTask {
 			todayDate = s.getTodayDateStr(ctx)
-			s.addTaskToToday(ctx, r.Title, todayDate)
+			break
 		}
-
-		s.publishEvent(ctx, reminderEvent{
-			UserID:     r.UserID,
-			Title:      r.Title,
-			ReminderID: r.ID,
-			CreateTask: r.CreateTask,
-			TodayDate:  todayDate,
-		})
-
-		nextFire := ComputeNextFire(ctx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
-		if err := UpdateNextFire(ctx, s.pool, r.ID, nextFire); err != nil {
-			logger.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
-		}
-
-		logger.Info("fired reminder",
-			zap.Int64("id", r.ID),
-			zap.Int64("user_id", r.UserID),
-		)
 	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, r := range due {
+		g.Go(func() error {
+			if r.CreateTask {
+				s.addTaskToToday(gCtx, r.Title, todayDate)
+			}
+
+			s.publishEvent(gCtx, reminderEvent{
+				UserID:     r.UserID,
+				Title:      r.Title,
+				ReminderID: r.ID,
+				CreateTask: r.CreateTask,
+				TodayDate:  todayDate,
+			})
+
+			nextFire := ComputeNextFire(gCtx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
+			if err := UpdateNextFire(gCtx, s.pool, r.ID, nextFire); err != nil {
+				logger.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
+			}
+
+			logger.Info("fired reminder",
+				zap.Int64("id", r.ID),
+				zap.Int64("user_id", r.UserID),
+			)
+			return nil
+		})
+	}
+	g.Wait() //nolint:errcheck // errors are logged inside goroutines
 }
 
 func (s *Scheduler) Run(ctx context.Context) {

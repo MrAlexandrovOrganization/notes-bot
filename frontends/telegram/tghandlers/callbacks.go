@@ -11,6 +11,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
@@ -369,12 +370,26 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	uc, _ := a.State.GetContext(ctx, userID)
 	activeDate := uc.ActiveDate
 	a.Core.EnsureNote(ctx, activeDate)
-	content, _ := a.Core.GetNote(ctx, activeDate)
+
+	var content string
+	var rating int
+	var hasRating bool
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		content, _ = a.Core.GetNote(gCtx, activeDate)
+		return nil
+	})
+	g.Go(func() error {
+		rating, hasRating, _ = a.Core.GetRating(gCtx, activeDate)
+		return nil
+	})
+	g.Wait() //nolint:errcheck // errors are handled per-call inside clients
+
 	if content == "" {
 		return replyToCallback(ctx, tgBot, query, "❌ Не удалось прочитать заметку.", nil)
 	}
 
-	rating, hasRating, _ := a.Core.GetRating(ctx, activeDate)
+	// rating / hasRating already populated above
 	ratingText := "Оценка: не установлена"
 	if hasRating {
 		ratingText = fmt.Sprintf("Оценка: %d", rating)
