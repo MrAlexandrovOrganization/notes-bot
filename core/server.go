@@ -3,6 +3,10 @@ package core
 import (
 	"context"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	pb "notes_bot/proto/notes"
 
 	"google.golang.org/grpc/codes"
@@ -31,6 +35,9 @@ func (s *NotesServer) GetTodayDate(ctx context.Context, req *pb.Empty) (*pb.Date
 }
 
 func (s *NotesServer) GetExistingDates(ctx context.Context, req *pb.Empty) (*pb.ExistingDatesResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "calendar.GetExistingDates")
+	defer span.End()
+
 	dates, err := s.calendar.GetExistingDates()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get dates: %v", err)
@@ -39,6 +46,10 @@ func (s *NotesServer) GetExistingDates(ctx context.Context, req *pb.Empty) (*pb.
 }
 
 func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (*pb.SuccessResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "note.EnsureNote",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	if err := s.notes.EnsureNote(req.Date); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create note: %v", err)
 	}
@@ -46,6 +57,10 @@ func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (*pb.
 }
 
 func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (*pb.NoteResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "note.GetNote",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	content, err := s.notes.ReadNote(req.Date)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read note: %v", err)
@@ -57,6 +72,10 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (*pb.Not
 }
 
 func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (*pb.RatingResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "rating.GetRating",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	content, err := s.notes.ReadNote(req.Date)
 	if err != nil || content == "" {
 		return &pb.RatingResponse{HasRating: false}, nil
@@ -69,6 +88,10 @@ func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (*pb.R
 }
 
 func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequest) (*pb.SuccessResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "rating.UpdateRating",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	if err := s.ratings.UpdateRating(req.Date, int(req.Rating)); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
@@ -76,6 +99,10 @@ func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequ
 }
 
 func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (*pb.TasksResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "tasks.GetTasks",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	content, err := s.notes.ReadNote(req.Date)
 	if err != nil || content == "" {
 		return &pb.TasksResponse{Tasks: []*pb.Task{}}, nil
@@ -94,6 +121,13 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (*pb.Ta
 }
 
 func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest) (*pb.SuccessResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "tasks.ToggleTask",
+		trace.WithAttributes(
+			attribute.String("note.date", req.Date),
+			attribute.Int("task.index", int(req.TaskIndex)),
+		))
+	defer span.End()
+
 	if err := s.tasks.ToggleTask(req.Date, int(req.TaskIndex)); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
@@ -101,6 +135,10 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 }
 
 func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (*pb.SuccessResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "tasks.AddTask",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	if err := s.tasks.AddTask(req.Date, req.TaskText); err != nil {
 		return &pb.SuccessResponse{Success: false}, nil
 	}
@@ -108,6 +146,10 @@ func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (*pb.
 }
 
 func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (*pb.SuccessResponse, error) {
+	_, span := otel.Tracer("core").Start(ctx, "note.AppendToNote",
+		trace.WithAttributes(attribute.String("note.date", req.Date)))
+	defer span.End()
+
 	if err := s.notes.AppendToNote(req.Date, req.Text); err != nil {
 		logger.Error("error appending to note")
 		return &pb.SuccessResponse{Success: false}, nil

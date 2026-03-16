@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/tgkeyboards"
@@ -17,6 +19,9 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	if update.Message == nil || update.Message.From == nil || update.Message.Text == "" {
 		return
 	}
+
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleTextMessage")
+	defer span.End()
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
@@ -31,6 +36,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 		a.Logger.Error("get context", zap.Error(err))
 		return
 	}
+	span.SetAttributes(attribute.String("user.state", string(uc.State)))
 
 	chatID := update.Message.Chat.ID
 
@@ -62,6 +68,10 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 }
 
 func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleRatingInput")
+	span.SetAttributes(attribute.String("note.date", activeDate))
+	defer span.End()
+
 	rating, err := strconv.Atoi(text)
 	if err != nil || rating < 0 || rating > 10 {
 		sendText(tgBot, chatID, "❌ Оценка должна быть от 0 до 10. Попробуйте снова.", nil, true)
@@ -83,6 +93,10 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 }
 
 func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleAddTaskInput")
+	span.SetAttributes(attribute.String("note.date", activeDate))
+	defer span.End()
+
 	ok, err := a.Core.AddTask(ctx, activeDate, text)
 	if err != nil || !ok {
 		sendText(tgBot, chatID, "❌ Ошибка при добавлении задачи.", nil, true)
@@ -98,6 +112,10 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 }
 
 func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleAppendNote")
+	span.SetAttributes(attribute.String("note.date", activeDate))
+	defer span.End()
+
 	ok, err := a.Core.AppendToNote(ctx, activeDate, text)
 	if err != nil || !ok {
 		sendText(tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)

@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
@@ -17,6 +19,9 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	if update.Message == nil || update.Message.From == nil {
 		return
 	}
+
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleVoiceMessage")
+	defer span.End()
 
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
@@ -35,6 +40,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	} else {
 		return
 	}
+	span.SetAttributes(attribute.String("voice.format", format))
 
 	statusMsg, err := tgBot.Send(tgbotapi.NewMessage(chatID, "⏳ Транскрибирую..."))
 	if err != nil {
@@ -97,6 +103,9 @@ func (a *App) editStatus(tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text s
 }
 
 func downloadFile(ctx context.Context, url string) ([]byte, error) {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "downloadFile")
+	defer span.End()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

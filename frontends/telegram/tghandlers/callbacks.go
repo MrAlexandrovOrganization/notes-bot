@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
@@ -23,6 +25,10 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	if query == nil || query.Data == "" || query.From == nil {
 		return
 	}
+
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "HandleCallback")
+	span.SetAttributes(attribute.String("callback.data", query.Data))
+	defer span.End()
 
 	tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
 
@@ -77,6 +83,10 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	if len(parts) < 2 {
 		return nil
 	}
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleMenuAction")
+	span.SetAttributes(attribute.String("menu.action", parts[1]))
+	defer span.End()
+
 	switch parts[1] {
 	case "rating":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingRating })
@@ -110,6 +120,10 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	if len(parts) < 2 {
 		return nil
 	}
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleTaskAction")
+	span.SetAttributes(attribute.String("task.action", parts[1]))
+	defer span.End()
+
 	switch parts[1] {
 	case "toggle":
 		if len(parts) < 3 {
@@ -154,6 +168,10 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 	if len(parts) < 2 {
 		return nil
 	}
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleCalAction")
+	span.SetAttributes(attribute.String("cal.action", parts[1]))
+	defer span.End()
+
 	switch parts[1] {
 	case "prev":
 		uc, _ := a.State.GetContext(ctx, userID)
@@ -212,6 +230,10 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		return nil
 	}
 	sub := parts[1]
+
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "handleReminderAction")
+	span.SetAttributes(attribute.String("reminder.action", sub))
+	defer span.End()
 
 	switch sub {
 	case "create":
@@ -307,6 +329,9 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 // ── Shared display helpers ─────────────────────────────────────────────────
 
 func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showMainMenu")
+	defer span.End()
+
 	uc, _ := a.State.GetContext(ctx, userID)
 	text := fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate)
 	kb := tgkeyboards.MainMenu(uc.ActiveDate)
@@ -314,6 +339,9 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 }
 
 func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showTasks")
+	defer span.End()
+
 	uc, _ := a.State.GetContext(ctx, userID)
 	tasks, _ := a.Core.GetTasks(ctx, uc.ActiveDate)
 	kb := tgkeyboards.Tasks(tasks, uc.TaskPage)
@@ -325,6 +353,9 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 }
 
 func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showCalendar")
+	defer span.End()
+
 	uc, _ := a.State.GetContext(ctx, userID)
 	existingDatesList, _ := a.Core.GetExistingDates(ctx)
 	existingDates := make(map[string]bool, len(existingDatesList))
@@ -337,6 +368,9 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 }
 
 func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+	ctx, span := otel.Tracer("telegram/handlers").Start(ctx, "showNote")
+	defer span.End()
+
 	uc, _ := a.State.GetContext(ctx, userID)
 	activeDate := uc.ActiveDate
 	a.Core.EnsureNote(ctx, activeDate)
