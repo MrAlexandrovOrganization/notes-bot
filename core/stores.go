@@ -41,10 +41,12 @@ type TaskStore interface {
 type realCalendarStore struct{}
 
 func (r *realCalendarStore) TodayDate() string {
+	logger.Debug("TodayDate")
 	return strings.TrimSuffix(GetTodayFilename(), ".md")
 }
 
 func (r *realCalendarStore) GetExistingDates() ([]string, error) {
+	logger.Debug("GetExistingDates")
 	dailyDir := GetConfig().DailyNotesDir
 	entries, err := os.ReadDir(dailyDir)
 	if err != nil {
@@ -66,6 +68,7 @@ func (r *realCalendarStore) GetExistingDates() ([]string, error) {
 type realNoteStore struct{}
 
 func (r *realNoteStore) ReadNote(date string) (string, error) {
+	logger.Debug("ReadNote")
 	filePath := filepath.Join(GetConfig().DailyNotesDir, date+".md")
 	content, err := os.ReadFile(filePath)
 	if os.IsNotExist(err) {
@@ -78,6 +81,7 @@ func (r *realNoteStore) ReadNote(date string) (string, error) {
 }
 
 func (r *realNoteStore) EnsureNote(date string) error {
+	logger.Debug("EnsureNote")
 	filePath := filepath.Join(GetConfig().DailyNotesDir, date+".md")
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return r.createFromTemplate(filePath, date)
@@ -86,6 +90,7 @@ func (r *realNoteStore) EnsureNote(date string) error {
 }
 
 func (r *realNoteStore) AppendToNote(date, text string) error {
+	logger.Debug("AppendToNote")
 	filePath := filepath.Join(GetConfig().DailyNotesDir, date+".md")
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		if err := r.createFromTemplate(filePath, date); err != nil {
@@ -102,6 +107,7 @@ func (r *realNoteStore) AppendToNote(date, text string) error {
 }
 
 func (r *realNoteStore) createFromTemplate(filePath, dateStr string) error {
+	logger.Debug("createFromTemplate")
 	templatePath := GetConfig().DailyTemplatePath
 	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
 		zap.L().Warn("template not found, creating basic note")
@@ -121,6 +127,7 @@ func (r *realNoteStore) createFromTemplate(filePath, dateStr string) error {
 }
 
 func (r *realNoteStore) createBasicNote(filePath, dateStr string) error {
+	logger.Debug("createBasicNote")
 	content := fmt.Sprintf("---\ndate: \"[[%s]]\"\ntitle: \"[[%s]]\"\nОценка:\ntags:\n  - daily\n---\n---\n", dateStr, dateStr)
 	return os.WriteFile(filePath, []byte(content), 0644)
 }
@@ -160,10 +167,12 @@ func (r *realRatingStore) UpdateRating(date string, rating int) error {
 type realTaskStore struct{}
 
 func (r *realTaskStore) ParseTasks(content string) []features.Task {
+	logger.Debug("ParseTasks")
 	return features.ParseTasks(content)
 }
 
 func (r *realTaskStore) ToggleTask(date string, index int) error {
+	logger.Debug("ToggleTask")
 	filePath := filepath.Join(GetConfig().DailyNotesDir, date+".md")
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -177,6 +186,7 @@ func (r *realTaskStore) ToggleTask(date string, index int) error {
 }
 
 func (r *realTaskStore) AddTask(date, text string) error {
+	logger.Debug("AddTask")
 	filePath := filepath.Join(GetConfig().DailyNotesDir, date+".md")
 	data, err := os.ReadFile(filePath)
 	if err != nil {

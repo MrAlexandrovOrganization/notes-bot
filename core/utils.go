@@ -11,6 +11,7 @@ func GetTodayFilename() string {
 }
 
 func computeFilename(now time.Time, tzOffsetHours, dayStartHour int) string {
+	logger.Debug("computeFilename")
 	localTime := now.Add(time.Duration(tzOffsetHours) * time.Hour)
 	if localTime.Hour() < dayStartHour {
 		localTime = localTime.AddDate(0, 0, -1)

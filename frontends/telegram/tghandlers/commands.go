@@ -6,8 +6,6 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
-
-	"notes_bot/frontends/telegram/tgkeyboards"
 )
 
 func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -32,7 +30,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 		"👋 Добро пожаловать!\n\n📅 Активная дата: %s\n\nВыберите действие:",
 		uc.ActiveDate,
 	)
-	kb := tgkeyboards.MainMenu(uc.ActiveDate)
+	kb := a.getMainMenuKeyboard(ctx, userID)
 	if err := replyToUpdate(tgBot, update, text, &kb); err != nil {
 		a.Logger.Error("send start message", zap.Error(err))
 	}
