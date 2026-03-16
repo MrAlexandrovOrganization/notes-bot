@@ -4,8 +4,7 @@ services:
     restart: unless-stopped
     command: ["--config=/etc/jaeger/config.yaml"]
     ports:
-      - "16686:16686"
-      - "4317:4317"
+      - "127.0.0.1:16686:16686"
     volumes:
       - ./jaeger.yaml:/etc/jaeger/config.yaml:ro
     logging:
