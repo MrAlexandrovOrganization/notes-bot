@@ -67,7 +67,7 @@ func runTests(m *testing.M) int {
 	port := lis.Addr().(*net.TCPAddr).Port
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterNotesServiceServer(grpcServer, core.NewNotesServer())
+	pb.RegisterNotesServiceServer(grpcServer, core.NewDefaultNotesServer())
 	go grpcServer.Serve(lis)
 	defer grpcServer.GracefulStop()
 

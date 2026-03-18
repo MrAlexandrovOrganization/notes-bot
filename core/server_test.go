@@ -289,9 +289,9 @@ func TestServer_UpdateRating_Error(t *testing.T) {
 		updateRatingFn: func(ctx context.Context, date string, rating int) error { return errors.New("write error") },
 	}, nil)
 
-	resp, err := srv.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
-	require.NoError(t, err) // gRPC-ошибки нет — Success: false
-	assert.False(t, resp.Success)
+	_, err := srv.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
 // --- GetTasks ---
@@ -350,9 +350,9 @@ func TestServer_ToggleTask_Error(t *testing.T) {
 		toggleTaskFn: func(ctx context.Context, date string, index int) error { return errors.New("index out of range") },
 	})
 
-	resp, err := srv.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
-	require.NoError(t, err)
-	assert.False(t, resp.Success)
+	_, err := srv.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
 // --- AddTask ---
@@ -377,9 +377,9 @@ func TestServer_AddTask_Error(t *testing.T) {
 		addTaskFn: func(ctx context.Context, date, text string) error { return errors.New("write error") },
 	})
 
-	resp, err := srv.AddTask(context.Background(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "Task"})
-	require.NoError(t, err)
-	assert.False(t, resp.Success)
+	_, err := srv.AddTask(context.Background(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "Task"})
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
 // --- AppendToNote ---
@@ -404,7 +404,7 @@ func TestServer_AppendToNote_Error(t *testing.T) {
 		appendToNoteFn: func(ctx context.Context, date, text string) error { return errors.New("disk full") },
 	}, nil, nil)
 
-	resp, err := srv.AppendToNote(context.Background(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
-	require.NoError(t, err)
-	assert.False(t, resp.Success)
+	_, err := srv.AppendToNote(context.Background(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }

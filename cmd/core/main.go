@@ -20,6 +20,8 @@ import (
 )
 
 func main() {
+	logger := core.Logger
+
 	port := os.Getenv("GRPC_PORT")
 	if port == "" {
 		port = "50051"
@@ -32,33 +34,33 @@ func main() {
 
 	shutdown, err := telemetry.InitTracer(ctx, "core")
 	if err != nil {
-		core.Logger.Fatal("failed to init tracer", zap.Error(err))
+		logger.Fatal("failed to init tracer", zap.Error(err))
 	}
 	defer shutdown(context.Background()) //nolint:errcheck
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
-		core.Logger.Fatal("failed to listen", zap.Error(err))
+		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 
-	pb.RegisterNotesServiceServer(grpcServer, core.NewNotesServer())
+	pb.RegisterNotesServiceServer(grpcServer, core.NewDefaultNotesServer())
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	go func() {
-		core.Logger.Info("starting gRPC server", zap.String("port", port))
+		logger.Info("starting gRPC server", zap.String("port", port))
 		if err := grpcServer.Serve(lis); err != nil {
-			core.Logger.Error("server stopped", zap.Error(err))
+			logger.Error("server stopped", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	core.Logger.Info("shutting down gracefully...")
+	logger.Info("shutting down gracefully...")
 	grpcServer.GracefulStop()
 }

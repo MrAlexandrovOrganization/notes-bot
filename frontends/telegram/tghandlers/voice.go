@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
+	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 )
 
@@ -41,9 +42,10 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	}
 	span.SetAttributes(attribute.String("voice.format", format))
 
+	log := applog.With(ctx, a.Logger)
 	statusMsg, err := tgBot.Send(tgbotapi.NewMessage(chatID, "⏳ Транскрибирую..."))
 	if err != nil {
-		a.Logger.Error("send status message", zap.Error(err))
+		log.Error("send status message", zap.Error(err))
 		return
 	}
 
@@ -69,7 +71,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
 		}
-		a.Logger.Error("transcribe error", zap.Error(err))
+		log.Error("transcribe error", zap.Error(err))
 		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
 		return
 	}
@@ -81,7 +83,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
-		a.Logger.Error("get context", zap.Error(err))
+		log.Error("get context", zap.Error(err))
 		return
 	}
 

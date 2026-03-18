@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 	"notes_bot/notifications"
 	pb "notes_bot/proto/notifications"
@@ -22,10 +23,12 @@ import (
 var logger *zap.Logger
 
 func init() {
-	logger = zap.Must(zap.NewProduction())
+	logger = applog.New()
 }
 
 func main() {
+	notifications.SetLogger(logger)
+
 	cfg := notifications.LoadConfig()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

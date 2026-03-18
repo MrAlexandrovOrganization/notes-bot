@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"notes_bot/internal/applog"
 	"notes_bot/internal/kafkacarrier"
 	"notes_bot/internal/telemetry"
 )
@@ -58,8 +59,9 @@ func (s *RedisOffsetStore) Save(ctx context.Context, offset int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, s.logger)
 	if err := s.rdb.Set(ctx, redisOffsetKey, strconv.FormatInt(offset, 10), 0).Err(); err != nil {
-		s.logger.Error("failed to persist kafka offset", zap.Error(err), zap.Int64("offset", offset))
+		log.Error("failed to persist kafka offset", zap.Error(err), zap.Int64("offset", offset))
 	}
 }
 
@@ -79,8 +81,9 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, store Offset
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	nextOffset := store.Load(ctx)
-	logger.Info("kafka consumer: loaded start offset", zap.Int64("start_offset", nextOffset))
+	log.Info("kafka consumer: loaded start offset", zap.Int64("start_offset", nextOffset))
 
 	attempt := 0
 	for {
@@ -88,7 +91,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, store Offset
 			return
 		}
 		attempt++
-		logger.Info("kafka consumer: creating reader",
+		log.Info("kafka consumer: creating reader",
 			zap.String("brokers", bootstrapServers),
 			zap.String("topic", "reminders_due"),
 			zap.Int64("start_offset", nextOffset),
@@ -101,7 +104,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, store Offset
 			StartOffset: nextOffset,
 		})
 
-		logger.Info("kafka consumer started, waiting for messages")
+		log.Info("kafka consumer started, waiting for messages")
 		lastSeen, err := consume(ctx, r, store, handler, logger)
 		r.Close()
 		if lastSeen >= 0 {
@@ -109,7 +112,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, store Offset
 			nextOffset = lastSeen + 1
 		}
 		if err != nil {
-			logger.Warn("kafka consumer error, retrying in 5s",
+			log.Warn("kafka consumer error, retrying in 5s",
 				zap.Error(err),
 				zap.Int("attempt", attempt),
 				zap.Int64("next_offset", nextOffset),
@@ -131,16 +134,17 @@ func consume(ctx context.Context, r *kafka.Reader, store OffsetStore, handler fu
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	lastOffset := int64(-1)
 	for {
-		logger.Debug("kafka consumer: waiting for next message")
+		log.Debug("kafka consumer: waiting for next message")
 		msg, err := r.FetchMessage(ctx)
 		if err != nil {
-			logger.Error("kafka FetchMessage error", zap.Error(err))
+			log.Error("kafka FetchMessage error", zap.Error(err))
 			return lastOffset, err
 		}
 
-		logger.Info("kafka consumer: message received",
+		log.Info("kafka consumer: message received",
 			zap.String("topic", msg.Topic),
 			zap.Int32("partition", int32(msg.Partition)),
 			zap.Int64("offset", msg.Offset),
@@ -150,7 +154,7 @@ func consume(ctx context.Context, r *kafka.Reader, store OffsetStore, handler fu
 
 		var ev ReminderEvent
 		if err := json.Unmarshal(msg.Value, &ev); err != nil {
-			logger.Error("failed to parse reminder event",
+			log.Error("failed to parse reminder event",
 				zap.Error(err),
 				zap.String("raw_value", string(msg.Value)),
 			)
@@ -159,7 +163,7 @@ func consume(ctx context.Context, r *kafka.Reader, store OffsetStore, handler fu
 			continue
 		}
 
-		logger.Info("kafka consumer: dispatching reminder event",
+		log.Info("kafka consumer: dispatching reminder event",
 			zap.Int64("user_id", ev.UserID),
 			zap.Int64("reminder_id", ev.ReminderID),
 			zap.String("title", ev.Title),

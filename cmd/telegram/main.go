@@ -21,13 +21,14 @@ import (
 	"notes_bot/frontends/telegram/config"
 	"notes_bot/frontends/telegram/tghandlers"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 )
 
 var logger *zap.Logger
 
 func init() {
-	logger = zap.Must(zap.NewProduction())
+	logger = applog.New()
 }
 
 func main() {

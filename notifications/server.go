@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"notes_bot/internal/applog"
 	pb "notes_bot/proto/notifications"
 )
 
@@ -38,6 +39,7 @@ func reminderToProto(r *Reminder) *pb.Reminder {
 }
 
 func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.CreateReminderRequest) (*pb.ReminderResponse, error) {
+	log := applog.With(ctx, logger)
 	var params map[string]any
 	if req.ScheduleParamsJson != "" {
 		if err := json.Unmarshal([]byte(req.ScheduleParamsJson), &params); err != nil {
@@ -79,7 +81,7 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 
 	r, err := CreateReminder(ctx, s.pool, req.UserId, req.Title, req.ScheduleType, params, nextFireAt, req.CreateTask)
 	if err != nil {
-		logger.Error("create reminder", zap.Error(err))
+		log.Error("create reminder", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -87,9 +89,10 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 }
 
 func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRemindersRequest) (*pb.ListRemindersResponse, error) {
+	log := applog.With(ctx, logger)
 	rows, err := ListReminders(ctx, s.pool, req.UserId)
 	if err != nil {
-		logger.Error("list reminders", zap.Error(err))
+		log.Error("list reminders", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -101,15 +104,17 @@ func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRem
 }
 
 func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.DeleteReminderRequest) (*pb.SuccessResponse, error) {
+	log := applog.With(ctx, logger)
 	ok, err := DeleteReminder(ctx, s.pool, req.ReminderId, req.UserId)
 	if err != nil {
-		logger.Error("delete reminder", zap.Error(err))
+		log.Error("delete reminder", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pb.SuccessResponse{Success: ok}, nil
 }
 
 func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.PostponeReminderRequest) (*pb.ReminderResponse, error) {
+	log := applog.With(ctx, logger)
 	var nextFireAt time.Time
 
 	switch {
@@ -134,7 +139,7 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 
 	ok, err := SetNextFireAt(ctx, s.pool, req.ReminderId, req.UserId, nextFireAt)
 	if err != nil {
-		logger.Error("postpone reminder", zap.Error(err))
+		log.Error("postpone reminder", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

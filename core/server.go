@@ -20,13 +20,17 @@ type NotesServer struct {
 	tasks    TaskStore
 }
 
-func NewNotesServer() *NotesServer {
+func NewNotesServer(cal CalendarStore, notes NoteStore, ratings RatingStore, tasks TaskStore) *NotesServer {
 	return &NotesServer{
-		calendar: &realCalendarStore{},
-		notes:    &realNoteStore{},
-		ratings:  &realRatingStore{},
-		tasks:    &realTaskStore{},
+		calendar: cal,
+		notes:    notes,
+		ratings:  ratings,
+		tasks:    tasks,
 	}
+}
+
+func NewDefaultNotesServer() *NotesServer {
+	return NewNotesServer(&realCalendarStore{}, &realNoteStore{}, &realRatingStore{}, &realTaskStore{})
 }
 
 func (s *NotesServer) GetTodayDate(ctx context.Context, req *pb.Empty) (*pb.DateResponse, error) {
@@ -88,7 +92,7 @@ func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequ
 	defer span.End()
 
 	if err := s.ratings.UpdateRating(ctx, req.Date, int(req.Rating)); err != nil {
-		return &pb.SuccessResponse{Success: false}, nil
+		return nil, status.Errorf(codes.Internal, "failed to update rating: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
@@ -121,7 +125,7 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 	defer span.End()
 
 	if err := s.tasks.ToggleTask(ctx, req.Date, int(req.TaskIndex)); err != nil {
-		return &pb.SuccessResponse{Success: false}, nil
+		return nil, status.Errorf(codes.Internal, "failed to toggle task: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
@@ -131,7 +135,7 @@ func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (*pb.
 	defer span.End()
 
 	if err := s.tasks.AddTask(ctx, req.Date, req.TaskText); err != nil {
-		return &pb.SuccessResponse{Success: false}, nil
+		return nil, status.Errorf(codes.Internal, "failed to add task: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
@@ -141,8 +145,7 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 	defer span.End()
 
 	if err := s.notes.AppendToNote(ctx, req.Date, req.Text); err != nil {
-		logger.Error("error appending to note")
-		return &pb.SuccessResponse{Success: false}, nil
+		return nil, status.Errorf(codes.Internal, "failed to append to note: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }

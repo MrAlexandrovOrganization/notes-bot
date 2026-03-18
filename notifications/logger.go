@@ -2,8 +2,8 @@ package notifications
 
 import "go.uber.org/zap"
 
-var logger *zap.Logger
+var logger = zap.NewNop()
 
-func init() {
-	logger = zap.Must(zap.NewProduction())
+func SetLogger(l *zap.Logger) {
+	logger = l
 }

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"notes_bot/internal/applog"
 	"notes_bot/internal/kafkacarrier"
 	"notes_bot/internal/telemetry"
 	"notes_bot/internal/timeutil"
@@ -193,6 +194,7 @@ func (s *Scheduler) getCoreStub(ctx context.Context) pb.NotesServiceClient {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.coreStub == nil {
@@ -202,7 +204,7 @@ func (s *Scheduler) getCoreStub(ctx context.Context) pb.NotesServiceClient {
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		)
 		if err != nil {
-			logger.Error("failed to dial core", zap.Error(err))
+			log.Error("failed to dial core", zap.Error(err))
 			return nil
 		}
 		s.coreConn = conn
@@ -215,13 +217,14 @@ func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	stub := s.getCoreStub(ctx)
 	if stub == nil {
 		return s.localTodayDate(ctx)
 	}
 	resp, err := stub.GetTodayDate(ctx, &pb.Empty{})
 	if err != nil {
-		logger.Error("failed to get today date from core", zap.Error(err))
+		log.Error("failed to get today date from core", zap.Error(err))
 		return s.localTodayDate(ctx)
 	}
 	return resp.Date
@@ -238,16 +241,17 @@ func (s *Scheduler) addTaskToToday(ctx context.Context, title, todayDate string)
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	stub := s.getCoreStub(ctx)
 	if stub == nil {
 		return
 	}
 	if _, err := stub.EnsureNote(ctx, &pb.DateRequest{Date: todayDate}); err != nil {
-		logger.Error("failed to ensure note", zap.Error(err))
+		log.Error("failed to ensure note", zap.Error(err))
 		return
 	}
 	if _, err := stub.AddTask(ctx, &pb.AddTaskRequest{Date: todayDate, TaskText: title}); err != nil {
-		logger.Error("failed to add task", zap.Error(err))
+		log.Error("failed to add task", zap.Error(err))
 	}
 }
 
@@ -270,9 +274,11 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 	)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
+
 	data, err := json.Marshal(ev)
 	if err != nil {
-		logger.Error("marshal event", zap.Error(err))
+		log.Error("marshal event", zap.Error(err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return
@@ -281,7 +287,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 	headers := make(kafkacarrier.HeaderCarrier, 0)
 	otel.GetTextMapPropagator().Inject(ctx, &headers)
 
-	logger.Debug("publishing reminder event to kafka",
+	log.Debug("publishing reminder event to kafka",
 		zap.Int64("reminder_id", ev.ReminderID),
 		zap.Int64("user_id", ev.UserID),
 		zap.String("title", ev.Title),
@@ -291,7 +297,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		Value:   data,
 		Headers: []kafka.Header(headers),
 	}); err != nil {
-		logger.Error("write kafka message failed",
+		log.Error("write kafka message failed",
 			zap.Int64("reminder_id", ev.ReminderID),
 			zap.Error(err),
 		)
@@ -299,7 +305,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		span.SetStatus(codes.Error, err.Error())
 		return
 	}
-	logger.Info("reminder event published to kafka",
+	log.Info("reminder event published to kafka",
 		zap.Int64("reminder_id", ev.ReminderID),
 		zap.Int64("user_id", ev.UserID),
 	)
@@ -309,9 +315,11 @@ func (s *Scheduler) tick(ctx context.Context) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
+
 	due, err := GetDueReminders(ctx, s.pool)
 	if err != nil {
-		logger.Error("get due reminders", zap.Error(err))
+		log.Error("get due reminders", zap.Error(err))
 		return
 	}
 	if len(due) == 0 {
@@ -330,6 +338,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, r := range due {
 		g.Go(func() error {
+			log := applog.With(gCtx, logger)
 			if r.CreateTask {
 				s.addTaskToToday(gCtx, r.Title, todayDate)
 			}
@@ -344,32 +353,35 @@ func (s *Scheduler) tick(ctx context.Context) {
 
 			nextFire := ComputeNextFire(gCtx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
 			if err := UpdateNextFire(gCtx, s.pool, r.ID, nextFire); err != nil {
-				logger.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
+				log.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
 			}
 
-			logger.Info("fired reminder",
+			log.Info("fired reminder",
 				zap.Int64("id", r.ID),
 				zap.Int64("user_id", r.UserID),
 			)
 			return nil
 		})
 	}
-	g.Wait() //nolint:errcheck // errors are logged inside goroutines
+	if err := g.Wait(); err != nil {
+		log.Error("scheduler tick error", zap.Error(err))
+	}
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, logger)
 	interval := time.Duration(s.cfg.SchedulerIntervalSecs) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	logger.Info("scheduler started", zap.Duration("interval", interval))
+	log.Info("scheduler started", zap.Duration("interval", interval))
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("scheduler stopped")
+			log.Info("scheduler stopped")
 			s.mu.Lock()
 			if s.coreConn != nil {
 				s.coreConn.Close()

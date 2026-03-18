@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 )
 
@@ -30,12 +32,13 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("callback.data", query.Data))
 	defer span.End()
 
+	log := applog.With(ctx, a.Logger)
 	tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
 
 	userID := query.From.ID
 	if !a.authorized(userID) {
 		replyToCallback(ctx, tgBot, query, "⛔ Unauthorized access.", nil)
-		a.Logger.Warn("unauthorized callback", zap.Int64("user_id", userID))
+		log.Warn("unauthorized callback", zap.Int64("user_id", userID))
 		return
 	}
 
@@ -48,7 +51,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 
 	defer func() {
 		if r := recover(); r != nil {
-			a.Logger.Error("panic in callback handler", zap.Any("recover", r), zap.String("data", query.Data))
+			log.Error("panic in callback handler", zap.Any("recover", r), zap.String("data", query.Data), zap.String("stack", string(debug.Stack())))
 		}
 	}()
 
@@ -63,7 +66,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	case "reminder":
 		err = a.handleReminderAction(ctx, tgBot, query, userID, parts)
 	default:
-		a.Logger.Warn("unknown callback action", zap.String("action", action))
+		log.Warn("unknown callback action", zap.String("action", action))
 	}
 
 	if err != nil {
@@ -72,7 +75,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 			replyToCallback(ctx, tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
 			return
 		}
-		a.Logger.Error("callback error", zap.String("data", query.Data), zap.Error(err))
+		log.Error("callback error", zap.String("data", query.Data), zap.Error(err))
 		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка при обработке действия.", nil)
 	}
 }

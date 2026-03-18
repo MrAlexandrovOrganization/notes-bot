@@ -16,6 +16,7 @@ import (
 	"notes_bot/frontends/telegram/clients"
 	"notes_bot/frontends/telegram/tgkeyboards"
 	"notes_bot/frontends/telegram/tgstates"
+	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 	"notes_bot/internal/timeutil"
 )
@@ -76,6 +77,8 @@ func calMonthYear(uc *tgstates.UserContext, tzOffset int) (int, int) {
 func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
 	uc, _ := a.State.GetContext(ctx, userID)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
@@ -88,14 +91,14 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 			replyToCallback(ctx, tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
 			return
 		}
-		a.Logger.Error("list reminders", zap.Error(err))
+		log.Error("list reminders", zap.Error(err))
 		return
 	}
 
 	page := uc.ReminderListPage
 	kb := tgkeyboards.RemindersList(reminders, page)
 	replyToCallback(ctx, tgBot, query, reminderListText(reminders, page, a.Cfg.TimezoneOffsetHours), &kb)
-	a.Logger.Info("user opened reminders", zap.Int64("user_id", userID))
+	log.Info("user opened reminders", zap.Int64("user_id", userID))
 }
 
 func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, page int) {
@@ -292,6 +295,8 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
 	uc, _ := a.State.GetContext(ctx, userID)
 	draft := uc.ReminderDraft
 
@@ -306,7 +311,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 
 	paramsJSON, err := draft.ToParamsJSON(a.Cfg.TimezoneOffsetHours)
 	if err != nil {
-		a.Logger.Error("marshal reminder params", zap.Error(err))
+		log.Error("marshal reminder params", zap.Error(err))
 		replyToUpdate(ctx, tgBot, update, "❌ Не удалось создать напоминание.", nil)
 		return
 	}
@@ -324,7 +329,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 				&cancelKb)
 			return
 		}
-		a.Logger.Error("create reminder", zap.Error(err))
+		log.Error("create reminder", zap.Error(err))
 		replyToUpdate(ctx, tgBot, update, "❌ Не удалось создать напоминание.", nil)
 		return
 	}
@@ -350,7 +355,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 		msgText = "❌ Не удалось создать напоминание."
 	}
 	replyToUpdate(ctx, tgBot, update, msgText, &kb)
-	a.Logger.Info("created reminder", zap.Int64("user_id", userID), zap.String("title", title))
+	log.Info("created reminder", zap.Int64("user_id", userID), zap.String("title", title))
 }
 
 // ── Calendar navigation ────────────────────────────────────────────────────
@@ -444,6 +449,8 @@ func calPrompt(contextName string) string {
 func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
 	a.Notifications.DeleteReminder(ctx, reminderID, userID)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
@@ -459,7 +466,7 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		text += "Напоминаний пока нет."
 	}
 	replyToCallback(ctx, tgBot, query, text, &kb)
-	a.Logger.Info("deleted reminder", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+	log.Info("deleted reminder", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
 func (a *App) getMainMenuKeyboard(ctx context.Context) tgbotapi.InlineKeyboardMarkup {
@@ -471,6 +478,8 @@ func (a *App) getMainMenuKeyboard(ctx context.Context) tgbotapi.InlineKeyboardMa
 func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64, createTaskFlag int, dateStr string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
 	if createTaskFlag == 1 && dateStr != "" && query.Message != nil {
 		msgText := query.Message.Text
 		title := strings.TrimPrefix(msgText, "🔔 Напоминание: ")
@@ -493,7 +502,7 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	kb := a.getMainMenuKeyboard(ctx)
 
 	replyToCallback(ctx, tgBot, query, original+"\n\n✅ Принято!", &kb)
-	a.Logger.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
 func (a *App) HandleReminderPostponeDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, days, reminderID int64) {
@@ -511,7 +520,8 @@ func (a *App) HandleReminderPostponeHours(ctx context.Context, tgBot *tgbotapi.B
 }
 
 func (a *App) sendPostponeResult(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, result *clients.ReminderInfo, amount int64, unit string, userID, reminderID int64) {
-	a.Logger.Debug("sendPostponeResult")
+	log := applog.With(ctx, a.Logger)
+	log.Debug("sendPostponeResult")
 	nextFireText := ""
 	if result != nil {
 		nextFire := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours)
@@ -527,7 +537,7 @@ func (a *App) sendPostponeResult(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 	kb := a.getMainMenuKeyboard(ctx)
 	replyToCallback(ctx, tgBot, query, text, &kb)
-	a.Logger.Info("reminder postponed", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+	log.Info("reminder postponed", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
 func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
