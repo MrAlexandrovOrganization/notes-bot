@@ -35,7 +35,7 @@ type ReminderEvent struct {
 // Uses a consumer group so Kafka tracks committed offsets — no external offset store needed.
 // On first join (no committed offset) starts from the tail to avoid replaying history.
 // On error retries with a 5-second delay; Kafka resumes from the last committed offset.
-func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func(context.Context, ReminderEvent), logger *zap.Logger) {
+func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func(context.Context, ReminderEvent) error, logger *zap.Logger) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -83,7 +83,7 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 
 // consume reads messages until ctx is cancelled or an error occurs.
 // Commits each message after successful processing so Kafka tracks progress.
-func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent), logger *zap.Logger) error {
+func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent) error, logger *zap.Logger) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -136,9 +136,17 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				attribute.Int64("reminder_id", ev.ReminderID),
 			),
 		)
-		handler(msgCtx, ev)
+		handlerErr := handler(msgCtx, ev)
 		msgSpan.End()
 
+		if handlerErr != nil {
+			log.Error("reminder handler failed, skipping commit",
+				zap.Error(handlerErr),
+				zap.Int64("offset", msg.Offset),
+				zap.Int64("reminder_id", ev.ReminderID),
+			)
+			continue
+		}
 		commitMsg(ctx, r, msg, log)
 	}
 }
