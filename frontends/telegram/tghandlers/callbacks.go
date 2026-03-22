@@ -33,7 +33,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
+	go tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
 
 	userID := query.From.ID
 	if !a.authorized(userID) {
@@ -100,7 +100,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			u.State = tgstates.StateTasksView
 			u.TaskPage = 0
 		})
-		a.Core.EnsureNote(ctx, uc.ActiveDate)
+		go a.Core.EnsureNote(ctx, uc.ActiveDate)
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "note":
@@ -135,7 +135,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if ok, _ := a.Core.ToggleTask(ctx, uc.ActiveDate, idx); ok {
 			return a.showTasks(ctx, tgBot, query, userID)
 		}
-		tgBot.Request(tgbotapi.NewCallbackWithAlert(query.ID, "❌ Ошибка при переключении задачи"))
+		go tgBot.Request(tgbotapi.NewCallbackWithAlert(query.ID, "❌ Ошибка при переключении задачи"))
 
 	case "add":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })
@@ -196,8 +196,8 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 			return nil
 		}
 		date := parts[2]
+		go a.Core.EnsureNote(ctx, date)
 		a.State.SetActiveDate(ctx, userID, date)
-		a.Core.EnsureNote(ctx, date)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		text := fmt.Sprintf("✅ Выбрана дата: %s\n\n📅 Активная дата: %s\n\nВыберите действие:",
 			date, date)
@@ -372,12 +372,15 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 
 	uc, _ := a.State.GetContext(ctx, userID)
 	activeDate := uc.ActiveDate
-	a.Core.EnsureNote(ctx, activeDate)
 
 	var content string
 	var rating int
 	var hasRating bool
 	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		a.Core.EnsureNote(gCtx, activeDate)
+		return nil
+	})
 	g.Go(func() error {
 		content, _ = a.Core.GetNote(gCtx, activeDate)
 		return nil
