@@ -14,12 +14,21 @@ import (
 
 const ttl = 7 * 24 * time.Hour
 
+// StateStore is the interface used by handlers to read and write user session state.
+type StateStore interface {
+	GetContext(ctx context.Context, userID int64) (*UserContext, error)
+	UpdateContext(ctx context.Context, userID int64, updates func(*UserContext)) error
+	SetActiveDate(ctx context.Context, userID int64, date string) error
+}
+
 // StateManager manages user contexts backed by Redis.
 type StateManager struct {
 	redis               *redis.Client
 	timezoneOffsetHours int
 	dayStartHour        int
 }
+
+var _ StateStore = (*StateManager)(nil)
 
 func NewStateManager(rdb *redis.Client, tzOffset, dayStartHour int) *StateManager {
 	return &StateManager{redis: rdb, timezoneOffsetHours: tzOffset, dayStartHour: dayStartHour}

@@ -14,7 +14,7 @@ type App struct {
 	Core          clients.CoreService
 	Notifications clients.NotificationsService
 	Whisper       clients.WhisperService
-	State         *tgstates.StateManager
+	State         tgstates.StateStore
 	Logger        *zap.Logger
 }
 

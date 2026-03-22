@@ -144,55 +144,74 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 		&kb)
 }
 
+// scheduleTypeHandlers maps each schedule type to the handler that sets up the next
+// wizard step. Types not listed (e.g. "daily") fall through to changeStateToTaskConfirm.
+var scheduleTypeHandlers = map[string]func(*App, context.Context, *tgbotapi.BotAPI, *tgbotapi.CallbackQuery, int64){
+	"weekly":      (*App).handleScheduleTypeWeekly,
+	"monthly":     (*App).handleScheduleTypeMonthly,
+	"custom_days": (*App).handleScheduleTypeCustomDays,
+	"once":        (*App).handleScheduleTypeOnce,
+	"yearly":      (*App).handleScheduleTypeYearly,
+}
+
 func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, scheduleType string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	cancelKb := tgkeyboards.ReminderCancel()
-	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.ReminderDraft.ScheduleType = scheduleType
 	})
 
-	switch scheduleType {
-	case "weekly":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
-			u.State = tgstates.StateReminderCreateDay
-		})
-		replyToCallback(ctx, tgBot, query,
-			"Введите дни недели через запятую (0=Пн, 1=Вт, …, 6=Вс).\nПример: `0,2,4`",
-			&cancelKb)
-
-	case "monthly":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
-			u.State = tgstates.StateReminderCreateDay
-		})
-		replyToCallback(ctx, tgBot, query, "Введите число месяца (1–31):", &cancelKb)
-
-	case "custom_days":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
-			u.State = tgstates.StateReminderCreateInterval
-		})
-		replyToCallback(ctx, tgBot, query, "Введите интервал в днях (например `3`):", &cancelKb)
-
-	case "once", "yearly":
-		ctxName := "once"
-		promptText := "📅 Выберите дату:"
-		if scheduleType == "yearly" {
-			ctxName = "yr"
-			promptText = "📅 Выберите день года:"
-		}
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
-			u.State = tgstates.StateReminderCreateDate
-			u.ReminderCalMonth = int(now.Month())
-			u.ReminderCalYear = now.Year()
-		})
-		kb := tgkeyboards.ReminderCalendar(now.Year(), int(now.Month()), ctxName, a.Cfg.TimezoneOffsetHours)
-		replyToCallback(ctx, tgBot, query, promptText, &kb)
-
-	default: // daily
+	if h, ok := scheduleTypeHandlers[scheduleType]; ok {
+		h(a, ctx, tgBot, query, userID)
+	} else { // daily
 		a.changeStateToTaskConfirm(ctx, tgBot, query, userID)
 	}
+}
+
+func (a *App) handleScheduleTypeWeekly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	cancelKb := tgkeyboards.ReminderCancel()
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateReminderCreateDay
+	})
+	replyToCallback(ctx, tgBot, query,
+		"Введите дни недели через запятую (0=Пн, 1=Вт, …, 6=Вс).\nПример: `0,2,4`",
+		&cancelKb)
+}
+
+func (a *App) handleScheduleTypeMonthly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	cancelKb := tgkeyboards.ReminderCancel()
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateReminderCreateDay
+	})
+	replyToCallback(ctx, tgBot, query, "Введите число месяца (1–31):", &cancelKb)
+}
+
+func (a *App) handleScheduleTypeCustomDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	cancelKb := tgkeyboards.ReminderCancel()
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateReminderCreateInterval
+	})
+	replyToCallback(ctx, tgBot, query, "Введите интервал в днях (например `3`):", &cancelKb)
+}
+
+func (a *App) handleScheduleTypeOnce(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	a.startReminderDatePicker(ctx, tgBot, query, userID, "once", "📅 Выберите дату:")
+}
+
+func (a *App) handleScheduleTypeYearly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	a.startReminderDatePicker(ctx, tgBot, query, userID, "yr", "📅 Выберите день года:")
+}
+
+func (a *App) startReminderDatePicker(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, calCtx, prompt string) {
+	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateReminderCreateDate
+		u.ReminderCalMonth = int(now.Month())
+		u.ReminderCalYear = now.Year()
+	})
+	kb := tgkeyboards.ReminderCalendar(now.Year(), int(now.Month()), calCtx, a.Cfg.TimezoneOffsetHours)
+	replyToCallback(ctx, tgBot, query, prompt, &kb)
 }
 
 func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {

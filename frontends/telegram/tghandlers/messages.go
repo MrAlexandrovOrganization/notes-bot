@@ -18,6 +18,9 @@ import (
 
 type stateTextHandler func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext)
 
+// stateTextHandlers maps each UserState to its text-input handler.
+// To add a new state: define the constant in tgstates/context.go, then add an entry here.
+// States not listed fall through to handleAppendNote (default note-append behaviour).
 var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
 	tgstates.StateWaitingRating: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
 		a.handleRatingInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
