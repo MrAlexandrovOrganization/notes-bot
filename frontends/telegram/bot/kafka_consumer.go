@@ -72,6 +72,7 @@ type ReminderEvent struct {
 	ReminderID int64  `json:"reminder_id"`
 	CreateTask bool   `json:"create_task"`
 	TodayDate  string `json:"today_date"`
+	IsActive   bool   `json:"is_active"`
 }
 
 // RunKafkaConsumer reads from the reminders_due Kafka topic and invokes handler for each event.
@@ -168,6 +169,10 @@ func consume(ctx context.Context, r *kafka.Reader, store OffsetStore, handler fu
 			zap.Int64("reminder_id", ev.ReminderID),
 			zap.String("title", ev.Title),
 		)
+		if !ev.IsActive {
+			log.Info("remainder is not active")
+			continue
+		}
 
 		carrier := kafkacarrier.HeaderCarrier(msg.Headers)
 		propagatedCtx := otel.GetTextMapPropagator().Extract(ctx, &carrier)

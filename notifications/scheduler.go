@@ -261,6 +261,7 @@ type reminderEvent struct {
 	ReminderID int64  `json:"reminder_id"`
 	CreateTask bool   `json:"create_task"`
 	TodayDate  string `json:"today_date"`
+	IsActive   bool   `json:"is_active"`
 }
 
 func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
@@ -327,18 +328,16 @@ func (s *Scheduler) tick(ctx context.Context) {
 	}
 
 	// Resolve today's date once — used by all reminders that need CreateTask.
-	todayDate := ""
-	for _, r := range due {
-		if r.CreateTask {
-			todayDate = s.getTodayDateStr(ctx)
-			break
-		}
-	}
+	todayDate := s.getTodayDateStr(ctx)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, r := range due {
 		g.Go(func() error {
 			log := applog.With(gCtx, logger)
+			if !r.IsActive {
+				return nil
+			}
+
 			if r.CreateTask {
 				s.addTaskToToday(gCtx, r.Title, todayDate)
 			}
@@ -349,6 +348,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 				ReminderID: r.ID,
 				CreateTask: r.CreateTask,
 				TodayDate:  todayDate,
+				IsActive:   r.IsActive,
 			})
 
 			nextFire := ComputeNextFire(gCtx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
