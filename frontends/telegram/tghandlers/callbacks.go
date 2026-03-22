@@ -23,6 +23,13 @@ import (
 
 const notePreviewMaxChars = 3800
 
+var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.BotAPI, *tgbotapi.CallbackQuery, int64, []string) error{
+	"menu":     (*App).handleMenuAction,
+	"task":     (*App).handleTaskAction,
+	"cal":      (*App).handleCalAction,
+	"reminder": (*App).handleReminderAction,
+}
+
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 	query := update.CallbackQuery
 	if query == nil || query.Data == "" || query.From == nil {
@@ -56,16 +63,9 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	}()
 
 	var err error
-	switch action {
-	case "menu":
-		err = a.handleMenuAction(ctx, tgBot, query, userID, parts)
-	case "task":
-		err = a.handleTaskAction(ctx, tgBot, query, userID, parts)
-	case "cal":
-		err = a.handleCalAction(ctx, tgBot, query, userID, parts)
-	case "reminder":
-		err = a.handleReminderAction(ctx, tgBot, query, userID, parts)
-	default:
+	if h, ok := callbackActionHandlers[action]; ok {
+		err = h(a, ctx, tgBot, query, userID, parts)
+	} else {
 		log.Warn("unknown callback action", zap.String("action", action))
 	}
 

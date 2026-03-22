@@ -16,6 +16,32 @@ import (
 	"notes_bot/internal/telemetry"
 )
 
+type stateTextHandler func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext)
+
+var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
+	tgstates.StateWaitingRating: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
+		a.handleRatingInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
+	},
+	tgstates.StateReminderCreateTitle: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderTitleInput(ctx, tgBot, update, userID, text)
+	},
+	tgstates.StateReminderCreateTime: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
+	},
+	tgstates.StateReminderCreateDay: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
+	},
+	tgstates.StateReminderCreateInterval: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
+	},
+	tgstates.StateReminderCreateDate: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
+	},
+	tgstates.StateWaitingNewTask: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
+		a.handleAddTaskInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
+	},
+}
+
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 	if update.Message == nil || update.Message.From == nil || update.Message.Text == "" {
 		return
@@ -48,23 +74,9 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 		}
 	}()
 
-	switch uc.State {
-	case tgstates.StateWaitingRating:
-		a.handleRatingInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
-
-	case tgstates.StateReminderCreateTitle:
-		a.handleReminderTitleInput(ctx, tgBot, update, userID, text)
-
-	case tgstates.StateReminderCreateTime,
-		tgstates.StateReminderCreateDay,
-		tgstates.StateReminderCreateInterval,
-		tgstates.StateReminderCreateDate:
-		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
-
-	case tgstates.StateWaitingNewTask:
-		a.handleAddTaskInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
-
-	default:
+	if h, ok := stateTextHandlers[uc.State]; ok {
+		h(a, ctx, tgBot, update, chatID, userID, text, uc)
+	} else {
 		a.handleAppendNote(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
 	}
 }

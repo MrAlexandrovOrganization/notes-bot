@@ -159,25 +159,38 @@ func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
 	}
 }
 
+type updateHandler func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update)
+
+var commandHandlers = map[string]updateHandler{
+	"start": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleStart(ctx, tgBot, update)
+	},
+}
+
+var updateHandlers = map[string]updateHandler{
+	"command": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		if h, ok := commandHandlers[update.Message.Command()]; ok {
+			h(ctx, app, tgBot, update)
+		}
+	},
+	"voice": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleVoiceMessage(ctx, tgBot, update)
+	},
+	"text": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleTextMessage(ctx, tgBot, update)
+	},
+	"callback": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleCallback(ctx, tgBot, update)
+	},
+}
+
 func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 	// Give each update handler a generous timeout
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	switch {
-	case update.Message != nil && update.Message.IsCommand():
-		switch update.Message.Command() {
-		case "start":
-			app.HandleStart(ctx, tgBot, update)
-		}
-
-	case update.Message != nil && (update.Message.Voice != nil || update.Message.VideoNote != nil):
-		app.HandleVoiceMessage(ctx, tgBot, update)
-
-	case update.Message != nil && update.Message.Text != "":
-		app.HandleTextMessage(ctx, tgBot, update)
-
-	case update.CallbackQuery != nil:
-		app.HandleCallback(ctx, tgBot, update)
+	updateType, _ := classifyUpdate(update)
+	if h, ok := updateHandlers[updateType]; ok {
+		h(ctx, app, tgBot, update)
 	}
 }
