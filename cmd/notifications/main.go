@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -40,6 +43,25 @@ func main() {
 	}
 	defer shutdown(context.Background()) //nolint:errcheck
 
+	metricsHandler, metricsShutdown, err := telemetry.InitMetrics()
+	if err != nil {
+		logger.Fatal("failed to init metrics", zap.Error(err))
+	}
+	defer metricsShutdown()
+
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "9101"
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metricsHandler)
+		logger.Info("starting metrics server", zap.String("port", metricsPort))
+		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
+			logger.Error("metrics server stopped", zap.Error(err))
+		}
+	}()
+
 	pool, err := notifications.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		logger.Fatal("failed to connect to postgres", zap.Error(err))
@@ -48,6 +70,23 @@ func main() {
 
 	if err := notifications.EnsureSchema(ctx, pool); err != nil {
 		logger.Fatal("failed to ensure schema", zap.Error(err))
+	}
+
+	// Active reminders gauge — queried from DB on each Prometheus scrape.
+	meter := otel.GetMeterProvider().Meter("notifications")
+	_, err = meter.Int64ObservableGauge("notifications.active.reminders",
+		metric.WithDescription("Number of active reminders"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			count, err := notifications.CountActiveReminders(ctx, pool)
+			if err != nil {
+				return err
+			}
+			o.Observe(count)
+			return nil
+		}),
+	)
+	if err != nil {
+		logger.Warn("failed to register active reminders gauge", zap.Error(err))
 	}
 
 	scheduler := notifications.NewScheduler(ctx, pool, cfg)

@@ -148,6 +148,7 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			continue
 		}
 		commitMsg(ctx, r, msg, log)
+		KafkaMessagesConsumed.Add(msgCtx, 1)
 	}
 }
 

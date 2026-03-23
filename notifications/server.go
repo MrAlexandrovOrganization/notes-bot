@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -16,12 +18,26 @@ import (
 
 type NotificationsServer struct {
 	pb.UnimplementedNotificationsServiceServer
-	pool *pgxpool.Pool
-	cfg  *Config
+	pool    *pgxpool.Pool
+	cfg     *Config
+	metrics *notifMetrics
 }
 
 func NewNotificationsServer(pool *pgxpool.Pool, cfg *Config) *NotificationsServer {
-	return &NotificationsServer{pool: pool, cfg: cfg}
+	return &NotificationsServer{pool: pool, cfg: cfg, metrics: newNotifMetrics()}
+}
+
+func (s *NotificationsServer) recordRPC(ctx context.Context, method string, err *error) {
+	st := "ok"
+	if *err != nil {
+		st = "error"
+	}
+	s.metrics.rpcRequests.Add(ctx, 1,
+		metric.WithAttributes(
+			attribute.String("method", method),
+			attribute.String("status", st),
+		),
+	)
 }
 
 func reminderToProto(r *Reminder) *pb.Reminder {
@@ -38,7 +54,8 @@ func reminderToProto(r *Reminder) *pb.Reminder {
 	}
 }
 
-func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.CreateReminderRequest) (*pb.ReminderResponse, error) {
+func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.CreateReminderRequest) (resp *pb.ReminderResponse, err error) {
+	defer s.recordRPC(ctx, "CreateReminder", &err)
 	log := applog.With(ctx, logger)
 	var params map[string]any
 	if req.ScheduleParamsJson != "" {
@@ -88,7 +105,8 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 	return &pb.ReminderResponse{Success: true, Reminder: reminderToProto(r)}, nil
 }
 
-func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRemindersRequest) (*pb.ListRemindersResponse, error) {
+func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRemindersRequest) (resp *pb.ListRemindersResponse, err error) {
+	defer s.recordRPC(ctx, "ListReminders", &err)
 	log := applog.With(ctx, logger)
 	rows, err := ListReminders(ctx, s.pool, req.UserId)
 	if err != nil {
@@ -103,7 +121,8 @@ func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRem
 	return &pb.ListRemindersResponse{Reminders: reminders}, nil
 }
 
-func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.DeleteReminderRequest) (*pb.SuccessResponse, error) {
+func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.DeleteReminderRequest) (resp *pb.SuccessResponse, err error) {
+	defer s.recordRPC(ctx, "DeleteReminder", &err)
 	log := applog.With(ctx, logger)
 	ok, err := DeleteReminder(ctx, s.pool, req.ReminderId, req.UserId)
 	if err != nil {
@@ -113,7 +132,8 @@ func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.Delete
 	return &pb.SuccessResponse{Success: ok}, nil
 }
 
-func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.PostponeReminderRequest) (*pb.ReminderResponse, error) {
+func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.PostponeReminderRequest) (resp *pb.ReminderResponse, err error) {
+	defer s.recordRPC(ctx, "PostponeReminder", &err)
 	log := applog.With(ctx, logger)
 	var nextFireAt time.Time
 

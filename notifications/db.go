@@ -213,6 +213,12 @@ func SetNextFireAt(ctx context.Context, pool *pgxpool.Pool, reminderID, userID i
 	return tag.RowsAffected() > 0, nil
 }
 
+func CountActiveReminders(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var count int64
+	err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM reminders WHERE is_active = TRUE").Scan(&count)
+	return count, err
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -45,6 +47,26 @@ func main() {
 		logger.Fatal("failed to init tracer", zap.Error(err))
 	}
 	defer shutdown(context.Background()) //nolint:errcheck
+
+	metricsHandler, metricsShutdown, err := telemetry.InitMetrics()
+	if err != nil {
+		logger.Fatal("failed to init metrics", zap.Error(err))
+	}
+	defer metricsShutdown()
+	bot.InitTelegramMetrics()
+
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "9102"
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metricsHandler)
+		logger.Info("starting metrics server", zap.String("port", metricsPort))
+		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
+			logger.Error("metrics server stopped", zap.Error(err))
+		}
+	}()
 
 	// Clients
 	coreClient, err := clients.NewCoreClient(ctx, cfg.CoreGRPCHost, cfg.CoreGRPCPort)
@@ -129,7 +151,14 @@ func handleUpdateTraced(ctx context.Context, app *tghandlers.App, tgBot *tgbotap
 		),
 	)
 	defer span.End()
+
+	bot.UpdatesTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("type", updateType)))
+
+	start := time.Now()
 	handleUpdate(ctx, app, tgBot, update)
+	bot.HandlerDuration.Record(ctx, time.Since(start).Seconds(),
+		metric.WithAttributes(attribute.String("type", updateType)),
+	)
 }
 
 func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {

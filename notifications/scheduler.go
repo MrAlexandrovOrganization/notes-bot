@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -167,6 +168,7 @@ type Scheduler struct {
 	pool     *pgxpool.Pool
 	producer *kafka.Writer
 	cfg      *Config
+	metrics  *notifMetrics
 
 	mu       sync.Mutex
 	coreConn *grpc.ClientConn
@@ -187,6 +189,7 @@ func NewScheduler(ctx context.Context, pool *pgxpool.Pool, cfg *Config) *Schedul
 		pool:     pool,
 		producer: w,
 		cfg:      cfg,
+		metrics:  newNotifMetrics(),
 	}
 }
 
@@ -304,6 +307,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		s.metrics.publishErrors.Add(ctx, 1)
 		return
 	}
 	log.Info("reminder event published to kafka",
@@ -315,6 +319,9 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 func (s *Scheduler) tick(ctx context.Context) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	tickStart := time.Now()
+	defer func() { s.metrics.tickDuration.Record(ctx, time.Since(tickStart).Seconds()) }()
 
 	log := applog.With(ctx, logger)
 
@@ -356,6 +363,9 @@ func (s *Scheduler) tick(ctx context.Context) {
 				log.Error("update next fire", zap.Int64("id", r.ID), zap.Error(err))
 			}
 
+			s.metrics.remindersFired.Add(gCtx, 1,
+				metric.WithAttributes(attribute.String("schedule_type", r.ScheduleType)),
+			)
 			log.Info("fired reminder",
 				zap.Int64("id", r.ID),
 				zap.Int64("user_id", r.UserID),

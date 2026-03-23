@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,6 +38,25 @@ func main() {
 		logger.Fatal("failed to init tracer", zap.Error(err))
 	}
 	defer shutdown(context.Background()) //nolint:errcheck
+
+	metricsHandler, metricsShutdown, err := telemetry.InitMetrics()
+	if err != nil {
+		logger.Fatal("failed to init metrics", zap.Error(err))
+	}
+	defer metricsShutdown()
+
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "9100"
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metricsHandler)
+		logger.Info("starting metrics server", zap.String("port", metricsPort))
+		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
+			logger.Error("metrics server stopped", zap.Error(err))
+		}
+	}()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {

@@ -23,6 +23,7 @@ func (a *App) MakeReminderHandler(tgBot *tgbotapi.BotAPI) func(context.Context, 
 				zap.Int64("reminder_id", ev.ReminderID),
 				zap.Error(err),
 			)
+			bot.ReminderDeliveryErrors.Add(ctx, 1)
 			return err
 		}
 		a.Logger.Info("sent reminder notification",
