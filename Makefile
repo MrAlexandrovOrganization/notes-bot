@@ -8,11 +8,15 @@ install:
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
 # All Go unit test packages (no integration)
-GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/...
+GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... \
+               ./frontends/telegram/tghandlers/... \
+               ./frontends/telegram/tgkeyboards/... \
+               ./frontends/telegram/tgstates/...
 
 # All packages to instrument for coverage
-GO_COVERPKGS_UNIT = notes_bot/core,notes_bot/core/features,notes_bot/notifications
-GO_COVERPKGS_ALL  = notes_bot/core,notes_bot/core/features,notes_bot/notifications
+TELEGRAM_COVERPKGS = notes_bot/frontends/telegram/tghandlers,notes_bot/frontends/telegram/tgkeyboards,notes_bot/frontends/telegram/tgstates
+GO_COVERPKGS_UNIT = notes_bot/core,notes_bot/core/features,notes_bot/notifications,$(TELEGRAM_COVERPKGS)
+GO_COVERPKGS_ALL  = notes_bot/core,notes_bot/core/features,notes_bot/notifications,$(TELEGRAM_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)
@@ -47,7 +51,10 @@ test-integration:
 test-notifications:
 	go test ./notifications/... -v
 
-test: test-go test-integration
+test:
+	go test -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
+	go tool cover -func=coverage.out
+	@rm -f coverage.out
 
 build-notifications:
 	$(DOCKER_COMPOSE) build notifications
