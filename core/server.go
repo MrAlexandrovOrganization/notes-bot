@@ -53,6 +53,9 @@ func NewDefaultNotesServer() *NotesServer {
 }
 
 func (s *NotesServer) recordRPC(ctx context.Context, method string, err *error) {
+	if s.rpcRequests == nil {
+		return
+	}
 	st := "ok"
 	if *err != nil {
 		st = "error"
@@ -92,7 +95,9 @@ func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (resp
 	if err := s.notes.EnsureNote(ctx, req.Date); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create note: %v", err)
 	}
-	s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "ensure")))
+	if s.noteFileOps != nil {
+		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "ensure")))
+	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
 
@@ -109,7 +114,9 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *p
 	if content == "" {
 		return nil, status.Errorf(codes.NotFound, "note not found for date: %s", req.Date)
 	}
-	s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "get")))
+	if s.noteFileOps != nil {
+		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "get")))
+	}
 	return &pb.NoteResponse{Content: content}, nil
 }
 
@@ -139,7 +146,9 @@ func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequ
 	if err := s.ratings.UpdateRating(ctx, req.Date, int(req.Rating)); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update rating: %v", err)
 	}
-	s.ratingUpdates.Add(ctx, 1)
+	if s.ratingUpdates != nil {
+		s.ratingUpdates.Add(ctx, 1)
+	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
 
@@ -201,6 +210,8 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 	if err := s.notes.AppendToNote(ctx, req.Date, req.Text); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to append to note: %v", err)
 	}
-	s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "append")))
+	if s.noteFileOps != nil {
+		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "append")))
+	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
