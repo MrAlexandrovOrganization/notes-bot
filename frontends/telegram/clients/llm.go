@@ -81,22 +81,31 @@ var llmSchema = map[string]any{
 		"interval_days": map[string]any{"type": "integer", "minimum": 1},
 		"create_task":   map[string]any{"type": "boolean"},
 	},
-	"required": []string{"title", "schedule_type", "hour", "minute", "create_task"},
+	"required": []string{"title", "schedule_type", "hour", "minute", "days", "day_of_month", "interval_days", "create_task"},
 }
 
-const llmSystemPrompt = `Ты помощник для разбора напоминаний. Из текста пользователя извлеки параметры напоминания и верни JSON.
+const llmSystemPrompt = `Ты помощник для разбора напоминаний. Из текста пользователя извлеки параметры и верни JSON.
 
-Правила:
-- title: короткое название напоминания (без слов "напоминай", "каждый" и т.п.)
-- schedule_type: тип расписания:
-  - "daily" — каждый день
-  - "weekly" — по дням недели (заполни days: 0=Пн, 1=Вт, 2=Ср, 3=Чт, 4=Пт, 5=Сб, 6=Вс)
-  - "monthly" — каждый месяц (заполни day_of_month: 1–31)
-  - "yearly" — раз в год (заполни month и day)
-  - "once" — один раз (заполни date в формате YYYY-MM-DD)
-  - "custom_days" — каждые N дней (заполни interval_days)
-- hour, minute: время срабатывания в 24-часовом формате
-- create_task: true если явно просят создать задачу
+Поля:
+- title: короткое название (без слов "напоминай", "каждый" и т.п.)
+- schedule_type: ОДНО из значений: "daily", "weekly", "monthly", "yearly", "once", "custom_days"
+- hour, minute: время в 24-часовом формате (целые числа)
+- days: ОБЯЗАТЕЛЬНО для weekly — массив номеров дней [0=Пн, 1=Вт, 2=Ср, 3=Чт, 4=Пт, 5=Сб, 6=Вс]. Для остальных типов — пустой массив [].
+- day_of_month: ОБЯЗАТЕЛЬНО для monthly — число месяца (1–31). Для остальных — 0.
+- interval_days: ОБЯЗАТЕЛЬНО для custom_days — интервал в днях. Для остальных — 0.
+- month, day: для yearly — месяц (1–12) и число (1–31).
+- date: для once — дата в формате YYYY-MM-DD.
+- create_task: true только если явно просят создать задачу.
+
+Примеры:
+- "каждый понедельник в 9" → schedule_type="weekly", days=[0], hour=9, minute=0
+- "каждый пн и пт в 8:30" → schedule_type="weekly", days=[0,4], hour=8, minute=30
+- "по будням в 8 утра" → schedule_type="weekly", days=[0,1,2,3,4], hour=8, minute=0
+- "в рабочие дни в 9:00" → schedule_type="weekly", days=[0,1,2,3,4], hour=9, minute=0
+- "по выходным в 10" → schedule_type="weekly", days=[5,6], hour=10, minute=0
+- "каждую субботу и воскресенье в 11" → schedule_type="weekly", days=[5,6], hour=11, minute=0
+- "25 числа каждого месяца в 10" → schedule_type="monthly", day_of_month=25, hour=10, minute=0
+- "каждые 3 дня в 7 утра" → schedule_type="custom_days", interval_days=3, hour=7, minute=0
 
 Сегодняшняя дата: %s`
 
