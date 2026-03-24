@@ -72,13 +72,13 @@ clean:
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
 up:
-	$(DOCKER_COMPOSE) down
-	$(DOCKER_COMPOSE) build
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up --build -d
 	$(DOCKER_COMPOSE) logs -f
 
+up-ci:
+	$(DOCKER_COMPOSE) up --build -d
+
 deploy:
-	$(DOCKER_COMPOSE) down
 	$(DOCKER_COMPOSE) build --no-cache
 	$(DOCKER_COMPOSE) up -d
 
@@ -89,16 +89,14 @@ logs:
 	$(DOCKER_COMPOSE) logs -f
 
 restart:
-	$(DOCKER_COMPOSE) down
-	$(DOCKER_COMPOSE) build --no-cache
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up --build --force-recreate -d
 	$(DOCKER_COMPOSE) logs -f
 
 build-core:
 	$(DOCKER_COMPOSE) build core
 
 docker-clean:
-	$(DOCKER_COMPOSE) down --rmi all --volumes --remove-orphans
+	$(DOCKER_COMPOSE) down --rmi all --remove-orphans
 	docker system prune -f
 
 proto:
@@ -109,4 +107,4 @@ proto:
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up deploy down logs restart docker-clean proto format
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto format
