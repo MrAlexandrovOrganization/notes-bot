@@ -113,8 +113,10 @@ func formatNLReminderPreview(r *clients.LLMReminderResult) string {
 	case "once":
 		if t, err := time.Parse("2006-01-02", r.Date); err == nil {
 			schedule = fmt.Sprintf("один раз, %d %s %d", t.Day(), monthNamesRu[int(t.Month())], t.Year())
-		} else {
+		} else if r.Date != "" {
 			schedule = fmt.Sprintf("один раз, %s", r.Date)
+		} else {
+			schedule = "один раз, ⚠️ дата не распознана"
 		}
 	case "custom_days":
 		schedule = fmt.Sprintf("каждые %d %s", r.IntervalDays, pluralDays(r.IntervalDays))

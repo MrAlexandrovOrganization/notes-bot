@@ -81,7 +81,7 @@ var llmSchema = map[string]any{
 		"interval_days": map[string]any{"type": "integer", "minimum": 1},
 		"create_task":   map[string]any{"type": "boolean"},
 	},
-	"required": []string{"title", "schedule_type", "hour", "minute", "days", "day_of_month", "interval_days", "create_task"},
+	"required": []string{"title", "schedule_type", "hour", "minute", "days", "day_of_month", "interval_days", "date", "create_task"},
 }
 
 const llmSystemPrompt = `Сегодняшняя дата и время: %s
