@@ -262,6 +262,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - LLM_HOST=ollama
+      - LLM_PORT=11434
+      - LLM_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
     depends_on:
       redis:
         condition: service_healthy

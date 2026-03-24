@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes_bot/frontends/telegram/clients"
+	"notes_bot/frontends/telegram/tgstates"
 	"notes_bot/internal/applog"
 	"notes_bot/internal/telemetry"
 )
@@ -84,6 +85,13 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
 		log.Error("get context", zap.Error(err))
+		return
+	}
+
+	// If user is in NL reminder creation state, route to the NL handler instead.
+	if uc.State == tgstates.StateReminderCreateNL {
+		tgBot.Request(tgbotapi.NewDeleteMessage(chatID, statusMsg.MessageID)) //nolint:errcheck
+		a.handleReminderNLInput(ctx, tgBot, chatID, userID, text)
 		return
 	}
 

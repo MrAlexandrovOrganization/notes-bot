@@ -20,6 +20,9 @@ type Config struct {
 	KafkaBootstrapServers string
 	RedisHost             string
 	RedisPort             string
+	LLMHost               string
+	LLMPort               string
+	LLMModel              string
 }
 
 func Load() (*Config, error) {
@@ -51,6 +54,9 @@ func Load() (*Config, error) {
 		KafkaBootstrapServers: envStr("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
 		RedisHost:             envStr("REDIS_HOST", "localhost"),
 		RedisPort:             envStr("REDIS_PORT", "6379"),
+		LLMHost:               envStr("LLM_HOST", "ollama"),
+		LLMPort:               envStr("LLM_PORT", "11434"),
+		LLMModel:              envStr("LLM_MODEL", "qwen2.5:1.5b"),
 	}, nil
 }
 

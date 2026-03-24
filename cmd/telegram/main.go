@@ -98,11 +98,14 @@ func main() {
 
 	stateManager := tgstates.NewStateManager(rdb, cfg.TimezoneOffsetHours, cfg.DayStartHour)
 
+	llmClient := clients.NewLLMClient(cfg.LLMHost, cfg.LLMPort, cfg.LLMModel)
+
 	app := &tghandlers.App{
 		Cfg:           cfg,
 		Core:          coreClient,
 		Notifications: notifClient,
 		Whisper:       whisperClient,
+		LLM:           llmClient,
 		State:         stateManager,
 		Logger:        logger,
 	}

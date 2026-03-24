@@ -43,6 +43,9 @@ var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
 	tgstates.StateWaitingNewTask: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
 		a.handleAddTaskInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
 	},
+	tgstates.StateReminderCreateNL: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleReminderNLInput(ctx, tgBot, chatID, userID, text)
+	},
 }
 
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {

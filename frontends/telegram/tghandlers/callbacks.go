@@ -238,6 +238,12 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	case "create":
 		a.HandleReminderCreate(ctx, tgBot, query, userID)
 
+	case "create_nl":
+		a.HandleReminderCreateNL(ctx, tgBot, query, userID)
+
+	case "nl_confirm":
+		a.HandleReminderNLConfirm(ctx, tgBot, query, userID)
+
 	case "page":
 		if len(parts) >= 3 {
 			page, _ := strconv.Atoi(parts[2])

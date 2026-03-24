@@ -18,6 +18,7 @@ const (
 	StateReminderCreateDate         UserState = "reminder_create_date"
 	StateReminderPostponeDate       UserState = "reminder_postpone_date"
 	StateReminderCreateTaskConfirm  UserState = "reminder_create_task_confirm"
+	StateReminderCreateNL           UserState = "reminder_create_nl"
 )
 
 // UserContext stores all session data for a user.

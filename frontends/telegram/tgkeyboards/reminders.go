@@ -74,12 +74,24 @@ func RemindersList(reminders []*clients.ReminderInfo, page int) tgbotapi.InlineK
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("➕ Создать", "reminder:create"),
+		tgbotapi.NewInlineKeyboardButtonData("✍️ Текстом", "reminder:create_nl"),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "reminder:back"),
 	))
 
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+// NLReminderConfirm shows after the LLM parses a natural-language reminder.
+func NLReminderConfirm() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Создать", "reminder:nl_confirm"),
+			tgbotapi.NewInlineKeyboardButtonData("✏️ Вручную", "reminder:create"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "reminder:cancel"),
+		),
+	)
 }
 
 func TaskConfirm() tgbotapi.InlineKeyboardMarkup {
