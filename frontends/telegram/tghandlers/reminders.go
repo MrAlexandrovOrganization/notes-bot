@@ -688,11 +688,11 @@ func (a *App) handleReminderNLInput(ctx context.Context, tgBot *tgbotapi.BotAPI,
 	log := applog.With(ctx, a.Logger)
 
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
-	currentDate := now.Format("2006-01-02")
+	currentDateTime := now.Format("2006-01-02 15:04")
 
 	processingMsg, _ := tgBot.Send(tgbotapi.NewMessage(chatID, "🧠 Обрабатываю..."))
 
-	result, err := a.LLM.ParseReminder(ctx, text, currentDate)
+	result, err := a.LLM.ParseReminder(ctx, text, currentDateTime)
 	if err != nil {
 		log.Error("LLM parse reminder", zap.Error(err))
 		cancelKb := tgkeyboards.ReminderCancel()
