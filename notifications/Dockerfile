@@ -12,13 +12,14 @@ COPY cmd/ ./cmd/
 
 RUN go build -o /notifications ./cmd/notifications/
 
-RUN ARCH=$(uname -m) && \
+RUN apk add --no-cache curl && \
+    ARCH=$(uname -m) && \
     case "$ARCH" in \
-        x86_64)  PROBE_ARCH=amd64 ;; \
-        aarch64) PROBE_ARCH=arm64 ;; \
+        x86_64)        PROBE_ARCH=amd64 ;; \
+        aarch64|arm64) PROBE_ARCH=arm64 ;; \
         *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
     esac && \
-    wget -qO /grpc_health_probe \
+    curl -fsSL -o /grpc_health_probe \
         "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.28/grpc_health_probe-linux-${PROBE_ARCH}" && \
     chmod +x /grpc_health_probe
 
