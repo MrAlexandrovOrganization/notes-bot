@@ -74,6 +74,24 @@ func calMonthYear(uc *tgstates.UserContext, tzOffset int) (int, int) {
 
 var dayNamesRu = []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
 
+var monthNamesRu = map[int]string{
+	1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+	5: "мая", 6: "июня", 7: "июля", 8: "августа",
+	9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+func pluralDays(n int) string {
+	mod10, mod100 := n%10, n%100
+	switch {
+	case mod10 == 1 && mod100 != 11:
+		return "день"
+	case mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20):
+		return "дня"
+	default:
+		return "дней"
+	}
+}
+
 // formatNLReminderPreview builds a human-readable summary of the LLM-parsed reminder.
 func formatNLReminderPreview(r *clients.LLMReminderResult) string {
 	schedule := scheduleLabel(r.ScheduleType)
@@ -93,9 +111,13 @@ func formatNLReminderPreview(r *clients.LLMReminderResult) string {
 	case "yearly":
 		schedule = fmt.Sprintf("каждый год %d.%02d", r.Day, r.Month)
 	case "once":
-		schedule = fmt.Sprintf("один раз %s", r.Date)
+		if t, err := time.Parse("2006-01-02", r.Date); err == nil {
+			schedule = fmt.Sprintf("один раз, %d %s %d", t.Day(), monthNamesRu[int(t.Month())], t.Year())
+		} else {
+			schedule = fmt.Sprintf("один раз, %s", r.Date)
+		}
 	case "custom_days":
-		schedule = fmt.Sprintf("каждые %d дней", r.IntervalDays)
+		schedule = fmt.Sprintf("каждые %d %s", r.IntervalDays, pluralDays(r.IntervalDays))
 	}
 
 	taskNote := "нет"
