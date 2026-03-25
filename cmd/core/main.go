@@ -67,7 +67,8 @@ func main() {
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 
-	pb.RegisterNotesServiceServer(grpcServer, core.NewDefaultNotesServer())
+	notesServer := core.NewDefaultNotesServer()
+	pb.RegisterNotesServiceServer(grpcServer, notesServer)
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
@@ -79,6 +80,8 @@ func main() {
 			logger.Error("server stopped", zap.Error(err))
 		}
 	}()
+
+	go notesServer.LoadHistoricalRatings(ctx)
 
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")

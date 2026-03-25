@@ -2,10 +2,13 @@ package core
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"golang.org/x/sync/errgroup"
 
 	"notes_bot/internal/telemetry"
 	pb "notes_bot/proto/notes"
@@ -24,6 +27,7 @@ type NotesServer struct {
 	rpcRequests   metric.Int64Counter
 	noteFileOps   metric.Int64Counter
 	ratingUpdates metric.Int64Counter
+	ratingValue   metric.Int64Gauge
 }
 
 func NewNotesServer(cal CalendarStore, notes NoteStore, ratings RatingStore, tasks TaskStore) *NotesServer {
@@ -37,6 +41,9 @@ func NewNotesServer(cal CalendarStore, notes NoteStore, ratings RatingStore, tas
 	ratingUpdates, _ := meter.Int64Counter("core.rating.updates",
 		metric.WithDescription("Total rating updates"),
 	)
+	ratingValue, _ := meter.Int64Gauge("core.rating.value",
+		metric.WithDescription("Last recorded day rating (0-10)"),
+	)
 	return &NotesServer{
 		calendar:      cal,
 		notes:         notes,
@@ -45,6 +52,7 @@ func NewNotesServer(cal CalendarStore, notes NoteStore, ratings RatingStore, tas
 		rpcRequests:   rpcRequests,
 		noteFileOps:   noteFileOps,
 		ratingUpdates: ratingUpdates,
+		ratingValue:   ratingValue,
 	}
 }
 
@@ -149,7 +157,52 @@ func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequ
 	if s.ratingUpdates != nil {
 		s.ratingUpdates.Add(ctx, 1)
 	}
+	if s.ratingValue != nil {
+		s.ratingValue.Record(ctx, int64(req.Rating), metric.WithAttributes(attribute.String("date", toISODate(req.Date))))
+	}
 	return &pb.SuccessResponse{Success: true}, nil
+}
+
+// toISODate converts "DD-Mmm-YYYY" to "YYYY-MM-DD" for correct chronological sorting in Grafana.
+// Returns the original string if parsing fails.
+func toISODate(date string) string {
+	t, err := time.Parse("02-Jan-2006", date)
+	if err != nil {
+		return date
+	}
+	return t.Format("2006-01-02")
+}
+
+// LoadHistoricalRatings scans all existing notes and records their ratings as metrics.
+// Should be called once after server startup.
+func (s *NotesServer) LoadHistoricalRatings(ctx context.Context) {
+	if s.ratingValue == nil {
+		return
+	}
+	dates, err := s.calendar.GetExistingDates(ctx)
+	if err != nil {
+		return
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+
+	for _, date := range dates {
+		g.Go(func() error {
+			content, err := s.notes.ReadNote(gctx, date)
+			if err != nil || content == "" {
+				return nil
+			}
+			rating := s.ratings.GetRating(gctx, content)
+			if rating == nil {
+				return nil
+			}
+			s.ratingValue.Record(gctx, int64(*rating), metric.WithAttributes(attribute.String("date", toISODate(date))))
+			return nil
+		})
+	}
+
+	g.Wait() //nolint:errcheck
 }
 
 func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *pb.TasksResponse, err error) {
