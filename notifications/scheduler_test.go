@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -146,4 +147,90 @@ func TestParamIntSlice_Defaults(t *testing.T) {
 	assert.Equal(t, []int{1, 3, 5}, paramIntSlice(context.Background(), map[string]any{
 		"days": []any{float64(1), float64(3), float64(5)},
 	}, "days", nil))
+}
+
+// --- paramInt edge cases ---
+
+func TestParamInt_Int64Type(t *testing.T) {
+	assert.Equal(t, 5, paramInt(map[string]any{"hour": int64(5)}, "hour", 9))
+}
+
+func TestParamInt_JsonNumber(t *testing.T) {
+	assert.Equal(t, 7, paramInt(map[string]any{"hour": json.Number("7")}, "hour", 9))
+}
+
+func TestParamInt_UnknownType_ReturnsDefault(t *testing.T) {
+	assert.Equal(t, 9, paramInt(map[string]any{"hour": "nine"}, "hour", 9))
+}
+
+func TestParamInt_InvalidJsonNumber_ReturnsDefault(t *testing.T) {
+	assert.Equal(t, 9, paramInt(map[string]any{"hour": json.Number("not-a-number")}, "hour", 9))
+}
+
+// --- paramIntSlice with int type ---
+
+func TestParamIntSlice_IntType(t *testing.T) {
+	result := paramIntSlice(context.Background(), map[string]any{
+		"days": []any{1, 3, 5},
+	}, "days", nil)
+	assert.Equal(t, []int{1, 3, 5}, result)
+}
+
+func TestParamIntSlice_NotSlice_ReturnsDefault(t *testing.T) {
+	assert.Equal(t, []int{0}, paramIntSlice(context.Background(), map[string]any{
+		"days": "monday",
+	}, "days", []int{0}))
+}
+
+// --- safeDate ---
+
+func TestSafeDate_DayOverflow(t *testing.T) {
+	result := safeDate(2025, time.February, 30, 9, 0, time.UTC)
+	assert.Nil(t, result, "Feb has at most 28/29 days")
+}
+
+func TestSafeDate_ValidDate(t *testing.T) {
+	result := safeDate(2025, time.March, 31, 9, 0, time.UTC)
+	assert.NotNil(t, result)
+}
+
+// --- Monthly: day doesn't exist in next month (returns nil) ---
+
+func TestComputeNextFire_Monthly_NextMonthHasNoSuchDay(t *testing.T) {
+	// After Jan 31 13:00 Moscow, day_of_month=31.
+	// Current month Jan 31 09:00 already passed → advance to Feb.
+	// Feb has no day 31 → safeDate returns nil → ComputeNextFire returns nil.
+	after := utc("2025-01-31 10:00") // 13:00 Moscow
+	params := map[string]any{"day_of_month": 31, "hour": 9, "minute": 0}
+	got := ComputeNextFire(context.Background(), "monthly", params, after, tzMoscow)
+	assert.Nil(t, got)
+}
+
+func TestComputeNextFire_Monthly_CurrentMonthNoSuchDay(t *testing.T) {
+	// Feb 15, day_of_month=31 → Feb has no 31 → advance to March 31.
+	after := utc("2025-02-15 10:00") // 13:00 Moscow
+	params := map[string]any{"day_of_month": 31, "hour": 9, "minute": 0}
+	got := ComputeNextFire(context.Background(), "monthly", params, after, tzMoscow)
+	require.NotNil(t, got)
+	want := utc("2025-03-31 06:00") // 09:00 Moscow
+	assert.Equal(t, want, *got)
+}
+
+// --- Weekly: no matching days (returns nil) ---
+
+func TestComputeNextFire_Weekly_EmptyDays(t *testing.T) {
+	after := utc("2025-11-09 10:00")
+	params := map[string]any{"days": []any{}, "hour": 9, "minute": 0}
+	got := ComputeNextFire(context.Background(), "weekly", params, after, tzMoscow)
+	assert.Nil(t, got)
+}
+
+// --- Yearly: invalid date (returns nil) ---
+
+func TestComputeNextFire_Yearly_InvalidDate(t *testing.T) {
+	// Feb 31 doesn't exist any year → nil.
+	after := utc("2025-11-09 10:00")
+	params := map[string]any{"month": 2, "day": 31, "hour": 9, "minute": 0}
+	got := ComputeNextFire(context.Background(), "yearly", params, after, tzMoscow)
+	assert.Nil(t, got)
 }

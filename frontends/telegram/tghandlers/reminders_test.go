@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"notes_bot/frontends/telegram/clients"
+	"notes_bot/frontends/telegram/tgstates"
 )
 
 // ── scheduleLabel ──────────────────────────────────────────────────────────
@@ -94,4 +95,46 @@ func TestReminderListText_SecondPage(t *testing.T) {
 	assert.Contains(t, text, "Last")
 	assert.NotContains(t, text, "• A")
 	assert.NotContains(t, text, "• E")
+}
+
+// --- pluralDays ---
+
+func TestPluralDays_One(t *testing.T) {
+	assert.Equal(t, "день", pluralDays(1))
+	assert.Equal(t, "день", pluralDays(21))
+	assert.Equal(t, "день", pluralDays(31))
+	assert.Equal(t, "день", pluralDays(101))
+}
+
+func TestPluralDays_Few(t *testing.T) {
+	assert.Equal(t, "дня", pluralDays(2))
+	assert.Equal(t, "дня", pluralDays(3))
+	assert.Equal(t, "дня", pluralDays(4))
+	assert.Equal(t, "дня", pluralDays(22))
+	assert.Equal(t, "дня", pluralDays(23))
+}
+
+func TestPluralDays_Many(t *testing.T) {
+	assert.Equal(t, "дней", pluralDays(5))
+	assert.Equal(t, "дней", pluralDays(11)) // 11 — special case, not "день"
+	assert.Equal(t, "дней", pluralDays(12)) // 12 — special case, not "дня"
+	assert.Equal(t, "дней", pluralDays(20))
+	assert.Equal(t, "дней", pluralDays(100))
+}
+
+// --- calMonthYear ---
+
+func TestCalMonthYear_ZeroValues_UsesCurrentTime(t *testing.T) {
+	uc := &tgstates.UserContext{} // month=0, year=0
+	month, year := calMonthYear(uc, 3)
+	assert.Greater(t, month, 0)
+	assert.LessOrEqual(t, month, 12)
+	assert.Greater(t, year, 2000)
+}
+
+func TestCalMonthYear_WithValues(t *testing.T) {
+	uc := &tgstates.UserContext{ReminderCalMonth: 6, ReminderCalYear: 2026}
+	month, year := calMonthYear(uc, 3)
+	assert.Equal(t, 6, month)
+	assert.Equal(t, 2026, year)
 }

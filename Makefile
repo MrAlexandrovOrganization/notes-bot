@@ -42,8 +42,11 @@ cover-html:
 	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
-	go tool cover -html=combined.out
+	@mkdir -p htmlcov
+	go tool cover -html=combined.out -o htmlcov/go_coverage.html
 	@rm -f unit.out integration.out combined.out
+	@echo "Coverage report saved to htmlcov/go_coverage.html"
+	open htmlcov/go_coverage.html
 
 test-integration:
 	go test ./integration/... -v

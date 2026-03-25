@@ -408,3 +408,65 @@ func TestServer_AppendToNote_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
+
+// --- toISODate ---
+
+func TestToISODate_ValidDates(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"01-Mar-2026", "2026-03-01"},
+		{"09-Nov-2025", "2025-11-09"},
+		{"31-Dec-1999", "1999-12-31"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, toISODate(tc.in), "input: %s", tc.in)
+	}
+}
+
+func TestToISODate_InvalidDate(t *testing.T) {
+	assert.Equal(t, "not-a-date", toISODate("not-a-date"))
+	assert.Equal(t, "", toISODate(""))
+}
+
+// --- LoadHistoricalRatings ---
+
+func TestServer_LoadHistoricalRatings_NilGauge_ReturnsEarly(t *testing.T) {
+	// newServer leaves ratingValue as nil → function should return without calling GetExistingDates
+	called := false
+	srv := newServer(&mockCalendarStore{
+		getExistingDatesFn: func(ctx context.Context) ([]string, error) {
+			called = true
+			return nil, nil
+		},
+	}, nil, nil, nil)
+
+	srv.LoadHistoricalRatings(context.Background())
+	assert.False(t, called, "should not call GetExistingDates when ratingValue is nil")
+}
+
+// --- GetTasks error path ---
+
+func TestServer_GetTasks_EmptyWhenReadError(t *testing.T) {
+	srv := newServer(nil, &mockNoteStore{
+		readNoteFn: func(ctx context.Context, date string) (string, error) {
+			return "", errors.New("io error")
+		},
+	}, nil, nil)
+
+	resp, err := srv.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Tasks)
+}
+
+// --- GetRating error path ---
+
+func TestServer_GetRating_ReadError(t *testing.T) {
+	srv := newServer(nil, &mockNoteStore{
+		readNoteFn: func(ctx context.Context, date string) (string, error) {
+			return "", errors.New("io error")
+		},
+	}, nil, nil)
+
+	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	require.NoError(t, err)
+	assert.False(t, resp.HasRating)
+}
