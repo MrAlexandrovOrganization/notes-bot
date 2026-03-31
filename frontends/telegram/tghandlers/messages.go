@@ -77,6 +77,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("panic in text handler", zap.Any("recover", r), zap.String("stack", string(debug.Stack())))
+			sendText(ctx, tgBot, chatID, "❌ Произошла внутренняя ошибка.", nil, true)
 		}
 	}()
 

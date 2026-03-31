@@ -59,6 +59,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("panic in callback handler", zap.Any("recover", r), zap.String("data", query.Data), zap.String("stack", string(debug.Stack())))
+			replyToCallback(ctx, tgBot, query, "❌ Произошла внутренняя ошибка.", nil)
 		}
 	}()
 
@@ -95,7 +96,10 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		return replyToCallback(ctx, tgBot, query, "📊 Введите оценку дня (0-10):", nil)
 
 	case "tasks":
-		uc, _ := a.State.GetContext(ctx, userID)
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateTasksView
 			u.TaskPage = 0
@@ -130,8 +134,14 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if len(parts) < 3 {
 			return nil
 		}
-		idx, _ := strconv.Atoi(parts[2])
-		uc, _ := a.State.GetContext(ctx, userID)
+		idx, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("parse task index: %w", err)
+		}
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
 		if ok, _ := a.Core.ToggleTask(ctx, uc.ActiveDate, idx); ok {
 			return a.showTasks(ctx, tgBot, query, userID)
 		}
@@ -174,7 +184,10 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 
 	switch parts[1] {
 	case "prev":
-		uc, _ := a.State.GetContext(ctx, userID)
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
 		month, year := stepMonth(uc.CalendarMonth, uc.CalendarYear, -1)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = month
@@ -183,7 +196,10 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		return a.showCalendar(ctx, tgBot, query, userID)
 
 	case "next":
-		uc, _ := a.State.GetContext(ctx, userID)
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
 		month, year := stepMonth(uc.CalendarMonth, uc.CalendarYear, 1)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = month
@@ -205,7 +221,10 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		return replyToCallback(ctx, tgBot, query, text, &kb)
 
 	case "today":
-		todayDate, _ := a.Core.GetTodayDate(ctx)
+		todayDate, err := a.Core.GetTodayDate(ctx)
+		if err != nil {
+			return fmt.Errorf("get today date: %w", err)
+		}
 		a.State.SetActiveDate(ctx, userID, todayDate)
 		now := time.Now()
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -337,7 +356,10 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get context: %w", err)
+	}
 	text := fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate)
 	kb := a.getMainMenuKeyboard(ctx)
 	return replyToCallback(ctx, tgBot, query, text, &kb)
@@ -347,8 +369,14 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	uc, _ := a.State.GetContext(ctx, userID)
-	tasks, _ := a.Core.GetTasks(ctx, uc.ActiveDate)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get context: %w", err)
+	}
+	tasks, err := a.Core.GetTasks(ctx, uc.ActiveDate)
+	if err != nil {
+		return fmt.Errorf("get tasks: %w", err)
+	}
 	kb := tgkeyboards.Tasks(tasks, uc.TaskPage)
 	text := fmt.Sprintf("✅ Задачи на %s:\n\nВсего задач: %d", uc.ActiveDate, len(tasks))
 	if len(tasks) == 0 {
@@ -361,8 +389,14 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	uc, _ := a.State.GetContext(ctx, userID)
-	existingDatesList, _ := a.Core.GetExistingDates(ctx)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get context: %w", err)
+	}
+	existingDatesList, err := a.Core.GetExistingDates(ctx)
+	if err != nil {
+		return fmt.Errorf("get existing dates: %w", err)
+	}
 	existingDates := make(map[string]bool, len(existingDatesList))
 	for _, d := range existingDatesList {
 		existingDates[d] = true
@@ -376,7 +410,10 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get context: %w", err)
+	}
 	activeDate := uc.ActiveDate
 
 	var content string

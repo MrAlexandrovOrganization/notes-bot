@@ -180,14 +180,13 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 		return err
 	}
 	newContent, ok := features.UpdateRatingImpl(ctx, string(data), rating)
-	if ok {
-		if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
-			return err
-		}
-		zap.L().Info("successfully updated rating", zap.Int("rating", rating), zap.String("path", filePath))
-	} else {
-		zap.L().Warn("failed to update rating", zap.Int("rating", rating), zap.String("path", filePath))
+	if !ok {
+		return fmt.Errorf("failed to update rating in file %s", filePath)
 	}
+	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+		return err
+	}
+	zap.L().Info("successfully updated rating", zap.Int("rating", rating), zap.String("path", filePath))
 	return nil
 }
 

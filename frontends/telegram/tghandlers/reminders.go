@@ -138,7 +138,12 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка.", nil)
+		return
+	}
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
@@ -151,6 +156,7 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 			return
 		}
 		log.Error("list reminders", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Ошибка при загрузке напоминаний.", nil)
 		return
 	}
 
@@ -163,11 +169,14 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, page int) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+	log := applog.With(ctx, a.Logger)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.ReminderListPage = page
 	})
 	reminders, err := a.Notifications.ListReminders(ctx, userID)
 	if err != nil {
+		log.Error("list reminders", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Ошибка при загрузке напоминаний.", nil)
 		return
 	}
 	kb := tgkeyboards.RemindersList(reminders, page)
@@ -307,7 +316,13 @@ func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.Bot
 func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	uc, _ := a.State.GetContext(ctx, userID)
+	log := applog.With(ctx, a.Logger)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, "❌ Произошла ошибка.", nil)
+		return
+	}
 	cancelKb := tgkeyboards.ReminderCancel()
 
 	switch uc.State {
@@ -375,7 +390,12 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, "❌ Произошла ошибка.", nil)
+		return
+	}
 	draft := uc.ReminderDraft
 
 	title := draft.Title
@@ -441,7 +461,12 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		applog.With(ctx, a.Logger).Error("get context", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка.", nil)
+		return
+	}
 	month, year := calMonthYear(uc, a.Cfg.TimezoneOffsetHours)
 	month, year = stepMonth(month, year, -1)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -455,7 +480,12 @@ func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI,
 func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		applog.With(ctx, a.Logger).Error("get context", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка.", nil)
+		return
+	}
 	month, year := calMonthYear(uc, a.Cfg.TimezoneOffsetHours)
 	month, year = stepMonth(month, year, 1)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
@@ -483,10 +513,19 @@ func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAP
 	cancelKb := tgkeyboards.ReminderCancel()
 
 	if contextName == "pp" {
-		uc, _ := a.State.GetContext(ctx, userID)
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			applog.With(ctx, a.Logger).Error("get context", zap.Error(err))
+			replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка.", nil)
+			return
+		}
 		reminderID := uc.PendingPostponeReminderID
 		if reminderID != 0 {
-			a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, dateStr, 0)
+			if _, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, dateStr, 0); err != nil {
+				applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
+				replyToCallback(ctx, tgBot, query, "❌ Ошибка при переносе напоминания.", nil)
+				return
+			}
 		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateIdle
@@ -529,7 +568,11 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	a.Notifications.DeleteReminder(ctx, reminderID, userID)
+	if _, err := a.Notifications.DeleteReminder(ctx, reminderID, userID); err != nil {
+		log.Error("delete reminder", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Ошибка при удалении напоминания.", nil)
+		return
+	}
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
@@ -586,14 +629,24 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 func (a *App) HandleReminderPostponeDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, days, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(days), "", 0)
+	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(days), "", 0)
+	if err != nil {
+		applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Ошибка при переносе напоминания.", nil)
+		return
+	}
 	a.sendPostponeResult(ctx, tgBot, query, result, days, "д", userID, reminderID)
 }
 
 func (a *App) HandleReminderPostponeHours(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, hours, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	result, _ := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, "", int32(hours))
+	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, "", int32(hours))
+	if err != nil {
+		applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Ошибка при переносе напоминания.", nil)
+		return
+	}
 	a.sendPostponeResult(ctx, tgBot, query, result, hours, "ч", userID, reminderID)
 }
 
@@ -636,7 +689,12 @@ func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotA
 func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
-	uc, _ := a.State.GetContext(ctx, userID)
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		applog.With(ctx, a.Logger).Error("get context", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка.", nil)
+		return
+	}
 	activeDate := uc.ActiveDate
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle

@@ -2,6 +2,7 @@ package tghandlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,7 +68,8 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	text, err := a.Whisper.Transcribe(ctx, audioData, format)
 	if err != nil {
-		if _, ok := err.(*clients.ServiceUnavailableError); ok {
+		var svcErr *clients.ServiceUnavailableError
+		if errors.As(err, &svcErr) {
 			a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID,
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
@@ -95,23 +97,19 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		return
 	}
 
-	a.Core.AppendToNote(ctx, uc.ActiveDate, text)
+	if _, err := a.Core.AppendToNote(ctx, uc.ActiveDate, text); err != nil {
+		log.Error("append to note", zap.Error(err))
+		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при сохранении в заметку.")
+		return
+	}
 
 	kb := a.getMainMenuKeyboard(ctx)
-	edit := tgbotapi.NewEditMessageText(chatID, statusMsg.MessageID,
-		fmt.Sprintf("🎙 Добавлено в заметку:\n\n_%s_", text))
-	edit.ParseMode = "MarkdownV2"
-	edit.ReplyMarkup = &kb
-	tgBot.Send(edit)
+	editText(ctx, tgBot, chatID, statusMsg.MessageID,
+		fmt.Sprintf("🎙 Добавлено в заметку:\n\n%s", text), &kb)
 }
 
 func (a *App) editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	edit := tgbotapi.NewEditMessageText(chatID, msgID, text)
-	edit.ParseMode = "MarkdownV2"
-	tgBot.Send(edit)
+	editText(ctx, tgBot, chatID, msgID, text, nil)
 }
 
 func downloadFile(ctx context.Context, url string) ([]byte, error) {
