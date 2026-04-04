@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -58,7 +57,7 @@ func TestReadNote_ReturnsContent(t *testing.T) {
 	daily := setupNotesEnv(t)
 	require.NoError(t, os.WriteFile(filepath.Join(daily, "01-Mar-2026.md"), []byte("hello world"), 0644))
 
-	result, err := (&realNoteStore{}).ReadNote(context.Background(), "01-Mar-2026")
+	result, err := (&realNoteStore{}).ReadNote(t.Context(), "01-Mar-2026")
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", result)
 }
@@ -66,7 +65,7 @@ func TestReadNote_ReturnsContent(t *testing.T) {
 func TestReadNote_MissingFileReturnsEmpty(t *testing.T) {
 	setupNotesEnv(t)
 
-	result, err := (&realNoteStore{}).ReadNote(context.Background(), "nonexistent")
+	result, err := (&realNoteStore{}).ReadNote(t.Context(), "nonexistent")
 	require.NoError(t, err)
 	assert.Empty(t, result)
 }
@@ -76,7 +75,7 @@ func TestReadNote_UnicodeContent(t *testing.T) {
 	content := "Привет мир\n- [ ] Задача"
 	require.NoError(t, os.WriteFile(filepath.Join(daily, "01-Mar-2026.md"), []byte(content), 0644))
 
-	result, err := (&realNoteStore{}).ReadNote(context.Background(), "01-Mar-2026")
+	result, err := (&realNoteStore{}).ReadNote(t.Context(), "01-Mar-2026")
 	require.NoError(t, err)
 	assert.Equal(t, content, result)
 }
@@ -86,7 +85,7 @@ func TestReadNote_UnicodeContent(t *testing.T) {
 func TestEnsureNote_CreatesFile(t *testing.T) {
 	daily := setupNotesEnv(t)
 
-	require.NoError(t, (&realNoteStore{}).EnsureNote(context.Background(), "01-Mar-2026"))
+	require.NoError(t, (&realNoteStore{}).EnsureNote(t.Context(), "01-Mar-2026"))
 
 	_, err := os.Stat(filepath.Join(daily, "01-Mar-2026.md"))
 	assert.NoError(t, err)
@@ -95,7 +94,7 @@ func TestEnsureNote_CreatesFile(t *testing.T) {
 func TestEnsureNote_SubstitutesDate(t *testing.T) {
 	daily := setupNotesEnv(t)
 
-	require.NoError(t, (&realNoteStore{}).EnsureNote(context.Background(), "15-Apr-2026"))
+	require.NoError(t, (&realNoteStore{}).EnsureNote(t.Context(), "15-Apr-2026"))
 
 	data, err := os.ReadFile(filepath.Join(daily, "15-Apr-2026.md"))
 	require.NoError(t, err)
@@ -107,7 +106,7 @@ func TestEnsureNote_FallbackWhenTemplateMissing(t *testing.T) {
 	daily := setupNotesEnv(t)
 	instance.DailyTemplatePath = filepath.Join(t.TempDir(), "NoSuch.md")
 
-	require.NoError(t, (&realNoteStore{}).EnsureNote(context.Background(), "01-Mar-2026"))
+	require.NoError(t, (&realNoteStore{}).EnsureNote(t.Context(), "01-Mar-2026"))
 
 	_, err := os.Stat(filepath.Join(daily, "01-Mar-2026.md"))
 	assert.NoError(t, err)
@@ -122,7 +121,7 @@ func TestEnsureNote_DoesNotOverwriteExisting(t *testing.T) {
 	existing := "existing content"
 	require.NoError(t, os.WriteFile(filepath.Join(daily, "01-Mar-2026.md"), []byte(existing), 0644))
 
-	require.NoError(t, (&realNoteStore{}).EnsureNote(context.Background(), "01-Mar-2026"))
+	require.NoError(t, (&realNoteStore{}).EnsureNote(t.Context(), "01-Mar-2026"))
 
 	data, err := os.ReadFile(filepath.Join(daily, "01-Mar-2026.md"))
 	require.NoError(t, err)
@@ -135,7 +134,7 @@ func TestAppendToNote_AppendsText(t *testing.T) {
 	daily := setupNotesEnv(t)
 	require.NoError(t, os.WriteFile(filepath.Join(daily, "01-Mar-2026.md"), []byte("line1\n"), 0644))
 
-	require.NoError(t, (&realNoteStore{}).AppendToNote(context.Background(), "01-Mar-2026", "line2"))
+	require.NoError(t, (&realNoteStore{}).AppendToNote(t.Context(), "01-Mar-2026", "line2"))
 
 	data, err := os.ReadFile(filepath.Join(daily, "01-Mar-2026.md"))
 	require.NoError(t, err)
@@ -145,7 +144,7 @@ func TestAppendToNote_AppendsText(t *testing.T) {
 func TestAppendToNote_CreatesFileIfMissing(t *testing.T) {
 	daily := setupNotesEnv(t)
 
-	require.NoError(t, (&realNoteStore{}).AppendToNote(context.Background(), "01-Mar-2026", "new text"))
+	require.NoError(t, (&realNoteStore{}).AppendToNote(t.Context(), "01-Mar-2026", "new text"))
 
 	_, err := os.Stat(filepath.Join(daily, "01-Mar-2026.md"))
 	assert.NoError(t, err)

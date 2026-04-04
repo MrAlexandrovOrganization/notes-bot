@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -36,11 +35,11 @@ func setupRealConfig(t *testing.T) string {
 // --- ValidateDir ---
 
 func TestValidateDir_ValidDirectory(t *testing.T) {
-	assert.NoError(t, ValidateDir(context.Background(), t.TempDir()))
+	assert.NoError(t, ValidateDir(t.Context(), t.TempDir()))
 }
 
 func TestValidateDir_NonexistentPath(t *testing.T) {
-	err := ValidateDir(context.Background(), filepath.Join(t.TempDir(), "nonexistent"))
+	err := ValidateDir(t.Context(), filepath.Join(t.TempDir(), "nonexistent"))
 	assert.Error(t, err)
 }
 
@@ -48,7 +47,7 @@ func TestValidateDir_FileIsNotDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "file.txt")
 	require.NoError(t, os.WriteFile(path, []byte(""), 0644))
-	assert.Error(t, ValidateDir(context.Background(), path))
+	assert.Error(t, ValidateDir(t.Context(), path))
 }
 
 // --- GetNotesDir ---
@@ -56,44 +55,44 @@ func TestValidateDir_FileIsNotDir(t *testing.T) {
 func TestGetNotesDir_ReturnsEnvVar(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NOTES_DIR", dir)
-	assert.Equal(t, dir, GetNotesDir(context.Background()))
+	assert.Equal(t, dir, GetNotesDir(t.Context()))
 }
 
 // --- GetConfig ---
 
 func TestGetConfig_NotesDir(t *testing.T) {
 	tmpDir := setupRealConfig(t)
-	assert.Equal(t, tmpDir, GetConfig(context.Background()).NotesDir)
+	assert.Equal(t, tmpDir, GetConfig(t.Context()).NotesDir)
 }
 
 func TestGetConfig_CreatesDailyDir(t *testing.T) {
 	tmpDir := setupRealConfig(t)
-	GetConfig(context.Background())
+	GetConfig(t.Context())
 	_, err := os.Stat(filepath.Join(tmpDir, "Daily"))
 	assert.NoError(t, err)
 }
 
 func TestGetConfig_DailyNotesDir(t *testing.T) {
 	tmpDir := setupRealConfig(t)
-	assert.Equal(t, filepath.Join(tmpDir, "Daily"), GetConfig(context.Background()).DailyNotesDir)
+	assert.Equal(t, filepath.Join(tmpDir, "Daily"), GetConfig(t.Context()).DailyNotesDir)
 }
 
 func TestGetConfig_DailyTemplatePath(t *testing.T) {
 	tmpDir := setupRealConfig(t)
 	expected := filepath.Join(tmpDir, "Templates", "Daily.md")
-	assert.Equal(t, expected, GetConfig(context.Background()).DailyTemplatePath)
+	assert.Equal(t, expected, GetConfig(t.Context()).DailyTemplatePath)
 }
 
 func TestGetConfig_DefaultTimezoneAndDayStart(t *testing.T) {
 	setupRealConfig(t)
-	cfg := GetConfig(context.Background())
+	cfg := GetConfig(t.Context())
 	assert.Equal(t, 3, cfg.TimezoneOffsetHours)
 	assert.Equal(t, 7, cfg.DayStartHour)
 }
 
 func TestGetConfig_Singleton(t *testing.T) {
 	setupRealConfig(t)
-	cfg1 := GetConfig(context.Background())
-	cfg2 := GetConfig(context.Background())
+	cfg1 := GetConfig(t.Context())
+	cfg2 := GetConfig(t.Context())
 	assert.Same(t, cfg1, cfg2)
 }

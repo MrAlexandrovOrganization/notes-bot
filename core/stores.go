@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"notes_bot/core/features"
@@ -67,7 +67,7 @@ func (r *realCalendarStore) GetExistingDates(ctx context.Context) ([]string, err
 			dates = append(dates, strings.TrimSuffix(entry.Name(), ".md"))
 		}
 	}
-	sort.Strings(dates)
+	slices.Sort(dates)
 	return dates, nil
 }
 

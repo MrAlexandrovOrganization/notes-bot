@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"testing"
 
 	"notes_bot/core"
@@ -87,7 +87,7 @@ func runTests(m *testing.M) int {
 // --- GetTodayDate ---
 
 func TestGetTodayDate_ReturnsDate(t *testing.T) {
-	resp, err := client.GetTodayDate(context.Background(), &pb.Empty{})
+	resp, err := client.GetTodayDate(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 	assert.Regexp(t, regexp.MustCompile(`^\d{2}-[A-Z][a-z]{2}-\d{4}$`), resp.Date)
 }
@@ -95,7 +95,7 @@ func TestGetTodayDate_ReturnsDate(t *testing.T) {
 // --- GetExistingDates ---
 
 func TestGetExistingDates_InitiallyEmpty(t *testing.T) {
-	resp, err := client.GetExistingDates(context.Background(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Dates)
 }
@@ -103,7 +103,7 @@ func TestGetExistingDates_InitiallyEmpty(t *testing.T) {
 // --- EnsureNote ---
 
 func TestEnsureNote_CreatesFile(t *testing.T) {
-	resp, err := client.EnsureNote(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.EnsureNote(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 
@@ -112,7 +112,7 @@ func TestEnsureNote_CreatesFile(t *testing.T) {
 }
 
 func TestEnsureNote_IdempotentOnExistingFile(t *testing.T) {
-	resp, err := client.EnsureNote(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.EnsureNote(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 }
@@ -120,7 +120,7 @@ func TestEnsureNote_IdempotentOnExistingFile(t *testing.T) {
 // --- GetExistingDates (после создания заметки) ---
 
 func TestGetExistingDates_AfterEnsureNote(t *testing.T) {
-	resp, err := client.GetExistingDates(context.Background(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 	assert.Contains(t, resp.Dates, testDate)
 }
@@ -128,14 +128,14 @@ func TestGetExistingDates_AfterEnsureNote(t *testing.T) {
 // --- GetNote ---
 
 func TestGetNote_ReturnsContent(t *testing.T) {
-	resp, err := client.GetNote(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetNote(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Content)
 	assert.Contains(t, resp.Content, testDate)
 }
 
 func TestGetNote_NotFoundForMissingDate(t *testing.T) {
-	_, err := client.GetNote(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	_, err := client.GetNote(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -145,13 +145,13 @@ func TestGetNote_NotFoundForMissingDate(t *testing.T) {
 // --- GetRating ---
 
 func TestGetRating_NoRatingAfterTemplateCreate(t *testing.T) {
-	resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.False(t, resp.HasRating)
 }
 
 func TestGetRating_NoRatingForMissingDate(t *testing.T) {
-	resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err)
 	assert.False(t, resp.HasRating)
 }
@@ -159,7 +159,7 @@ func TestGetRating_NoRatingForMissingDate(t *testing.T) {
 // --- UpdateRating + GetRating ---
 
 func TestUpdateRating_SetsRating(t *testing.T) {
-	resp, err := client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{
+	resp, err := client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{
 		Date:   testDate,
 		Rating: 8,
 	})
@@ -168,38 +168,38 @@ func TestUpdateRating_SetsRating(t *testing.T) {
 }
 
 func TestGetRating_AfterUpdate(t *testing.T) {
-	resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.True(t, resp.HasRating)
 	assert.Equal(t, int32(8), resp.Rating)
 }
 
 func TestUpdateRating_ZeroIsValidRating(t *testing.T) {
-	_, err := client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{
+	_, err := client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{
 		Date:   testDate,
 		Rating: 0,
 	})
 	require.NoError(t, err)
 
-	resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.True(t, resp.HasRating)
 	assert.Equal(t, int32(0), resp.Rating)
 
 	// Возвращаем 8 обратно для следующих тестов
-	client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: testDate, Rating: 8})
+	client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{Date: testDate, Rating: 8})
 }
 
 // --- GetTasks ---
 
 func TestGetTasks_EmptyAfterTemplateCreate(t *testing.T) {
-	resp, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Tasks)
 }
 
 func TestGetTasks_EmptyForMissingDate(t *testing.T) {
-	resp, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Tasks)
 }
@@ -207,7 +207,7 @@ func TestGetTasks_EmptyForMissingDate(t *testing.T) {
 // --- AddTask + GetTasks ---
 
 func TestAddTask_AddsTask(t *testing.T) {
-	resp, err := client.AddTask(context.Background(), &pb.AddTaskRequest{
+	resp, err := client.AddTask(t.Context(), &pb.AddTaskRequest{
 		Date:     testDate,
 		TaskText: "Buy groceries",
 	})
@@ -216,7 +216,7 @@ func TestAddTask_AddsTask(t *testing.T) {
 }
 
 func TestGetTasks_AfterAddTask(t *testing.T) {
-	resp, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	require.Len(t, resp.Tasks, 1)
 	assert.Equal(t, "Buy groceries", resp.Tasks[0].Text)
@@ -225,10 +225,10 @@ func TestGetTasks_AfterAddTask(t *testing.T) {
 }
 
 func TestAddTask_MultipleTasksPreserveOrder(t *testing.T) {
-	client.AddTask(context.Background(), &pb.AddTaskRequest{Date: testDate, TaskText: "Task A"})
-	client.AddTask(context.Background(), &pb.AddTaskRequest{Date: testDate, TaskText: "Task B"})
+	client.AddTask(t.Context(), &pb.AddTaskRequest{Date: testDate, TaskText: "Task A"})
+	client.AddTask(t.Context(), &pb.AddTaskRequest{Date: testDate, TaskText: "Task B"})
 
-	resp, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	require.Len(t, resp.Tasks, 3)
 
@@ -239,22 +239,22 @@ func TestAddTask_MultipleTasksPreserveOrder(t *testing.T) {
 // --- ToggleTask ---
 
 func TestToggleTask_MarksCompleted(t *testing.T) {
-	resp, err := client.ToggleTask(context.Background(), &pb.ToggleTaskRequest{
+	resp, err := client.ToggleTask(t.Context(), &pb.ToggleTaskRequest{
 		Date:      testDate,
 		TaskIndex: 0,
 	})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 
-	tasks, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: testDate})
+	tasks, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.True(t, tasks.Tasks[0].Completed)
 }
 
 func TestToggleTask_MarksIncomplete(t *testing.T) {
-	client.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: testDate, TaskIndex: 0})
+	client.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: testDate, TaskIndex: 0})
 
-	tasks, err := client.GetTasks(context.Background(), &pb.DateRequest{Date: testDate})
+	tasks, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.False(t, tasks.Tasks[0].Completed)
 }
@@ -262,7 +262,7 @@ func TestToggleTask_MarksIncomplete(t *testing.T) {
 // --- AppendToNote ---
 
 func TestAppendToNote_AppendsText(t *testing.T) {
-	resp, err := client.AppendToNote(context.Background(), &pb.AppendRequest{
+	resp, err := client.AppendToNote(t.Context(), &pb.AppendRequest{
 		Date: testDate,
 		Text: "Hello from integration test",
 	})
@@ -271,21 +271,21 @@ func TestAppendToNote_AppendsText(t *testing.T) {
 }
 
 func TestGetNote_ContainsAppendedText(t *testing.T) {
-	resp, err := client.GetNote(context.Background(), &pb.DateRequest{Date: testDate})
+	resp, err := client.GetNote(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
 	assert.Contains(t, resp.Content, "Hello from integration test")
 }
 
 func TestAppendToNote_CreatesNoteIfMissing(t *testing.T) {
 	newDate := "15-Apr-2026"
-	resp, err := client.AppendToNote(context.Background(), &pb.AppendRequest{
+	resp, err := client.AppendToNote(t.Context(), &pb.AppendRequest{
 		Date: newDate,
 		Text: "Auto-created",
 	})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 
-	note, err := client.GetNote(context.Background(), &pb.DateRequest{Date: newDate})
+	note, err := client.GetNote(t.Context(), &pb.DateRequest{Date: newDate})
 	require.NoError(t, err)
 	assert.Contains(t, note.Content, "Auto-created")
 }
@@ -293,22 +293,22 @@ func TestAppendToNote_CreatesNoteIfMissing(t *testing.T) {
 // --- GetExistingDates (финальная проверка) ---
 
 func TestGetExistingDates_ContainsAllCreatedDates(t *testing.T) {
-	resp, err := client.GetExistingDates(context.Background(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 
 	dates := resp.Dates
-	sort.Strings(dates)
+	slices.Sort(dates)
 	assert.Contains(t, dates, testDate)
 	assert.Contains(t, dates, "15-Apr-2026")
 }
 
 func TestGetExistingDates_ReturnsSorted(t *testing.T) {
-	resp, err := client.GetExistingDates(context.Background(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 
 	sorted := make([]string, len(resp.Dates))
 	copy(sorted, resp.Dates)
-	sort.Strings(sorted)
+	slices.Sort(sorted)
 	assert.Equal(t, sorted, resp.Dates)
 }
 
@@ -320,14 +320,14 @@ func TestLoadHistoricalRatings_DoesNotPanic(t *testing.T) {
 	// so the full loop runs over all existing notes.
 	srv := core.NewDefaultNotesServer()
 	assert.NotPanics(t, func() {
-		srv.LoadHistoricalRatings(context.Background())
+		srv.LoadHistoricalRatings(t.Context())
 	})
 }
 
 // --- UpdateRating for missing file ---
 
 func TestUpdateRating_FileNotFound_ReturnsError(t *testing.T) {
-	_, err := client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{
+	_, err := client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{
 		Date:   "01-Jan-1800",
 		Rating: 5,
 	})
@@ -343,11 +343,11 @@ func TestEnsureNote_CreatesBasicNoteWhenNoTemplate(t *testing.T) {
 	// Write to a date that has no template available (template dir removed temporarily).
 	// Instead, we just verify EnsureNote is idempotent for an existing file.
 	newDate := "20-Jun-2026"
-	_, err := client.EnsureNote(context.Background(), &pb.DateRequest{Date: newDate})
+	_, err := client.EnsureNote(t.Context(), &pb.DateRequest{Date: newDate})
 	require.NoError(t, err)
 
 	// Second call must be idempotent
-	resp, err := client.EnsureNote(context.Background(), &pb.DateRequest{Date: newDate})
+	resp, err := client.EnsureNote(t.Context(), &pb.DateRequest{Date: newDate})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 }
@@ -356,10 +356,10 @@ func TestEnsureNote_CreatesBasicNoteWhenNoTemplate(t *testing.T) {
 
 func TestGetRating_FreshNote_NoRating(t *testing.T) {
 	freshDate := "05-May-2026"
-	_, err := client.EnsureNote(context.Background(), &pb.DateRequest{Date: freshDate})
+	_, err := client.EnsureNote(t.Context(), &pb.DateRequest{Date: freshDate})
 	require.NoError(t, err)
 
-	resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: freshDate})
+	resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: freshDate})
 	require.NoError(t, err)
 	assert.False(t, resp.HasRating)
 }
@@ -368,17 +368,17 @@ func TestGetRating_FreshNote_NoRating(t *testing.T) {
 
 func TestUpdateRating_BoundaryValues(t *testing.T) {
 	for _, rating := range []int32{0, 5, 10} {
-		_, err := client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{
+		_, err := client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{
 			Date:   testDate,
 			Rating: rating,
 		})
 		require.NoError(t, err, "rating=%d", rating)
 
-		resp, err := client.GetRating(context.Background(), &pb.DateRequest{Date: testDate})
+		resp, err := client.GetRating(t.Context(), &pb.DateRequest{Date: testDate})
 		require.NoError(t, err)
 		assert.True(t, resp.HasRating)
 		assert.Equal(t, rating, resp.Rating)
 	}
 	// Restore rating=8 for any subsequent tests relying on it
-	client.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: testDate, Rating: 8}) //nolint:errcheck
+	client.UpdateRating(t.Context(), &pb.UpdateRatingRequest{Date: testDate, Rating: 8}) //nolint:errcheck
 }

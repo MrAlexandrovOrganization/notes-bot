@@ -1,7 +1,6 @@
 package features
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,44 +24,44 @@ const invalidNote = "---\nno tasks section\n---\n"
 // --- ParseTasks ---
 
 func TestParseTasks_EmptySection(t *testing.T) {
-	assert.Empty(t, ParseTasks(context.Background(), emptyTasksNote))
+	assert.Empty(t, ParseTasks(t.Context(), emptyTasksNote))
 }
 
 func TestParseTasks_Count(t *testing.T) {
-	assert.Len(t, ParseTasks(context.Background(), tasksNote), 3)
+	assert.Len(t, ParseTasks(t.Context(), tasksNote), 3)
 }
 
 func TestParseTasks_IncompleteTask(t *testing.T) {
-	tasks := ParseTasks(context.Background(), tasksNote)
+	tasks := ParseTasks(t.Context(), tasksNote)
 	assert.Equal(t, "Task 1", tasks[0].Text)
 	assert.False(t, tasks[0].Completed)
 	assert.Equal(t, 0, tasks[0].Index)
 }
 
 func TestParseTasks_CompletedTask(t *testing.T) {
-	tasks := ParseTasks(context.Background(), tasksNote)
+	tasks := ParseTasks(t.Context(), tasksNote)
 	assert.Equal(t, "Task 2", tasks[1].Text)
 	assert.True(t, tasks[1].Completed)
 	assert.Equal(t, 1, tasks[1].Index)
 }
 
 func TestParseTasks_StripsCompletionMetadata(t *testing.T) {
-	tasks := ParseTasks(context.Background(), tasksNote)
+	tasks := ParseTasks(t.Context(), tasksNote)
 	assert.NotContains(t, tasks[1].Text, "[completion::")
 }
 
 func TestParseTasks_ThirdTask(t *testing.T) {
-	tasks := ParseTasks(context.Background(), tasksNote)
+	tasks := ParseTasks(t.Context(), tasksNote)
 	assert.Equal(t, "Task 3", tasks[2].Text)
 	assert.False(t, tasks[2].Completed)
 }
 
 func TestParseTasks_InvalidFormat(t *testing.T) {
-	assert.Empty(t, ParseTasks(context.Background(), invalidNote))
+	assert.Empty(t, ParseTasks(t.Context(), invalidNote))
 }
 
 func TestParseTasks_LineNumbersArePositive(t *testing.T) {
-	for _, task := range ParseTasks(context.Background(), tasksNote) {
+	for _, task := range ParseTasks(t.Context(), tasksNote) {
 		assert.Greater(t, task.LineNumber, 0)
 	}
 }
@@ -70,69 +69,69 @@ func TestParseTasks_LineNumbersArePositive(t *testing.T) {
 // --- ToggleTaskContent ---
 
 func TestToggleTaskContent_IncompleteToComplete(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 0)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 0)
 	require.NoError(t, err)
-	assert.True(t, ParseTasks(context.Background(), result)[0].Completed)
+	assert.True(t, ParseTasks(t.Context(), result)[0].Completed)
 }
 
 func TestToggleTaskContent_CompleteToIncomplete(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 1)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 1)
 	require.NoError(t, err)
-	assert.False(t, ParseTasks(context.Background(), result)[1].Completed)
+	assert.False(t, ParseTasks(t.Context(), result)[1].Completed)
 }
 
 func TestToggleTaskContent_AddsCompletionDate(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 0)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 0)
 	require.NoError(t, err)
 	assert.Contains(t, result, "[completion::")
 }
 
 func TestToggleTaskContent_RemovesCompletionMetadata(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 1)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 1)
 	require.NoError(t, err)
-	assert.NotContains(t, ParseTasks(context.Background(), result)[1].Text, "[completion::")
+	assert.NotContains(t, ParseTasks(t.Context(), result)[1].Text, "[completion::")
 }
 
 func TestToggleTaskContent_PreservesOtherTasks(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 0)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 0)
 	require.NoError(t, err)
-	tasks := ParseTasks(context.Background(), result)
+	tasks := ParseTasks(t.Context(), result)
 	require.Len(t, tasks, 3)
 	assert.Equal(t, "Task 3", tasks[2].Text)
 	assert.False(t, tasks[2].Completed)
 }
 
 func TestToggleTaskContent_InvalidIndex(t *testing.T) {
-	_, err := ToggleTaskContent(context.Background(), tasksNote, 99)
+	_, err := ToggleTaskContent(t.Context(), tasksNote, 99)
 	assert.Error(t, err)
 }
 
 func TestToggleTaskContent_Roundtrip(t *testing.T) {
-	result, err := ToggleTaskContent(context.Background(), tasksNote, 0)
+	result, err := ToggleTaskContent(t.Context(), tasksNote, 0)
 	require.NoError(t, err)
-	result, err = ToggleTaskContent(context.Background(), result, 0)
+	result, err = ToggleTaskContent(t.Context(), result, 0)
 	require.NoError(t, err)
-	assert.False(t, ParseTasks(context.Background(), result)[0].Completed)
+	assert.False(t, ParseTasks(t.Context(), result)[0].Completed)
 }
 
 // --- AddTaskContent ---
 
 func TestAddTaskContent_IncreasesCount(t *testing.T) {
-	result, err := AddTaskContent(context.Background(), tasksNote, "New task")
+	result, err := AddTaskContent(t.Context(), tasksNote, "New task")
 	require.NoError(t, err)
-	assert.Len(t, ParseTasks(context.Background(), result), 4)
+	assert.Len(t, ParseTasks(t.Context(), result), 4)
 }
 
 func TestAddTaskContent_Text(t *testing.T) {
-	result, err := AddTaskContent(context.Background(), tasksNote, "My new task")
+	result, err := AddTaskContent(t.Context(), tasksNote, "My new task")
 	require.NoError(t, err)
-	assert.Contains(t, taskTexts(ParseTasks(context.Background(), result)), "My new task")
+	assert.Contains(t, taskTexts(ParseTasks(t.Context(), result)), "My new task")
 }
 
 func TestAddTaskContent_NewTaskIsIncomplete(t *testing.T) {
-	result, err := AddTaskContent(context.Background(), tasksNote, "New task")
+	result, err := AddTaskContent(t.Context(), tasksNote, "New task")
 	require.NoError(t, err)
-	for _, task := range ParseTasks(context.Background(), result) {
+	for _, task := range ParseTasks(t.Context(), result) {
 		if task.Text == "New task" {
 			assert.False(t, task.Completed)
 			return
@@ -142,22 +141,22 @@ func TestAddTaskContent_NewTaskIsIncomplete(t *testing.T) {
 }
 
 func TestAddTaskContent_ToEmptySection(t *testing.T) {
-	result, err := AddTaskContent(context.Background(), emptyTasksNote, "First task")
+	result, err := AddTaskContent(t.Context(), emptyTasksNote, "First task")
 	require.NoError(t, err)
-	tasks := ParseTasks(context.Background(), result)
+	tasks := ParseTasks(t.Context(), result)
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "First task", tasks[0].Text)
 }
 
 func TestAddTaskContent_InvalidFormat(t *testing.T) {
-	_, err := AddTaskContent(context.Background(), invalidNote, "Task")
+	_, err := AddTaskContent(t.Context(), invalidNote, "Task")
 	assert.Error(t, err)
 }
 
 func TestAddTaskContent_PreservesExistingTasks(t *testing.T) {
-	result, err := AddTaskContent(context.Background(), tasksNote, "Extra")
+	result, err := AddTaskContent(t.Context(), tasksNote, "Extra")
 	require.NoError(t, err)
-	texts := taskTexts(ParseTasks(context.Background(), result))
+	texts := taskTexts(ParseTasks(t.Context(), result))
 	assert.Contains(t, texts, "Task 1")
 	assert.Contains(t, texts, "Task 2")
 	assert.Contains(t, texts, "Task 3")

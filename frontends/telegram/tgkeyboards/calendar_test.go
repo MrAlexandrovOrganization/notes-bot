@@ -1,7 +1,6 @@
 package tgkeyboards
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -33,14 +32,14 @@ func TestMonthName_Invalid(t *testing.T) {
 
 // January 2025: starts on Wednesday (offset=2), 31 days.
 func TestCalendar_Structure_January2025(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 1, "", nil)
+	kb := Calendar(t.Context(), 2025, 1, "", nil)
 	rows := kb.InlineKeyboard
 	// Min rows: header + weekdays + day rows + footer.
 	require.GreaterOrEqual(t, len(rows), 4)
 }
 
 func TestCalendar_HeaderRow(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 3, "", nil)
+	kb := Calendar(t.Context(), 2025, 3, "", nil)
 	header := kb.InlineKeyboard[0]
 	require.Len(t, header, 3)
 	assert.Equal(t, "◀", header[0].Text)
@@ -50,7 +49,7 @@ func TestCalendar_HeaderRow(t *testing.T) {
 }
 
 func TestCalendar_WeekdayRow(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 1, "", nil)
+	kb := Calendar(t.Context(), 2025, 1, "", nil)
 	weekdays := kb.InlineKeyboard[1]
 	require.Len(t, weekdays, 7)
 	assert.Equal(t, "Пн", weekdays[0].Text)
@@ -58,7 +57,7 @@ func TestCalendar_WeekdayRow(t *testing.T) {
 }
 
 func TestCalendar_FooterButtons(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 1, "", nil)
+	kb := Calendar(t.Context(), 2025, 1, "", nil)
 	lastRow := kb.InlineKeyboard[len(kb.InlineKeyboard)-1]
 	texts := make([]string, len(lastRow))
 	for i, btn := range lastRow {
@@ -71,7 +70,7 @@ func TestCalendar_FooterButtons(t *testing.T) {
 func TestCalendar_ActiveDateMarked(t *testing.T) {
 	// January 2025, mark day 15 as active.
 	activeDate := "15-Jan-2025"
-	kb := Calendar(context.Background(), 2025, 1, activeDate, nil)
+	kb := Calendar(t.Context(), 2025, 1, activeDate, nil)
 	found := false
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
@@ -85,7 +84,7 @@ func TestCalendar_ActiveDateMarked(t *testing.T) {
 
 func TestCalendar_ExistingDateMarked(t *testing.T) {
 	existingDates := map[string]bool{"10-Jan-2025": true}
-	kb := Calendar(context.Background(), 2025, 1, "", existingDates)
+	kb := Calendar(t.Context(), 2025, 1, "", existingDates)
 	found := false
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
@@ -98,7 +97,7 @@ func TestCalendar_ExistingDateMarked(t *testing.T) {
 }
 
 func TestCalendar_DayCallbackFormat(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 1, "", nil)
+	kb := Calendar(t.Context(), 2025, 1, "", nil)
 	for _, row := range kb.InlineKeyboard[2 : len(kb.InlineKeyboard)-1] {
 		for _, btn := range row {
 			if btn.Text == " " {
@@ -119,7 +118,7 @@ func TestCalendar_DayCallbackFormat(t *testing.T) {
 
 func TestCalendar_AllDaysPresent(t *testing.T) {
 	// February 2025 has 28 days.
-	kb := Calendar(context.Background(), 2025, 2, "", nil)
+	kb := Calendar(t.Context(), 2025, 2, "", nil)
 	dayCount := 0
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
@@ -132,7 +131,7 @@ func TestCalendar_AllDaysPresent(t *testing.T) {
 }
 
 func TestCalendar_NavigationCallbacks(t *testing.T) {
-	kb := Calendar(context.Background(), 2025, 5, "", nil)
+	kb := Calendar(t.Context(), 2025, 5, "", nil)
 	header := kb.InlineKeyboard[0]
 	require.NotNil(t, header[0].CallbackData)
 	require.NotNil(t, header[2].CallbackData)
@@ -141,7 +140,7 @@ func TestCalendar_NavigationCallbacks(t *testing.T) {
 }
 
 func TestCalendar_HeaderContainsMonthYear(t *testing.T) {
-	kb := Calendar(context.Background(), 2026, 11, "", nil)
+	kb := Calendar(t.Context(), 2026, 11, "", nil)
 	header := kb.InlineKeyboard[0]
 	assert.Contains(t, header[1].Text, "Ноябрь")
 	assert.Contains(t, header[1].Text, fmt.Sprintf("%d", 2026))

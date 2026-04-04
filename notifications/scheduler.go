@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -57,13 +58,11 @@ func ComputeNextFire(ctx context.Context, scheduleType string, params map[string
 		if !candidate.After(afterLocal) {
 			candidate = candidate.AddDate(0, 0, 1)
 		}
-		for i := 0; i < 7; i++ {
+		for range 7 {
 			wd := int(candidate.Weekday()+6) % 7 // Monday=0
-			for _, d := range days {
-				if d == wd {
-					utc := candidate.UTC()
-					return &utc
-				}
+			if slices.Contains(days, wd) {
+				utc := candidate.UTC()
+				return &utc
 			}
 			candidate = candidate.AddDate(0, 0, 1)
 		}

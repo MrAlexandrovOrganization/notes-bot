@@ -142,7 +142,7 @@ func TestServer_GetTodayDate_ReturnsDate(t *testing.T) {
 		todayDateFn: func(ctx context.Context) string { return "08-Mar-2026" },
 	}, nil, nil, nil)
 
-	resp, err := srv.GetTodayDate(context.Background(), &pb.Empty{})
+	resp, err := srv.GetTodayDate(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 	assert.Equal(t, "08-Mar-2026", resp.Date)
 }
@@ -156,7 +156,7 @@ func TestServer_GetExistingDates_ReturnsDates(t *testing.T) {
 		},
 	}, nil, nil, nil)
 
-	resp, err := srv.GetExistingDates(context.Background(), &pb.Empty{})
+	resp, err := srv.GetExistingDates(t.Context(), &pb.Empty{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"01-Mar-2026", "02-Mar-2026"}, resp.Dates)
 }
@@ -168,7 +168,7 @@ func TestServer_GetExistingDates_InternalError(t *testing.T) {
 		},
 	}, nil, nil, nil)
 
-	_, err := srv.GetExistingDates(context.Background(), &pb.Empty{})
+	_, err := srv.GetExistingDates(t.Context(), &pb.Empty{})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -180,7 +180,7 @@ func TestServer_EnsureNote_Success(t *testing.T) {
 		ensureNoteFn: func(ctx context.Context, date string) error { return nil },
 	}, nil, nil)
 
-	resp, err := srv.EnsureNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	resp, err := srv.EnsureNote(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 }
@@ -190,7 +190,7 @@ func TestServer_EnsureNote_InternalError(t *testing.T) {
 		ensureNoteFn: func(ctx context.Context, date string) error { return errors.New("write error") },
 	}, nil, nil)
 
-	_, err := srv.EnsureNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	_, err := srv.EnsureNote(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -202,7 +202,7 @@ func TestServer_GetNote_ReturnsContent(t *testing.T) {
 		readNoteFn: func(ctx context.Context, date string) (string, error) { return "note content", nil },
 	}, nil, nil)
 
-	resp, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	resp, err := srv.GetNote(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.NoError(t, err)
 	assert.Equal(t, "note content", resp.Content)
 }
@@ -212,7 +212,7 @@ func TestServer_GetNote_NotFound(t *testing.T) {
 		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
-	_, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	_, err := srv.GetNote(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.Error(t, err)
 	assert.Equal(t, codes.NotFound, status.Code(err))
 }
@@ -222,7 +222,7 @@ func TestServer_GetNote_InternalError(t *testing.T) {
 		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", errors.New("io error") },
 	}, nil, nil)
 
-	_, err := srv.GetNote(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	_, err := srv.GetNote(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -237,7 +237,7 @@ func TestServer_GetRating_ReturnsRating(t *testing.T) {
 		getRatingFn: func(ctx context.Context, content string) *int { return &rating },
 	}, nil)
 
-	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	resp, err := srv.GetRating(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.NoError(t, err)
 	assert.True(t, resp.HasRating)
 	assert.Equal(t, int32(7), resp.Rating)
@@ -250,7 +250,7 @@ func TestServer_GetRating_NoRatingField(t *testing.T) {
 		getRatingFn: func(ctx context.Context, content string) *int { return nil },
 	}, nil)
 
-	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	resp, err := srv.GetRating(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.NoError(t, err)
 	assert.False(t, resp.HasRating)
 }
@@ -260,7 +260,7 @@ func TestServer_GetRating_MissingNote(t *testing.T) {
 		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
-	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := srv.GetRating(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err) // не ошибка — просто нет данных
 	assert.False(t, resp.HasRating)
 }
@@ -277,7 +277,7 @@ func TestServer_UpdateRating_Success(t *testing.T) {
 		},
 	}, nil)
 
-	resp, err := srv.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
+	resp, err := srv.UpdateRating(t.Context(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "01-Mar-2026", receivedDate)
@@ -289,7 +289,7 @@ func TestServer_UpdateRating_Error(t *testing.T) {
 		updateRatingFn: func(ctx context.Context, date string, rating int) error { return errors.New("write error") },
 	}, nil)
 
-	_, err := srv.UpdateRating(context.Background(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
+	_, err := srv.UpdateRating(t.Context(), &pb.UpdateRatingRequest{Date: "01-Mar-2026", Rating: 8})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -308,7 +308,7 @@ func TestServer_GetTasks_ReturnsMappedTasks(t *testing.T) {
 		},
 	})
 
-	resp, err := srv.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Mar-2026"})
+	resp, err := srv.GetTasks(t.Context(), &pb.DateRequest{Date: "01-Mar-2026"})
 	require.NoError(t, err)
 	require.Len(t, resp.Tasks, 2)
 	assert.Equal(t, "Buy milk", resp.Tasks[0].Text)
@@ -323,7 +323,7 @@ func TestServer_GetTasks_EmptyWhenNoteNotFound(t *testing.T) {
 		readNoteFn: func(ctx context.Context, date string) (string, error) { return "", nil },
 	}, nil, nil)
 
-	resp, err := srv.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := srv.GetTasks(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Tasks)
 }
@@ -339,7 +339,7 @@ func TestServer_ToggleTask_Success(t *testing.T) {
 		},
 	})
 
-	resp, err := srv.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 2})
+	resp, err := srv.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 2})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, 2, receivedIndex)
@@ -350,7 +350,7 @@ func TestServer_ToggleTask_Error(t *testing.T) {
 		toggleTaskFn: func(ctx context.Context, date string, index int) error { return errors.New("index out of range") },
 	})
 
-	_, err := srv.ToggleTask(context.Background(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
+	_, err := srv.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -366,7 +366,7 @@ func TestServer_AddTask_Success(t *testing.T) {
 		},
 	})
 
-	resp, err := srv.AddTask(context.Background(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "New task"})
+	resp, err := srv.AddTask(t.Context(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "New task"})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "New task", receivedText)
@@ -377,7 +377,7 @@ func TestServer_AddTask_Error(t *testing.T) {
 		addTaskFn: func(ctx context.Context, date, text string) error { return errors.New("write error") },
 	})
 
-	_, err := srv.AddTask(context.Background(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "Task"})
+	_, err := srv.AddTask(t.Context(), &pb.AddTaskRequest{Date: "01-Mar-2026", TaskText: "Task"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -393,7 +393,7 @@ func TestServer_AppendToNote_Success(t *testing.T) {
 		},
 	}, nil, nil)
 
-	resp, err := srv.AppendToNote(context.Background(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
+	resp, err := srv.AppendToNote(t.Context(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "Hello", receivedText)
@@ -404,7 +404,7 @@ func TestServer_AppendToNote_Error(t *testing.T) {
 		appendToNoteFn: func(ctx context.Context, date, text string) error { return errors.New("disk full") },
 	}, nil, nil)
 
-	_, err := srv.AppendToNote(context.Background(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
+	_, err := srv.AppendToNote(t.Context(), &pb.AppendRequest{Date: "01-Mar-2026", Text: "Hello"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
@@ -439,7 +439,7 @@ func TestServer_LoadHistoricalRatings_NilGauge_ReturnsEarly(t *testing.T) {
 		},
 	}, nil, nil, nil)
 
-	srv.LoadHistoricalRatings(context.Background())
+	srv.LoadHistoricalRatings(t.Context())
 	assert.False(t, called, "should not call GetExistingDates when ratingValue is nil")
 }
 
@@ -452,7 +452,7 @@ func TestServer_GetTasks_EmptyWhenReadError(t *testing.T) {
 		},
 	}, nil, nil)
 
-	resp, err := srv.GetTasks(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := srv.GetTasks(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Tasks)
 }
@@ -466,7 +466,7 @@ func TestServer_GetRating_ReadError(t *testing.T) {
 		},
 	}, nil, nil)
 
-	resp, err := srv.GetRating(context.Background(), &pb.DateRequest{Date: "01-Jan-1999"})
+	resp, err := srv.GetRating(t.Context(), &pb.DateRequest{Date: "01-Jan-1999"})
 	require.NoError(t, err)
 	assert.False(t, resp.HasRating)
 }
