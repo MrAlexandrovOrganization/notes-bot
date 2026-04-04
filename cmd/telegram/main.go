@@ -18,13 +18,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/bot"
-	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/config"
-	"notes_bot/frontends/telegram/tghandlers"
-	"notes_bot/frontends/telegram/tgstates"
-	"notes_bot/internal/applog"
-	"notes_bot/internal/telemetry"
+	"notes-bot/frontends/telegram/bot"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/config"
+	"notes-bot/frontends/telegram/tghandlers"
+	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/telemetry"
 )
 
 var logger *zap.Logger

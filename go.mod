@@ -1,4 +1,4 @@
-module notes_bot
+module notes-bot
 
 go 1.25.0
 

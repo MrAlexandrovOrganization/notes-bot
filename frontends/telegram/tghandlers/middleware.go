@@ -3,7 +3,7 @@ package tghandlers
 import (
 	"context"
 	"fmt"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"regexp"
 	"strings"
 

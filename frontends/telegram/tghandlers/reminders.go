@@ -13,12 +13,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/tgkeyboards"
-	"notes_bot/frontends/telegram/tgstates"
-	"notes_bot/internal/applog"
-	"notes_bot/internal/telemetry"
-	"notes_bot/internal/timeutil"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgkeyboards"
+	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/telemetry"
+	"notes-bot/internal/timeutil"
 )
 
 var scheduleLabels = map[string]string{

@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"notes_bot/internal/telemetry"
-	pb "notes_bot/proto/notes"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/notes"
 )
 
 const grpcTimeout = 10 * time.Second

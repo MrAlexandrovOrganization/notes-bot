@@ -7,8 +7,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/bot"
-	"notes_bot/frontends/telegram/tgkeyboards"
+	"notes-bot/frontends/telegram/bot"
+	"notes-bot/frontends/telegram/tgkeyboards"
 )
 
 // MakeReminderHandler returns a Kafka event handler that sends a Telegram notification

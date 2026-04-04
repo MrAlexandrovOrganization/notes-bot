@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"time"
 )
 

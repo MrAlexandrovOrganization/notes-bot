@@ -3,9 +3,9 @@ package tghandlers
 import (
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/config"
-	"notes_bot/frontends/telegram/tgstates"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/config"
+	"notes-bot/frontends/telegram/tgstates"
 )
 
 // App holds shared dependencies for all handlers.

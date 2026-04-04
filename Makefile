@@ -13,9 +13,9 @@ GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... \
                ./frontends/telegram/tgstates/...
 
 # All packages to instrument for coverage
-TELEGRAM_COVERPKGS = notes_bot/frontends/telegram/tghandlers,notes_bot/frontends/telegram/tgkeyboards,notes_bot/frontends/telegram/tgstates
-GO_COVERPKGS_UNIT = notes_bot/core,notes_bot/core/features,notes_bot/notifications,$(TELEGRAM_COVERPKGS)
-GO_COVERPKGS_ALL  = notes_bot/core,notes_bot/core/features,notes_bot/notifications,$(TELEGRAM_COVERPKGS)
+TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
+GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,$(TELEGRAM_COVERPKGS)
+GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,$(TELEGRAM_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)
@@ -32,14 +32,14 @@ test-go-cover-html:
 
 cover:
 	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
-	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
+	go test -coverprofile=integration.out -coverpkg=notes-bot/core,notes-bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	go tool cover -func=combined.out
 	@rm -f unit.out integration.out combined.out
 
 cover-html:
 	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
-	go test -coverprofile=integration.out -coverpkg=notes_bot/core,notes_bot/core/features ./integration/...
+	go test -coverprofile=integration.out -coverpkg=notes-bot/core,notes-bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	@mkdir -p htmlcov
 	go tool cover -html=combined.out -o htmlcov/go_coverage.html
@@ -100,8 +100,8 @@ docker-clean:
 	docker system prune -f
 
 proto:
-	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notes.proto
-	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
-	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto
+	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/notes.proto
+	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/notifications.proto
+	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/whisper.proto
 
 .PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto format

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"notes_bot/core/features"
-	"notes_bot/internal/telemetry"
+	"notes-bot/core/features"
+	"notes-bot/internal/telemetry"
 
 	"go.uber.org/zap"
 )

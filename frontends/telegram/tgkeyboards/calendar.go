@@ -3,7 +3,7 @@ package tgkeyboards
 import (
 	"context"
 	"fmt"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"

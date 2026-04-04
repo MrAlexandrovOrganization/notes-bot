@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/tgstates"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgstates"
 )
 
 // ── scheduleLabel ──────────────────────────────────────────────────────────

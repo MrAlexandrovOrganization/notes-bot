@@ -97,9 +97,9 @@ func callerInfo(skip int) (pkg, name string) {
 	}
 	full := fn.Name()
 	// full examples:
-	//   "notes_bot/core.(*NotesServer).AppendToNote"
-	//   "notes_bot/frontends/telegram/tghandlers.(*App).HandleTextMessage"
-	//   "notes_bot/frontends/telegram/tghandlers.handleRatingInput"
+	//   "notes-bot/core.(*NotesServer).AppendToNote"
+	//   "notes-bot/frontends/telegram/tghandlers.(*App).HandleTextMessage"
+	//   "notes-bot/frontends/telegram/tghandlers.handleRatingInput"
 
 	// Package: path before the first dot, then last path segment.
 	if dot := strings.Index(full, "."); dot >= 0 {

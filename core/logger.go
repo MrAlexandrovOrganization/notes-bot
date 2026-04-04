@@ -1,8 +1,8 @@
 package core
 
 import (
-	"notes_bot/core/features"
-	"notes_bot/internal/applog"
+	"notes-bot/core/features"
+	"notes-bot/internal/applog"
 
 	"go.uber.org/zap"
 )

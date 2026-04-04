@@ -11,9 +11,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
-	"notes_bot/frontends/telegram/tgstates"
-	"notes_bot/internal/applog"
-	"notes_bot/internal/telemetry"
+	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/telemetry"
 )
 
 type stateTextHandler func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext)

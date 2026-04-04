@@ -20,11 +20,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"notes_bot/internal/applog"
-	"notes_bot/internal/kafkacarrier"
-	"notes_bot/internal/telemetry"
-	"notes_bot/internal/timeutil"
-	pb "notes_bot/proto/notes"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/kafkacarrier"
+	"notes-bot/internal/telemetry"
+	"notes-bot/internal/timeutil"
+	pb "notes-bot/proto/notes"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )

@@ -101,7 +101,7 @@ docker-compose up -d
 ## Структура проекта
 
 ```
-notes_bot/
+notes-bot/
 ├── cmd/
 │   ├── core/main.go              # Точка входа core-сервиса (gRPC :50051)
 │   ├── notifications/main.go     # Точка входа notifications-сервиса (gRPC :50052)

@@ -11,9 +11,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"notes_bot/internal/applog"
-	"notes_bot/internal/kafkacarrier"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/kafkacarrier"
+	"notes-bot/internal/telemetry"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"notes_bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/clients"
 )
 
 func makeTasks(n int) []*clients.Task {

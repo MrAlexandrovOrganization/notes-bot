@@ -14,11 +14,11 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"notes_bot/frontends/telegram/clients"
-	"notes_bot/frontends/telegram/tgkeyboards"
-	"notes_bot/frontends/telegram/tgstates"
-	"notes_bot/internal/applog"
-	"notes_bot/internal/telemetry"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgkeyboards"
+	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/telemetry"
 )
 
 const notePreviewMaxChars = 3800

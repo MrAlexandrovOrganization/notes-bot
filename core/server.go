@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"notes_bot/internal/telemetry"
-	pb "notes_bot/proto/notes"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/notes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

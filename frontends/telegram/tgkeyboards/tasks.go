@@ -5,7 +5,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"notes_bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/clients"
 )
 
 const tasksPerPage = 5

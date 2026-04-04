@@ -10,8 +10,8 @@ import (
 	"slices"
 	"testing"
 
-	"notes_bot/core"
-	pb "notes_bot/proto/notes"
+	"notes-bot/core"
+	pb "notes-bot/proto/notes"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package notes;
 
-option go_package = "notes_bot/proto/notes";
+option go_package = "notes-bot/proto/notes";
 
 service NotesService {
   rpc GetTodayDate(Empty) returns (DateResponse);

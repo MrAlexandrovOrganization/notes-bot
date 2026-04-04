@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"notes_bot/core/features"
-	pb "notes_bot/proto/notes"
+	"notes-bot/core/features"
+	pb "notes-bot/proto/notes"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

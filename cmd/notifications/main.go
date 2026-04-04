@@ -17,10 +17,10 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"notes_bot/internal/applog"
-	"notes_bot/internal/telemetry"
-	"notes_bot/notifications"
-	pb "notes_bot/proto/notifications"
+	"notes-bot/internal/applog"
+	"notes-bot/internal/telemetry"
+	"notes-bot/notifications"
+	pb "notes-bot/proto/notifications"
 )
 
 var logger *zap.Logger

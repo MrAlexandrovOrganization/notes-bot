@@ -2,7 +2,7 @@ package features
 
 import (
 	"context"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"strconv"
 	"strings"
 

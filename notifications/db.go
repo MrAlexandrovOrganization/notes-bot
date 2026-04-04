@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"time"
 
 	"github.com/exaring/otelpgx"

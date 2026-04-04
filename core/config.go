@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
-	"notes_bot/internal/telemetry"
+	"notes-bot/internal/telemetry"
 	"os"
 	"path/filepath"
 	"sync"

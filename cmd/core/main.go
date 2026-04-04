@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"notes_bot/core"
-	"notes_bot/internal/telemetry"
-	pb "notes_bot/proto/notes"
+	"notes-bot/core"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/notes"
 )
 
 func main() {

@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"notes_bot/internal/telemetry"
-	pb "notes_bot/proto/whisper"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/whisper"
 )
 
 const (

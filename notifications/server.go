@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"notes_bot/internal/applog"
-	pb "notes_bot/proto/notifications"
+	"notes-bot/internal/applog"
+	pb "notes-bot/proto/notifications"
 )
 
 type NotificationsServer struct {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"notes_bot/internal/telemetry"
-	"notes_bot/internal/timeutil"
+	"notes-bot/internal/telemetry"
+	"notes-bot/internal/timeutil"
 )
 
 const ttl = 7 * 24 * time.Hour
