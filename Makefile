@@ -66,8 +66,6 @@ build-telegram:
 	$(DOCKER_COMPOSE) build telegram
 
 format:
-	poetry run ruff check --fix --unsafe-fixes whisper
-	poetry run ruff format whisper
 	gofmt -w ./notifications/ ./frontends/telegram/ ./cmd/
 
 clean:
@@ -103,9 +101,6 @@ docker-clean:
 	docker system prune -f
 
 proto:
-	poetry run python -m grpc_tools.protoc -I proto --python_out=proto --grpc_python_out=proto --mypy_out=proto --mypy_grpc_out=proto proto/whisper.proto
-	sed -i.bak 's/^import whisper_pb2/from proto import whisper_pb2/' proto/whisper_pb2_grpc.py && rm -f proto/whisper_pb2_grpc.py.bak
-
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notes.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/notifications.proto
 	protoc -I=proto --go_out=. --go_opt=module=notes_bot --go-grpc_out=. --go-grpc_opt=module=notes_bot proto/whisper.proto

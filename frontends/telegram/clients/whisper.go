@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	maxMsgSize    = 50 * 1024 * 1024 // 50 MB
-	chunkSize     = 1 * 1024 * 1024  // 1 MB per chunk
+	maxMsgSize     = 50 * 1024 * 1024   // 50 MB
+	chunkSize      = 1 * 1024 * 1024    // 1 MB per chunk
 	whisperTimeout = 3600 * time.Second // 1 hour for long lectures
 )
 
