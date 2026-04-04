@@ -3,7 +3,6 @@ DOCKER_COMPOSE = docker compose
 # For mac: brew install go@1.25
 # For CI: Go is installed via actions/setup-go
 install:
-	poetry install
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
