@@ -13,7 +13,11 @@ import (
 	pb "notes_bot/proto/whisper"
 )
 
-const maxMsgSize = 50 * 1024 * 1024 // 50 MB
+const (
+	maxMsgSize    = 50 * 1024 * 1024 // 50 MB
+	chunkSize     = 1 * 1024 * 1024  // 1 MB per chunk
+	whisperTimeout = 3600 * time.Second // 1 hour for long lectures
+)
 
 type WhisperClient struct {
 	conn *grpc.ClientConn
@@ -43,22 +47,43 @@ func (c *WhisperClient) Close() {
 	c.conn.Close()
 }
 
+// Transcribe sends audio to the shared Whisper service and blocks until the
+// transcription is complete. Satisfies clients.WhisperService interface.
 func (c *WhisperClient) Transcribe(ctx context.Context, audioData []byte, format string) (string, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, whisperTimeout)
 	defer cancel()
 
-	resp, err := c.stub.Transcribe(timeoutCtx, &pb.TranscribeRequest{
-		AudioData: audioData,
-		Format:    format,
-	})
+	stream, err := c.stub.Transcribe(timeoutCtx)
 	if err != nil {
 		if isUnavailable(err) {
 			return "", errUnavailable("whisper")
 		}
-		return "", err
+		return "", fmt.Errorf("open transcribe stream: %w", err)
+	}
+
+	for i := 0; i < len(audioData); i += chunkSize {
+		end := i + chunkSize
+		if end > len(audioData) {
+			end = len(audioData)
+		}
+		chunk := &pb.TranscribeChunk{Data: audioData[i:end]}
+		if i == 0 {
+			chunk.Format = format
+		}
+		if err := stream.Send(chunk); err != nil {
+			return "", fmt.Errorf("send chunk: %w", err)
+		}
+	}
+
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		if isUnavailable(err) {
+			return "", errUnavailable("whisper")
+		}
+		return "", fmt.Errorf("receive transcription: %w", err)
 	}
 	return resp.Text, nil
 }

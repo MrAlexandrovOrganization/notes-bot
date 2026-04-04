@@ -1,3 +1,8 @@
+networks:
+  default: {}
+  whisper-net:
+    external: true
+
 services:
   jaeger:
     image: jaegertracing/jaeger:2.4.0
@@ -182,26 +187,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  whisper:
-    build:
-      context: .
-      dockerfile: whisper/Dockerfile
-    restart: unless-stopped
-    environment:
-      - GRPC_PORT=50053
-      - WHISPER_MODEL=small # base/small/medium/large/turbo
-    healthcheck:
-      test: ["CMD", "python", "-m", "whisper.healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   ollama:
     image: ollama/ollama:0.18.2
     restart: unless-stopped
@@ -265,6 +250,9 @@ services:
       - LLM_HOST=ollama
       - LLM_PORT=11434
       - LLM_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
+    networks:
+      - default
+      - whisper-net  # shared Whisper transcription service
     depends_on:
       redis:
         condition: service_healthy
