@@ -4,22 +4,10 @@ networks:
     external: true
   ollama-net:
     external: true
+  monitoring-net:
+    external: true
 
 services:
-  jaeger:
-    image: jaegertracing/jaeger:2.4.0
-    restart: unless-stopped
-    command: ["--config=/etc/jaeger/config.yaml"]
-    ports:
-      - "127.0.0.1:16686:16686"
-    volumes:
-      - ./jaeger.yaml:/etc/jaeger/config.yaml:ro
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -101,6 +89,7 @@ services:
       - postgres
 
   core:
+    container_name: notes-bot-core
     build:
       context: .
       dockerfile: core/Dockerfile
@@ -112,9 +101,9 @@ services:
       - GRPC_PORT=50051
       - METRICS_PORT=9100
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
-    depends_on:
-      jaeger:
-        condition: service_started
+    networks:
+      - default
+      - monitoring-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50051"]
       interval: 30s
@@ -152,6 +141,7 @@ services:
         max-file: "3"
 
   notifications:
+    container_name: notes-bot-notifications
     build:
       context: .
       dockerfile: notifications/Dockerfile
@@ -170,6 +160,9 @@ services:
       - CORE_GRPC_PORT=50051
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+    networks:
+      - default
+      - monitoring-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
       interval: 30s
@@ -181,8 +174,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
-      jaeger:
-        condition: service_started
     logging:
       driver: "json-file"
       options:
@@ -190,6 +181,7 @@ services:
         max-file: "3"
 
   telegram:
+    container_name: notes-bot-telegram
     build:
       context: .
       dockerfile: frontends/telegram/Dockerfile
@@ -215,52 +207,12 @@ services:
       - default
       - whisper-net  # shared Whisper transcription service
       - ollama-net   # shared Ollama LLM service
+      - monitoring-net
     depends_on:
       redis:
         condition: service_healthy
       core:
         condition: service_healthy
-      jaeger:
-        condition: service_started
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  prometheus:
-    image: prom/prometheus:v3.4.0
-    restart: unless-stopped
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "127.0.0.1:9090:9090"
-    depends_on:
-      - core
-      - notifications
-      - telegram
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  grafana:
-    image: grafana/grafana:12.0.0
-    restart: unless-stopped
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "127.0.0.1:3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_INSTALL_PLUGINS=marcusolsson-calendar-panel
-    depends_on:
-      - prometheus
     logging:
       driver: "json-file"
       options:
@@ -272,5 +224,3 @@ volumes:
   pgadmin_data:
   kafka_data:
   redisinsight_data:
-  prometheus_data:
-  grafana_data:

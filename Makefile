@@ -1,4 +1,5 @@
 DOCKER_COMPOSE = docker compose
+MONITORING_DATA_DIR ?= $(HOME)/.monitoring
 
 # Canonical source of whisper.proto (shared with backends/transcriber).
 # For remote fetch (e.g. in CI without access to the backend repo):
@@ -121,4 +122,16 @@ proto:
 proto-lint:
 	buf lint proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format
+monitoring-register:
+	mkdir -p $(MONITORING_DATA_DIR)/prometheus-targets
+	mkdir -p $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
+	cp monitoring/prometheus-targets.yml $(MONITORING_DATA_DIR)/prometheus-targets/notes-bot.yml
+	@[ -z "$$(ls monitoring/grafana-dashboards/*.json 2>/dev/null)" ] || cp monitoring/grafana-dashboards/*.json $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot/
+	@echo "notes-bot: monitoring registered at $(MONITORING_DATA_DIR)"
+
+monitoring-unregister:
+	rm -f $(MONITORING_DATA_DIR)/prometheus-targets/notes-bot.yml
+	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
+	@echo "notes-bot: monitoring unregistered"
+
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format monitoring-register monitoring-unregister
