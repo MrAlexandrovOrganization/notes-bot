@@ -35,9 +35,6 @@ wheels/
 htmlcov/
 .coverage
 
-# Notes directory
-notes/
-
 # IDE
 .vscode/
 .idea/

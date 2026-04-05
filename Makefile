@@ -110,11 +110,11 @@ docker-clean:
 proto:
 	@echo "Syncing whisper.proto from $(WHISPER_PROTO_SRC)..."
 	@if echo "$(WHISPER_PROTO_SRC)" | grep -qE "^https?://"; then \
-		curl -sSfL "$(WHISPER_PROTO_SRC)" -o proto/whisper.proto; \
+		curl -sSfL "$(WHISPER_PROTO_SRC)" -o proto/whisper/hisper.proto; \
 	else \
-		cp "$(WHISPER_PROTO_SRC)" proto/whisper.proto; \
+		cp "$(WHISPER_PROTO_SRC)" proto/whisper/whisper.proto; \
 	fi
-	@sed -i 's|option go_package = "[^"]*";|option go_package = "notes-bot/proto/whisper";|' proto/whisper.proto
+	@sed -i 's|option go_package = "[^"]*";|option go_package = "notes-bot/proto/whisper";|' proto/whisper/whisper.proto
 	buf generate
 
 proto-lint:
