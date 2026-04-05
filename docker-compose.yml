@@ -2,6 +2,8 @@ networks:
   default: {}
   whisper-net:
     external: true
+  ollama-net:
+    external: true
 
 services:
   jaeger:
@@ -187,47 +189,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  ollama:
-    image: ollama/ollama:0.18.2
-    restart: unless-stopped
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "127.0.0.1:11434:11434"
-    environment:
-      - OLLAMA_NUM_PARALLEL=1       # CPU: одна задача одновременно
-      - OLLAMA_MAX_LOADED_MODELS=1  # держать в памяти только одну модель
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3001:8080"
-    volumes:
-      - open_webui_data:/app/backend/data
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false  # локальный доступ без авторизации
-    depends_on:
-      ollama:
-        condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   telegram:
     build:
       context: .
@@ -253,6 +214,7 @@ services:
     networks:
       - default
       - whisper-net  # shared Whisper transcription service
+      - ollama-net   # shared Ollama LLM service
     depends_on:
       redis:
         condition: service_healthy
@@ -312,5 +274,3 @@ volumes:
   redisinsight_data:
   prometheus_data:
   grafana_data:
-  ollama_data:
-  open_webui_data:
