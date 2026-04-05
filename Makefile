@@ -4,10 +4,7 @@ DOCKER_COMPOSE = docker compose
 # buf install: https://buf.build/docs/installation
 #   macOS: brew install bufbuild/buf/buf
 install:
-	curl -sSL \
-		"https://github.com/bufbuild/buf/releases/latest/download/buf-$$(uname -s)-$$(uname -m)" \
-		-o /usr/local/bin/buf
-	chmod +x /usr/local/bin/buf
+	go install github.com/bufbuild/buf/cmd/buf@1.67.0
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
