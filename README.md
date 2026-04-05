@@ -263,7 +263,7 @@ make build-telegram   # Пересборка telegram образа
 
 ## Технологии
 
-- **Go 1.25** — core, notifications, telegram
+- **Go 1.26** — core, notifications, telegram
 - **Python 3.11** — whisper (faster-whisper, нет Go-альтернативы)
 - **gRPC** (grpcio / google.golang.org/grpc) — межсервисное взаимодействие
 - **PostgreSQL 16** + pgx/v5 — напоминания

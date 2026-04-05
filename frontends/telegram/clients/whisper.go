@@ -79,9 +79,9 @@ func (c *WhisperClient) Transcribe(ctx context.Context, r io.Reader, format stri
 				return "", fmt.Errorf("get status: %w", err)
 			}
 			switch resp.Status {
-			case pb.DONE:
+			case pb.JobStatus_DONE:
 				return resp.Text, nil
-			case pb.FAILED:
+			case pb.JobStatus_FAILED:
 				return "", fmt.Errorf("transcription failed: %s", resp.Error)
 			}
 		}
@@ -111,7 +111,9 @@ func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format string) 
 	return resp.JobId, nil
 }
 
-func sendChunks(stream interface{ Send(*pb.TranscribeChunk) error }, r io.Reader, format string) error {
+func sendChunks(stream interface {
+	Send(*pb.TranscribeChunk) error
+}, r io.Reader, format string) error {
 	buf := make([]byte, chunkSize)
 	first := true
 	for {
