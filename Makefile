@@ -1,5 +1,10 @@
 DOCKER_COMPOSE = docker compose
 
+# Canonical source of whisper.proto (shared with backends/transcriber).
+# For remote fetch (e.g. in CI without access to the backend repo):
+#   make proto-whisper WHISPER_PROTO_SRC=https://raw.githubusercontent.com/org/transcriber/main/proto/whisper.proto
+WHISPER_PROTO_SRC ?= ../../backends/transcriber/proto/whisper.proto
+
 # Install all dev tools: buf + Go protoc plugins.
 # buf install: https://buf.build/docs/installation
 #   macOS: brew install bufbuild/buf/buf
@@ -101,10 +106,20 @@ docker-clean:
 	$(DOCKER_COMPOSE) down --rmi all --remove-orphans
 	docker system prune -f
 
-proto:
+# Sync whisper.proto from the canonical source (backends/transcriber), then regenerate.
+proto-whisper:
+	@echo "Syncing whisper.proto from $(WHISPER_PROTO_SRC)..."
+	@if echo "$(WHISPER_PROTO_SRC)" | grep -qE "^https?://"; then \
+		curl -sSfL "$(WHISPER_PROTO_SRC)" -o proto/whisper.proto; \
+	else \
+		cp "$(WHISPER_PROTO_SRC)" proto/whisper.proto; \
+	fi
+	buf generate
+
+proto: proto-whisper
 	buf generate
 
 proto-lint:
 	buf lint proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto-whisper proto proto-lint format
