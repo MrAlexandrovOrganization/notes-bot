@@ -107,19 +107,17 @@ docker-clean:
 	docker system prune -f
 
 # Sync whisper.proto from the canonical source (backends/transcriber), then regenerate.
-proto-whisper:
+proto:
 	@echo "Syncing whisper.proto from $(WHISPER_PROTO_SRC)..."
 	@if echo "$(WHISPER_PROTO_SRC)" | grep -qE "^https?://"; then \
 		curl -sSfL "$(WHISPER_PROTO_SRC)" -o proto/whisper.proto; \
 	else \
 		cp "$(WHISPER_PROTO_SRC)" proto/whisper.proto; \
 	fi
-	buf generate
-
-proto: proto-whisper
+	@sed -i 's|option go_package = "[^"]*";|option go_package = "notes-bot/proto/whisper";|' proto/whisper.proto
 	buf generate
 
 proto-lint:
 	buf lint proto
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto-whisper proto proto-lint format
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format
