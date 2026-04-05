@@ -60,13 +60,14 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	}
 
 	fileURL := tgFile.Link(tgBot.Token)
-	audioData, err := downloadFile(ctx, fileURL)
+	rc, err := downloadFile(ctx, fileURL)
 	if err != nil {
 		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
+	defer rc.Close()
 
-	text, err := a.Whisper.Transcribe(ctx, audioData, format)
+	text, err := a.Whisper.Transcribe(ctx, rc, format)
 	if err != nil {
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
@@ -112,7 +113,7 @@ func (a *App) editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int
 	editText(ctx, tgBot, chatID, msgID, text, nil)
 }
 
-func downloadFile(ctx context.Context, url string) ([]byte, error) {
+func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -124,6 +125,9 @@ func downloadFile(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }

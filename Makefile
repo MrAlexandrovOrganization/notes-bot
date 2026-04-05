@@ -1,8 +1,13 @@
 DOCKER_COMPOSE = docker compose
 
-# For mac: brew install go@1.25
-# For CI: Go is installed via actions/setup-go
+# Install all dev tools: buf + Go protoc plugins.
+# buf install: https://buf.build/docs/installation
+#   macOS: brew install bufbuild/buf/buf
 install:
+	curl -sSL \
+		"https://github.com/bufbuild/buf/releases/latest/download/buf-$$(uname -s)-$$(uname -m)" \
+		-o /usr/local/bin/buf
+	chmod +x /usr/local/bin/buf
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
@@ -100,8 +105,9 @@ docker-clean:
 	docker system prune -f
 
 proto:
-	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/notes.proto
-	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/notifications.proto
-	protoc -I=proto --go_out=. --go_opt=module=notes-bot --go-grpc_out=. --go-grpc_opt=module=notes-bot proto/whisper.proto
+	buf generate
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto format
+proto-lint:
+	buf lint proto
+
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format

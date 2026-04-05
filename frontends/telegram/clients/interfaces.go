@@ -1,6 +1,9 @@
 package clients
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // CoreService is the interface for the core notes gRPC service.
 type CoreService interface {
@@ -26,7 +29,7 @@ type NotificationsService interface {
 
 // WhisperService is the interface for the whisper transcription gRPC service.
 type WhisperService interface {
-	Transcribe(ctx context.Context, audioData []byte, format string) (string, error)
+	Transcribe(ctx context.Context, r io.Reader, format string) (string, error)
 }
 
 // Ensure concrete types satisfy their interfaces at compile time.
