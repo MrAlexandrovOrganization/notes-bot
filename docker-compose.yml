@@ -6,22 +6,12 @@ networks:
     external: true
   monitoring-net:
     external: true
+  kafka-net:
+    external: true
+  redis-net:
+    external: true
 
 services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -37,37 +27,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  redisinsight:
-    image: redis/redisinsight:3.2
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:5540:5540"
-    volumes:
-      - redisinsight_data:/data
-    depends_on:
-      - redis
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:v0.7.2
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:8080"
-    environment:
-      - KAFKA_CLUSTERS_0_NAME=local
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
-    depends_on:
-      - kafka
     logging:
       driver: "json-file"
       options:
@@ -116,30 +75,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  kafka:
-    image: confluentinc/cp-kafka:8.2.0
-    restart: unless-stopped
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    environment:
-      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
-      - KAFKA_NODE_ID=1
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
-      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   notifications:
     container_name: notes-bot-notifications
     build:
@@ -163,6 +98,7 @@ services:
     networks:
       - default
       - monitoring-net
+      - kafka-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
       interval: 30s
@@ -172,8 +108,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_started
+      core:
+        condition: service_healthy
     logging:
       driver: "json-file"
       options:
@@ -205,12 +141,12 @@ services:
       - LLM_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
     networks:
       - default
-      - whisper-net  # shared Whisper transcription service
-      - ollama-net   # shared Ollama LLM service
+      - whisper-net    # shared Whisper transcription service
+      - ollama-net     # shared Ollama LLM service
       - monitoring-net
+      - kafka-net
+      - redis-net
     depends_on:
-      redis:
-        condition: service_healthy
       core:
         condition: service_healthy
     logging:
@@ -222,5 +158,3 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
-  kafka_data:
-  redisinsight_data:
