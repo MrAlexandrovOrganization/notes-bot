@@ -80,3 +80,70 @@ func TestUpdateRatingImpl_PreservesOtherFields(t *testing.T) {
 	assert.Contains(t, result, "date: \"[[01-Mar-2026]]\"")
 	assert.Contains(t, result, "content")
 }
+
+// --- Obsidian format tests (3 delimiters) ---
+
+const (
+	obsidianFormatWithRating = `---
+date: "[[09-Apr-2026]]"
+title: "[[09-Apr-2026]]"
+Оценка: 7
+tags:
+  - daily
+---
+- [x] Доброго утра!  [completion:: 2026-04-09]
+- [x] Написать промпт для пагинации заметок  [completion:: 2026-04-09]
+---
+`
+
+	obsidianFormatWithoutRating = `---
+date: "[[09-Apr-2026]]"
+title: "[[09-Apr-2026]]"
+Оценка:
+tags:
+  - daily
+---
+- [x] Доброго утра!  [completion:: 2026-04-09]
+- [x] Написать промпт для пагинации заметок  [completion:: 2026-04-09]
+- [ ] Посчитать ресурсы
+- [x] Узнать, каким образом обрабатывается трафик, если балансёры в 3 дц  [completion:: 2026-04-09]
+---
+`
+)
+
+func TestGetRatingImpl_ObsidianFormat_WithRating(t *testing.T) {
+	rating := GetRatingImpl(t.Context(), obsidianFormatWithRating)
+	require.NotNil(t, rating)
+	assert.Equal(t, 7, *rating)
+}
+
+func TestGetRatingImpl_ObsidianFormat_EmptyRating(t *testing.T) {
+	// Оценка: without value should return nil
+	rating := GetRatingImpl(t.Context(), obsidianFormatWithoutRating)
+	assert.Nil(t, rating)
+}
+
+func TestUpdateRatingImpl_ObsidianFormat_UpdatesExistingField(t *testing.T) {
+	result, ok := UpdateRatingImpl(t.Context(), obsidianFormatWithRating, 3)
+	require.True(t, ok)
+	assert.Contains(t, result, "Оценка: 3")
+	assert.NotContains(t, result, "Оценка: 7")
+	// Should preserve content
+	assert.Contains(t, result, "- [x] Доброго утра!")
+}
+
+func TestUpdateRatingImpl_ObsidianFormat_AddsFieldWhenMissing(t *testing.T) {
+	result, ok := UpdateRatingImpl(t.Context(), obsidianFormatWithoutRating, 5)
+	require.True(t, ok)
+	assert.Contains(t, result, "Оценка: 5")
+	// Should preserve content
+	assert.Contains(t, result, "- [x] Доброго утра!")
+}
+
+func TestUpdateRatingImpl_ObsidianFormat_Roundtrip(t *testing.T) {
+	result, ok := UpdateRatingImpl(t.Context(), obsidianFormatWithRating, 9)
+	require.True(t, ok)
+	rating := GetRatingImpl(t.Context(), result)
+	require.NotNil(t, rating)
+	assert.Equal(t, 9, *rating)
+}
