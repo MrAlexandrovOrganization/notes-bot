@@ -123,6 +123,10 @@ func GetRatingImpl(ctx context.Context, content string) *int {
 			continue
 		}
 		ratingStr := strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+		// Empty rating is normal - note just doesn't have a rating yet
+		if ratingStr == "" {
+			return nil
+		}
 		rating, err := strconv.Atoi(ratingStr)
 		if err != nil {
 			logger.Warn("invalid rating value", zap.String("value", ratingStr))
