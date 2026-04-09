@@ -28,6 +28,7 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"task":     (*App).handleTaskAction,
 	"cal":      (*App).handleCalAction,
 	"reminder": (*App).handleReminderAction,
+	"note":     (*App).handleNoteAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -108,6 +109,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "note":
+		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = 0 })
 		return a.showNote(ctx, tgBot, query, userID)
 
 	case "calendar":
@@ -232,6 +234,33 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 			u.CalendarYear = now.Year()
 		})
 		return a.showCalendar(ctx, tgBot, query, userID)
+
+	case "back":
+		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		return a.showMainMenu(ctx, tgBot, query, userID)
+
+	case "noop":
+	}
+	return nil
+}
+
+// ── Note ───────────────────────────────────────────────────────────────────
+
+func (a *App) handleNoteAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+	if len(parts) < 2 {
+		return nil
+	}
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.action", parts[1]))
+	defer span.End()
+
+	switch parts[1] {
+	case "page":
+		if len(parts) < 3 {
+			return nil
+		}
+		page, _ := strconv.Atoi(parts[2])
+		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = page })
+		return a.showNote(ctx, tgBot, query, userID)
 
 	case "back":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
@@ -415,6 +444,7 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 		return fmt.Errorf("get context: %w", err)
 	}
 	activeDate := uc.ActiveDate
+	currentPage := uc.NotePage
 
 	var content string
 	var rating int
@@ -444,18 +474,15 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 		ratingText = fmt.Sprintf("Оценка: %d", rating)
 	}
 
-	preview := content
-	if len(preview) > notePreviewMaxChars {
-		preview = preview[:notePreviewMaxChars] + "..."
-	}
+	// Используем пагинацию для длинных заметок
+	pageContent, kb := tgkeyboards.NotePagination(content, currentPage)
 
 	text := fmt.Sprintf("📝 Заметка %s\n\n%s\n\n```\n%s\n```",
 		activeDate,
 		ratingText,
-		preview,
+		pageContent,
 	)
-	kb := a.getMainMenuKeyboard(ctx)
-	return replyToCallback(ctx, tgBot, query, text, &kb)
+	return replyToCallback(ctx, tgBot, query, text, kb)
 }
 
 func stepMonth(month, year, delta int) (int, int) {

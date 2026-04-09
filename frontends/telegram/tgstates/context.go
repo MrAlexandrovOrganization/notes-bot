@@ -29,6 +29,7 @@ type UserContext struct {
 	CalendarMonth             int           `json:"calendar_month"`
 	CalendarYear              int           `json:"calendar_year"`
 	TaskPage                  int           `json:"task_page"`
+	NotePage                  int           `json:"note_page"`
 	LastMessageID             int           `json:"last_message_id"`
 	ReminderDraft             ReminderDraft `json:"reminder_draft"`
 	PendingPostponeReminderID int64         `json:"pending_postpone_reminder_id"`
