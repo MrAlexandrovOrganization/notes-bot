@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -72,6 +74,8 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	}
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
 			replyToCallback(ctx, tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
@@ -439,8 +443,12 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	log := applog.With(ctx, a.Logger)
+
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("get context: %w", err)
 	}
 	activeDate := uc.ActiveDate
@@ -455,27 +463,44 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 		return nil
 	})
 	g.Go(func() error {
-		content, _ = a.Core.GetNote(gCtx, activeDate)
+		var getErr error
+		content, getErr = a.Core.GetNote(gCtx, activeDate)
+		if getErr != nil {
+			log.Warn("failed to get note content", zap.String("date", activeDate), zap.Error(getErr))
+		}
 		return nil
 	})
 	g.Go(func() error {
-		rating, hasRating, _ = a.Core.GetRating(gCtx, activeDate)
+		var getErr error
+		rating, hasRating, getErr = a.Core.GetRating(gCtx, activeDate)
+		if getErr != nil {
+			log.Warn("failed to get note rating", zap.String("date", activeDate), zap.Error(getErr))
+		}
 		return nil
 	})
-	g.Wait() //nolint:errcheck // errors are handled per-call inside clients
+	g.Wait() //nolint:errcheck // errors are handled per-call inside goroutines above
 
 	if content == "" {
 		return replyToCallback(ctx, tgBot, query, "❌ Не удалось прочитать заметку.", nil)
 	}
 
-	// rating / hasRating already populated above
+	if !utf8.ValidString(content) {
+		log.Warn("note content has invalid UTF-8, sanitizing", zap.String("date", activeDate))
+		content = strings.ToValidUTF8(content, "")
+	}
+
 	ratingText := "Оценка: не установлена"
 	if hasRating {
 		ratingText = fmt.Sprintf("Оценка: %d", rating)
 	}
 
-	// Используем пагинацию для длинных заметок
 	pageContent, kb := tgkeyboards.NotePagination(content, currentPage)
+
+	span.SetAttributes(
+		attribute.String("date", activeDate),
+		attribute.Int("page", currentPage),
+		attribute.Int("content_len", len(pageContent)),
+	)
 
 	text := fmt.Sprintf("📝 Заметка %s\n\n%s\n\n```\n%s\n```",
 		activeDate,

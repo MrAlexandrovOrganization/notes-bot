@@ -9,6 +9,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var mdV2EscapeRe = regexp.MustCompile(`([_*\[\]()~>#\+\-=|{}.!])`)
@@ -30,6 +31,10 @@ func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text stri
 		msg.ReplyMarkup = *keyboard
 	}
 	_, err := bot.Send(msg)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
 	return err
 }
 
@@ -53,10 +58,19 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 
 	_, sendSpan := telemetry.StartSpan(ctx)
 	_, err := bot.Send(edit)
+	if err != nil {
+		sendSpan.RecordError(err)
+		sendSpan.SetStatus(codes.Error, err.Error())
+	}
 	sendSpan.End()
 
-	if err != nil && strings.Contains(err.Error(), "message is not modified") {
-		return nil
+	if err != nil {
+		if strings.Contains(err.Error(), "message is not modified") {
+			return nil
+		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.Int("text_len", len(escapedText)))
 	}
 	return err
 }
