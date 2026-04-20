@@ -1,0 +1,12 @@
+# Core gRPC
+grpcio==1.60.0
+grpcio-tools==1.60.0
+
+# Vector database (same as MemPalace uses)
+chromadb==0.4.22
+
+# Sentence transformers for embeddings
+sentence-transformers==2.2.2
+
+# Note: For production, you might want to use a lighter embedding model
+# like all-MiniLM-L6-v2 for faster indexing and lower memory usage

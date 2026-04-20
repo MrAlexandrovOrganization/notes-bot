@@ -155,6 +155,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  search:
+    build:
+      context: .
+      dockerfile: search/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ${NOTES_DIR}:/notes:ro
+      - search_data:/data
+    environment:
+      - GRPC_PORT=50054
+    ports:
+      - "127.0.0.1:50054:50054"
+    networks:
+      - default
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
   pgadmin_data:
+  search_data:

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package search;
+
+option go_package = "notes-bot/proto/search";
+
+service SearchService {
+  // Index all notes from the notes directory
+  rpc IndexNotes(IndexNotesRequest) returns (IndexNotesResponse);
+  
+  // Search notes by query
+  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse);
+  
+  // Get index status
+  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+}
+
+message IndexNotesRequest {
+  string notes_path = 1;
+}
+
+message IndexNotesResponse {
+  bool success = 1;
+  int32 indexed_count = 2;
+  string error = 3;
+}
+
+message SearchNotesRequest {
+  string query = 1;
+  int32 limit = 2;  // default 5
+}
+
+message SearchNote {
+  string date = 1;
+  string content = 2;
+  float score = 3;
+}
+
+message SearchNotesResponse {
+  repeated SearchNote results = 1;
+}
+
+message GetIndexStatusRequest {}
+
+message GetIndexStatusResponse {
+  int32 indexed_count = 1;
+  int64 last_indexed_at = 2;  // Unix timestamp
+}
