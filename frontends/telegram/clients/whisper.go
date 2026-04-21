@@ -51,14 +51,14 @@ func (c *WhisperClient) Close() {
 
 // Transcribe submits audio for transcription and polls until done.
 // Satisfies clients.WhisperService interface.
-func (c *WhisperClient) Transcribe(ctx context.Context, r io.Reader, format string) (string, error) {
+func (c *WhisperClient) Transcribe(ctx context.Context, r io.Reader, format, preset string) (string, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	ctx, cancel := context.WithTimeout(ctx, pollDeadline)
 	defer cancel()
 
-	jobID, err := c.submit(ctx, r, format)
+	jobID, err := c.submit(ctx, r, format, preset)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +88,7 @@ func (c *WhisperClient) Transcribe(ctx context.Context, r io.Reader, format stri
 	}
 }
 
-func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format string) (string, error) {
+func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format, preset string) (string, error) {
 	stream, err := c.stub.Submit(ctx)
 	if err != nil {
 		if isUnavailable(err) {
@@ -97,7 +97,7 @@ func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format string) 
 		return "", fmt.Errorf("open submit stream: %w", err)
 	}
 
-	if err := sendChunks(stream, r, format); err != nil {
+	if err := sendChunks(stream, r, format, preset); err != nil {
 		return "", err
 	}
 
@@ -113,7 +113,7 @@ func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format string) 
 
 func sendChunks(stream interface {
 	Send(*pb.TranscribeChunk) error
-}, r io.Reader, format string) error {
+}, r io.Reader, format, preset string) error {
 	buf := make([]byte, chunkSize)
 	first := true
 	for {
@@ -122,6 +122,7 @@ func sendChunks(stream interface {
 			chunk := &pb.TranscribeChunk{Data: buf[:n]}
 			if first {
 				chunk.Format = format
+				chunk.Options = &pb.TranscriptionOptions{Preset: preset}
 				first = false
 			}
 			if sendErr := stream.Send(chunk); sendErr != nil {

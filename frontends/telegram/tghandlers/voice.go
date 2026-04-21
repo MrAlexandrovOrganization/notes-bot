@@ -67,7 +67,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	}
 	defer rc.Close()
 
-	text, err := a.Whisper.Transcribe(ctx, rc, format)
+	text, err := a.Whisper.Transcribe(ctx, rc, format, "voice")
 	if err != nil {
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
