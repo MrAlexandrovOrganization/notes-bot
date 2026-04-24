@@ -129,7 +129,7 @@ services:
       - CORE_GRPC_PORT=50051
       - NOTIFICATIONS_GRPC_HOST=notifications
       - NOTIFICATIONS_GRPC_PORT=50052
-      - WHISPER_GRPC_HOST=whisper
+      - WHISPER_GRPC_HOST=whisper-ingress
       - WHISPER_GRPC_PORT=50053
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - METRICS_PORT=9102
