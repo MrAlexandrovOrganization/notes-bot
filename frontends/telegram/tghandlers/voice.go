@@ -55,14 +55,14 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
 	tgFile, err := tgBot.GetFile(fileConfig)
 	if err != nil {
-		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
+		editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 
 	fileURL := tgFile.Link(tgBot.Token)
 	rc, err := downloadFile(ctx, fileURL)
 	if err != nil {
-		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
+		editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при загрузке файла.")
 		return
 	}
 	defer rc.Close()
@@ -71,17 +71,17 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	if err != nil {
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
-			a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID,
+			editStatus(ctx, tgBot, chatID, statusMsg.MessageID,
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
 		}
 		log.Error("transcribe error", zap.Error(err))
-		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
+		editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при обработке голосового сообщения.")
 		return
 	}
 
 	if text == "" {
-		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь.")
+		editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "⚠️ Не удалось распознать речь.")
 		return
 	}
 
@@ -100,7 +100,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	if _, err := a.Core.AppendToNote(ctx, uc.ActiveDate, text); err != nil {
 		log.Error("append to note", zap.Error(err))
-		a.editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при сохранении в заметку.")
+		editStatus(ctx, tgBot, chatID, statusMsg.MessageID, "❌ Ошибка при сохранении в заметку.")
 		return
 	}
 
@@ -109,7 +109,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		fmt.Sprintf("🎙 Добавлено в заметку:\n\n%s", text), &kb)
 }
 
-func (a *App) editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
+func editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
 	editText(ctx, tgBot, chatID, msgID, text, nil)
 }
 
