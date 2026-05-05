@@ -15,11 +15,21 @@ import (
 )
 
 const (
-	maxMsgSize   = 50 * 1024 * 1024 // 50 MB
-	chunkSize    = 1 * 1024 * 1024  // 1 MB per chunk
-	pollInterval = 5 * time.Second
-	pollDeadline = 3 * time.Hour
+	maxMsgSize    = 50 * 1024 * 1024 // 50 MB
+	chunkSize     = 1 * 1024 * 1024  // 1 MB per chunk
+	pollInterval  = 5 * time.Second
+	pollDeadline  = 3 * time.Hour
+	submitTimeout = 120 * time.Second
+	statusTimeout = 10 * time.Second
 )
+
+// JobResult holds the outcome of an async transcription job poll.
+type JobResult struct {
+	Status          pb.JobStatus
+	Text            string
+	Error           string
+	ProgressPercent float32
+}
 
 type WhisperClient struct {
 	conn *grpc.ClientConn
@@ -49,66 +59,76 @@ func (c *WhisperClient) Close() {
 	c.conn.Close()
 }
 
-// Transcribe submits audio for transcription and polls until done.
-// Satisfies clients.WhisperService interface.
-func (c *WhisperClient) Transcribe(ctx context.Context, r io.Reader, format, preset string) (string, error) {
+// Submit uploads audio and returns a job ID and queue position immediately.
+func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset string) (jobID string, queuePosition int, err error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	ctx, cancel := context.WithTimeout(ctx, pollDeadline)
+	ctx, cancel := context.WithTimeout(ctx, submitTimeout)
 	defer cancel()
 
-	jobID, err := c.submit(ctx, r, format, preset)
-	if err != nil {
-		return "", err
-	}
-
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-			resp, err := c.stub.GetStatus(ctx, &pb.StatusRequest{JobId: jobID})
-			if err != nil {
-				if isUnavailable(err) {
-					return "", errUnavailable("whisper")
-				}
-				return "", fmt.Errorf("get status: %w", err)
-			}
-			switch resp.Status {
-			case pb.JobStatus_DONE:
-				return resp.Text, nil
-			case pb.JobStatus_FAILED:
-				return "", fmt.Errorf("transcription failed: %s", resp.Error)
-			}
-		}
-	}
-}
-
-func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format, preset string) (string, error) {
 	stream, err := c.stub.Submit(ctx)
 	if err != nil {
 		if isUnavailable(err) {
-			return "", errUnavailable("whisper")
+			return "", 0, errUnavailable("whisper")
 		}
-		return "", fmt.Errorf("open submit stream: %w", err)
+		return "", 0, fmt.Errorf("open submit stream: %w", err)
 	}
 
 	if err := sendChunks(stream, r, format, preset); err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
 		if isUnavailable(err) {
-			return "", errUnavailable("whisper")
+			return "", 0, errUnavailable("whisper")
 		}
-		return "", fmt.Errorf("close submit stream: %w", err)
+		return "", 0, fmt.Errorf("close submit stream: %w", err)
 	}
-	return resp.JobId, nil
+	return resp.JobId, int(resp.QueuePosition), nil
+}
+
+// GetStatus polls the status of a submitted job.
+func (c *WhisperClient) GetStatus(ctx context.Context, jobID string) (*JobResult, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
+	defer cancel()
+
+	resp, err := c.stub.GetStatus(ctx, &pb.StatusRequest{JobId: jobID})
+	if err != nil {
+		if isUnavailable(err) {
+			return nil, errUnavailable("whisper")
+		}
+		return nil, fmt.Errorf("get status: %w", err)
+	}
+
+	return &JobResult{
+		Status:          resp.Status,
+		Text:            resp.Text,
+		Error:           resp.Error,
+		ProgressPercent: resp.ProgressPercent,
+	}, nil
+}
+
+// Cancel requests cancellation of a job.
+func (c *WhisperClient) Cancel(ctx context.Context, jobID string) (bool, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
+	defer cancel()
+
+	resp, err := c.stub.Cancel(ctx, &pb.CancelRequest{JobId: jobID})
+	if err != nil {
+		if isUnavailable(err) {
+			return false, errUnavailable("whisper")
+		}
+		return false, fmt.Errorf("cancel job: %w", err)
+	}
+	return resp.Cancelled, nil
 }
 
 func sendChunks(stream interface {

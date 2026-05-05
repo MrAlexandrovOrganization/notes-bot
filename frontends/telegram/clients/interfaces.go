@@ -29,7 +29,9 @@ type NotificationsService interface {
 
 // WhisperService is the interface for the whisper transcription gRPC service.
 type WhisperService interface {
-	Transcribe(ctx context.Context, r io.Reader, format, preset string) (string, error)
+	Submit(ctx context.Context, r io.Reader, format, preset string) (jobID string, queuePosition int, err error)
+	GetStatus(ctx context.Context, jobID string) (*JobResult, error)
+	Cancel(ctx context.Context, jobID string) (bool, error)
 }
 
 // Ensure concrete types satisfy their interfaces at compile time.

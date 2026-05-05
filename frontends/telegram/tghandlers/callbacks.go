@@ -31,6 +31,7 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"cal":      (*App).handleCalAction,
 	"reminder": (*App).handleReminderAction,
 	"note":     (*App).handleNoteAction,
+	"voice":    (*App).handleVoiceAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
