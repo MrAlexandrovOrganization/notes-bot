@@ -86,6 +86,28 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 	return err
 }
 
+// editTextRaw edits an existing message with pre-built MarkdownV2 text (no re-escaping).
+func editTextRaw(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, rawMarkdownV2 string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+	ctx, span := telemetry.StartSpan(ctx, attribute.Int64("chat_id", chatID), attribute.Int("message_id", messageID))
+	defer span.End()
+
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, rawMarkdownV2)
+	edit.ParseMode = "MarkdownV2"
+	if keyboard != nil {
+		edit.ReplyMarkup = keyboard
+	}
+
+	_, err := bot.Send(edit)
+	if err != nil {
+		if strings.Contains(err.Error(), "message is not modified") {
+			return nil
+		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	return err
+}
+
 // replyToUpdate sends a reply to a message update.
 func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)

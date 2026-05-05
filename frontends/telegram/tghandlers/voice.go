@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -90,6 +91,13 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 // processVoice handles file download, whisper submission, polling, and result delivery in background.
 func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusMsgID int, fileID, format, activeDate string, isNLReminder bool, log *zap.Logger) {
 	ctx := context.Background()
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("panic in processVoice", zap.Any("recover", r), zap.String("stack", string(debug.Stack())))
+			editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Произошла внутренняя ошибка.")
+		}
+	}()
 
 	// Download the file.
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
@@ -199,12 +207,17 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 	end := min(start+voiceCharsPerPage, len(runes))
 	pageText := string(runes[start:end])
 
-	var msg string
+	// Build the message with code block.
+	// The header is escaped for MarkdownV2, but the code block content
+	// only needs ` and \ escaped (MarkdownV2 code block rules).
+	var header string
 	if totalPages > 1 {
-		msg = fmt.Sprintf("🎙 Добавлено в заметку [%d/%d]:\n\n```\n%s\n```", page+1, totalPages, pageText)
+		header = EscapeMarkdownV2(fmt.Sprintf("🎙 Добавлено в заметку [%d/%d]:", page+1, totalPages))
 	} else {
-		msg = fmt.Sprintf("🎙 Добавлено в заметку:\n\n```\n%s\n```", pageText)
+		header = EscapeMarkdownV2("🎙 Добавлено в заметку:")
 	}
+	codeContent := escapeCodeBlock(pageText)
+	msg := fmt.Sprintf("%s\n\n```\n%s\n```", header, codeContent)
 
 	var kb *tgbotapi.InlineKeyboardMarkup
 	if totalPages > 1 {
@@ -212,7 +225,15 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 		kb = &keyboard
 	}
 
-	editText(ctx, tgBot, chatID, msgID, msg, kb)
+	editTextRaw(ctx, tgBot, chatID, msgID, msg, kb)
+}
+
+// escapeCodeBlock escapes only the characters that need escaping inside
+// a MarkdownV2 code block: ` and \.
+func escapeCodeBlock(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "`", "\\`")
+	return s
 }
 
 func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.InlineKeyboardMarkup {
@@ -274,9 +295,6 @@ func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 			case pb.JobStatus_DONE:
 				return result.Text, nil
 			case pb.JobStatus_FAILED:
-				if result.Error == "cancelled" {
-					return "", ctx.Err()
-				}
 				return "", fmt.Errorf("transcription failed: %s", result.Error)
 			}
 		}
