@@ -74,12 +74,17 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		return
 	}
 
+	// Fix the active date at the moment the voice message is sent,
+	// so switching days while transcription is in progress won't affect it.
+	activeDate := uc.ActiveDate
+	isNLReminder := uc.State == tgstates.StateReminderCreateNL
+
 	// Run the rest asynchronously so the bot stays responsive.
-	go a.processVoice(tgBot, chatID, userID, statusMsg.MessageID, fileID, format, uc, log)
+	go a.processVoice(tgBot, chatID, userID, statusMsg.MessageID, fileID, format, activeDate, isNLReminder, log)
 }
 
 // processVoice handles file download, whisper submission, polling, and result delivery in background.
-func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusMsgID int, fileID, format string, uc *tgstates.UserContext, log *zap.Logger) {
+func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusMsgID int, fileID, format, activeDate string, isNLReminder bool, log *zap.Logger) {
 	ctx := context.Background()
 
 	// Download the file.
@@ -155,21 +160,15 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 		return
 	}
 
-	// Re-read user state — it may have changed while we were transcribing.
-	uc, err = a.State.GetContext(ctx, userID)
-	if err != nil {
-		log.Error("get context", zap.Error(err))
-		return
-	}
-
-	// If user is in NL reminder creation state, route to the NL handler.
-	if uc.State == tgstates.StateReminderCreateNL {
+	// If user was in NL reminder creation state when they sent the voice, route to the NL handler.
+	if isNLReminder {
 		tgBot.Request(tgbotapi.NewDeleteMessage(chatID, statusMsgID)) //nolint:errcheck
 		a.handleReminderNLInput(ctx, tgBot, chatID, userID, text)
 		return
 	}
 
-	if _, err := a.Core.AppendToNote(ctx, uc.ActiveDate, text); err != nil {
+	// Use the date that was active when the voice message was sent.
+	if _, err := a.Core.AppendToNote(ctx, activeDate, text); err != nil {
 		log.Error("append to note", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при сохранении в заметку.")
 		return
