@@ -24,6 +24,10 @@ type App struct {
 	// voiceCancels stores cancel functions for in-progress transcription jobs.
 	// Key: jobID (string), Value: context.CancelFunc.
 	voiceCancels sync.Map
+
+	// voiceTexts stores completed transcription texts for pagination.
+	// Key: statusMsgID (int), Value: string.
+	voiceTexts sync.Map
 }
 
 // authorized returns true if the userID is allowed to use the bot.

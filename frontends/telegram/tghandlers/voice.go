@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 const (
 	voicePollInterval = 5 * time.Second
 	voicePollDeadline = 3 * time.Hour
+	// voiceCharsPerPage is the max text length per page.
+	// We reserve space for the header, code block markers, and page indicator.
+	voiceCharsPerPage = 3200
 )
 
 func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -110,8 +114,7 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 
 	jobID, queuePos, err := a.Whisper.Submit(ctx, rc, format, "voice")
 	if err != nil {
-		var svcErr *clients.ServiceUnavailableError
-		if errors.As(err, &svcErr) {
+		if _, ok := errors.AsType[*clients.ServiceUnavailableError](err); ok {
 			editStatus(ctx, tgBot, chatID, statusMsgID,
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
 			return
@@ -144,8 +147,7 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 			editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Отменено.")
 			return
 		}
-		var svcErr *clients.ServiceUnavailableError
-		if errors.As(err, &svcErr) {
+		if _, ok := errors.AsType[*clients.ServiceUnavailableError](err); ok {
 			editStatus(ctx, tgBot, chatID, statusMsgID,
 				"⏳ Сервис распознавания недоступен. Попробуйте позже.")
 			return
@@ -174,8 +176,58 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 		return
 	}
 
-	editText(ctx, tgBot, chatID, statusMsgID,
-		fmt.Sprintf("🎙 Добавлено в заметку:\n\n%s", text), nil)
+	// Store the text for pagination and show the first page.
+	a.voiceTexts.Store(statusMsgID, text)
+	a.showVoicePage(ctx, tgBot, chatID, statusMsgID, text, 0)
+}
+
+// showVoicePage renders a specific page of the transcription result.
+func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, fullText string, page int) {
+	runes := []rune(fullText)
+	totalPages := (len(runes) + voiceCharsPerPage - 1) / voiceCharsPerPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
+
+	start := page * voiceCharsPerPage
+	end := min(start+voiceCharsPerPage, len(runes))
+	pageText := string(runes[start:end])
+
+	var msg string
+	if totalPages > 1 {
+		msg = fmt.Sprintf("🎙 Добавлено в заметку [%d/%d]:\n\n```\n%s\n```", page+1, totalPages, pageText)
+	} else {
+		msg = fmt.Sprintf("🎙 Добавлено в заметку:\n\n```\n%s\n```", pageText)
+	}
+
+	var kb *tgbotapi.InlineKeyboardMarkup
+	if totalPages > 1 {
+		keyboard := voicePaginationKeyboard(msgID, page, totalPages)
+		kb = &keyboard
+	}
+
+	editText(ctx, tgBot, chatID, msgID, msg, kb)
+}
+
+func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.InlineKeyboardMarkup {
+	var nav []tgbotapi.InlineKeyboardButton
+	if currentPage > 0 {
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("◀ Назад",
+			fmt.Sprintf("voice:page:%d:%d", msgID, currentPage-1)))
+	}
+	nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(
+		fmt.Sprintf("%d/%d", currentPage+1, totalPages), "voice:noop"))
+	if currentPage < totalPages-1 {
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("Далее ▶",
+			fmt.Sprintf("voice:page:%d:%d", msgID, currentPage+1)))
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(nav)
 }
 
 // pollTranscription polls whisper service for job completion, updating the status message with progress.
@@ -239,13 +291,43 @@ func voiceCancelKeyboard(jobID string) tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
-// handleVoiceAction handles voice-related callback actions (cancel).
+// handleVoiceAction handles voice-related callback actions (cancel, page, noop).
 func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
-	if len(parts) < 3 || parts[1] != "cancel" {
+	if len(parts) < 2 {
 		return nil
 	}
-	jobID := strings.Join(parts[2:], ":")
-	a.cancelVoiceJob(ctx, jobID)
+
+	switch parts[1] {
+	case "cancel":
+		if len(parts) < 3 {
+			return nil
+		}
+		jobID := strings.Join(parts[2:], ":")
+		a.cancelVoiceJob(ctx, jobID)
+
+	case "page":
+		// voice:page:<msgID>:<page>
+		if len(parts) < 4 {
+			return nil
+		}
+		msgID, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return nil
+		}
+		page, err := strconv.Atoi(parts[3])
+		if err != nil {
+			return nil
+		}
+		val, ok := a.voiceTexts.Load(msgID)
+		if !ok {
+			return nil
+		}
+		chatID := query.Message.Chat.ID
+		a.showVoicePage(ctx, tgBot, chatID, msgID, val.(string), page)
+
+	case "noop":
+		// Do nothing — just the page counter button.
+	}
 	return nil
 }
 
