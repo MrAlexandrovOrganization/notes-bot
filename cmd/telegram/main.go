@@ -217,10 +217,6 @@ var updateHandlers = map[string]updateHandler{
 }
 
 func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
-	// Give each update handler a generous timeout
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
 	updateType, _ := classifyUpdate(update)
 	if h, ok := updateHandlers[updateType]; ok {
 		h(ctx, app, tgBot, update)

@@ -86,7 +86,7 @@ up:
 up-ci:
 	$(DOCKER_COMPOSE) up --build -d
 
-deploy:
+deploy: proto
 	$(DOCKER_COMPOSE) build --no-cache
 	$(DOCKER_COMPOSE) up -d
 

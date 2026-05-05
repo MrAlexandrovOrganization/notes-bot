@@ -185,7 +185,7 @@ func (s *NotesServer) LoadHistoricalRatings(ctx context.Context) {
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(8)
+	g.SetLimit(6)
 
 	for _, date := range dates {
 		g.Go(func() error {
