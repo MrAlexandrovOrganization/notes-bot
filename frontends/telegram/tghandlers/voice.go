@@ -146,7 +146,8 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 	a.voiceCancels.Store(jobID, pollCancel)
 
 	// Poll for result with progress updates.
-	text, err := a.pollTranscription(pollCtx, tgBot, chatID, statusMsgID, jobID, log)
+	// Pass statusText so the poller doesn't immediately overwrite the queue position message.
+	text, err := a.pollTranscription(pollCtx, tgBot, chatID, statusMsgID, jobID, statusText, log)
 	a.voiceCancels.Delete(jobID)
 	pollCancel()
 
@@ -186,11 +187,21 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 
 	// Store the text for pagination and show the first page.
 	a.voiceTexts.Store(statusMsgID, text)
-	a.showVoicePage(ctx, tgBot, chatID, statusMsgID, text, 0)
+	if err := a.showVoicePage(ctx, tgBot, chatID, statusMsgID, text, 0); err != nil {
+		log.Error("show voice page failed, sending as plain message", zap.Error(err))
+		// Fallback: send the transcription as a new plain message so the user gets the result.
+		runes := []rune(text)
+		preview := string(runes[:min(len(runes), 3500)])
+		suffix := ""
+		if len(runes) > 3500 {
+			suffix = "\n\n_(используй кнопки навигации или попробуй снова)_"
+		}
+		sendText(ctx, tgBot, chatID, "🎙 Расшифровка:\n\n"+preview+suffix, nil, true)
+	}
 }
 
 // showVoicePage renders a specific page of the transcription result.
-func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, fullText string, page int) {
+func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, fullText string, page int) error {
 	runes := []rune(fullText)
 	totalPages := (len(runes) + voiceCharsPerPage - 1) / voiceCharsPerPage
 	if totalPages == 0 {
@@ -225,7 +236,7 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 		kb = &keyboard
 	}
 
-	editTextRaw(ctx, tgBot, chatID, msgID, msg, kb)
+	return editTextRaw(ctx, tgBot, chatID, msgID, msg, kb)
 }
 
 // escapeCodeBlock escapes only the characters that need escaping inside
@@ -252,13 +263,16 @@ func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.Inline
 }
 
 // pollTranscription polls whisper service for job completion, updating the status message with progress.
-func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, log *zap.Logger) (string, error) {
+// initialStatusText is the text already shown before polling started — used to avoid an
+// unnecessary duplicate edit on the first tick.
+func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText string, log *zap.Logger) (string, error) {
 	ticker := time.NewTicker(voicePollInterval)
 	defer ticker.Stop()
 	deadline := time.After(voicePollDeadline)
 
 	cancelKb := voiceCancelKeyboard(jobID)
-	lastStatusText := ""
+	lastStatusText := initialStatusText
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -272,13 +286,24 @@ func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 			}
 			result, err := a.Whisper.GetStatus(ctx, jobID)
 			if err != nil {
-				log.Warn("poll status error", zap.String("job_id", jobID), zap.Error(err))
+				consecutiveErrors++
+				log.Warn("poll status error", zap.String("job_id", jobID), zap.Int("consecutive_errors", consecutiveErrors), zap.Error(err))
+				if consecutiveErrors >= 10 {
+					return "", fmt.Errorf("status polling failed %d times in a row: %w", consecutiveErrors, err)
+				}
 				continue
 			}
+			consecutiveErrors = 0
 
 			switch result.Status {
-			case pb.JobStatus_ACCEPTED, pb.JobStatus_DOWNLOADING, pb.JobStatus_QUEUED:
+			case pb.JobStatus_ACCEPTED, pb.JobStatus_QUEUED:
 				statusText := "⏳ В очереди..."
+				if statusText != lastStatusText {
+					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
+					lastStatusText = statusText
+				}
+			case pb.JobStatus_DOWNLOADING:
+				statusText := "⏳ Загружаю аудио в сервис..."
 				if statusText != lastStatusText {
 					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
 					lastStatusText = statusText
@@ -341,6 +366,7 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 			return nil
 		}
 		chatID := query.Message.Chat.ID
+		//nolint:errcheck — pagination errors on callback are non-critical
 		a.showVoicePage(ctx, tgBot, chatID, msgID, val.(string), page)
 
 	case "noop":
