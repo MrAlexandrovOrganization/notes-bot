@@ -1,6 +1,27 @@
 package tgkeyboards
 
-import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+import (
+	"fmt"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+func RatingPrompt(hasRating bool, currentRating int) tgbotapi.InlineKeyboardMarkup {
+	var label string
+	if hasRating {
+		label = fmt.Sprintf("Текущая оценка: %d", currentRating)
+	} else {
+		label = "Оценка не установлена"
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, "menu:noop"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("← Назад", "menu:back"),
+		),
+	)
+}
 
 func MainMenu(_ string) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(

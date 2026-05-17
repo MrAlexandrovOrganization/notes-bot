@@ -98,8 +98,21 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 	switch parts[1] {
 	case "rating":
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
+		currentRating, hasRating, _ := a.Core.GetRating(ctx, uc.ActiveDate)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingRating })
-		return replyToCallback(ctx, tgBot, query, "📊 Введите оценку дня (0-10):", nil)
+		kb := tgkeyboards.RatingPrompt(hasRating, currentRating)
+		return replyToCallback(ctx, tgBot, query, "📊 Введите оценку дня (0-10):", &kb)
+
+	case "back":
+		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		return a.showMainMenu(ctx, tgBot, query, userID)
+
+	case "noop":
+		return nil
 
 	case "tasks":
 		uc, err := a.State.GetContext(ctx, userID)
