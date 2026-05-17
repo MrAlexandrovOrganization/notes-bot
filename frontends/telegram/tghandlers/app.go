@@ -28,6 +28,11 @@ type App struct {
 	// voiceTexts stores completed transcription texts for pagination.
 	// Key: statusMsgID (int), Value: string.
 	voiceTexts sync.Map
+
+	// voiceBuffers holds per-user reorder buffers that ensure transcription
+	// results are delivered in Telegram MessageID order (= user send order).
+	// Key: userID (int64), Value: *voiceReorderBuffer.
+	voiceBuffers sync.Map
 }
 
 // authorized returns true if the userID is allowed to use the bot.

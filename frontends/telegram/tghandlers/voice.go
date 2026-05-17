@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -29,6 +31,86 @@ const (
 	// We reserve space for the header, code block markers, and page indicator.
 	voiceCharsPerPage = 3200
 )
+
+// pendingVoiceResult holds everything needed to deliver one transcription.
+// It is created and registered in the reorder buffer before the goroutine
+// that fills it starts, so that the ordering slot exists immediately.
+type pendingVoiceResult struct {
+	// Input — set at registration time.
+	tgBot        *tgbotapi.BotAPI
+	chatID       int64
+	userID       int64
+	statusMsgID  int
+	activeDate   string
+	isNLReminder bool
+	log          *zap.Logger
+
+	// Output — set by transcribeVoice when it finishes.
+	done         bool
+	text         string
+	transcribeErr error
+}
+
+// voiceReorderBuffer ensures transcription results are delivered in Telegram
+// MessageID order (= user send order) regardless of which file finished first.
+//
+// How it works:
+//   - register() is called in HandleVoiceMessage (before the goroutine) to
+//     claim a slot for the message.
+//   - complete() is called by the goroutine when transcription finishes.
+//     It returns all consecutive completed results from the front of the
+//     queue — those are safe to deliver in order right now.
+//   - Flushing only proceeds as far as the first still-pending slot, so a
+//     fast small message simply waits until all earlier messages are done.
+type voiceReorderBuffer struct {
+	mu      sync.Mutex
+	ids     []int                       // MessageIDs sorted ascending
+	results map[int]*pendingVoiceResult // nil = impossible after register
+}
+
+func newVoiceReorderBuffer() *voiceReorderBuffer {
+	return &voiceReorderBuffer{results: make(map[int]*pendingVoiceResult)}
+}
+
+func (b *voiceReorderBuffer) register(msgID int, r *pendingVoiceResult) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	i := sort.SearchInts(b.ids, msgID)
+	b.ids = append(b.ids, 0)
+	copy(b.ids[i+1:], b.ids[i:])
+	b.ids[i] = msgID
+	b.results[msgID] = r
+}
+
+// complete marks msgID as done and returns all consecutive completed results
+// from the front of the queue — these must be delivered in order by the caller.
+func (b *voiceReorderBuffer) complete(msgID int, text string, transcribeErr error) []*pendingVoiceResult {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if r, ok := b.results[msgID]; ok {
+		r.text = text
+		r.transcribeErr = transcribeErr
+		r.done = true
+	}
+	var ready []*pendingVoiceResult
+	for len(b.ids) > 0 {
+		r := b.results[b.ids[0]]
+		if r == nil || !r.done {
+			break
+		}
+		delete(b.results, b.ids[0])
+		b.ids = b.ids[1:]
+		ready = append(ready, r)
+	}
+	return ready
+}
+
+// getVoiceBuffer returns (or lazily creates) the per-user reorder buffer.
+func (a *App) getVoiceBuffer(userID int64) *voiceReorderBuffer {
+	buf := newVoiceReorderBuffer()
+	actual, _ := a.voiceBuffers.LoadOrStore(userID, buf)
+	return actual.(*voiceReorderBuffer)
+}
 
 func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 	ctx, span := telemetry.StartSpan(ctx)
@@ -59,8 +141,17 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	log := applog.With(ctx, a.Logger)
 
-	// Reply to the voice message with status — this message will be updated with progress.
-	replyMsg := tgbotapi.NewMessage(chatID, "⏳ Скачиваю аудио...")
+	// Get user state now (before goroutine) to capture NL reminder mode and active date.
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		return
+	}
+	activeDate := uc.ActiveDate
+	isNLReminder := uc.State == tgstates.StateReminderCreateNL
+
+	// Reply with initial status — the goroutine will update it with progress.
+	replyMsg := tgbotapi.NewMessage(chatID, "⏳ Принято...")
 	replyMsg.ReplyToMessageID = update.Message.MessageID
 	statusMsg, err := tgBot.Send(replyMsg)
 	if err != nil {
@@ -68,44 +159,74 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		return
 	}
 
-	// Send a separate message with menu so the user can continue interacting.
+	// Send the main-menu message so the user can keep working.
 	kb := a.getMainMenuKeyboard(ctx)
 	sendText(ctx, tgBot, chatID, "Голосовое принято, можешь продолжать работу.", &kb, true)
 
-	// Get user state now (before goroutine) to check NL reminder mode.
-	uc, err := a.State.GetContext(ctx, userID)
-	if err != nil {
-		log.Error("get context", zap.Error(err))
-		return
+	// Register in the reorder buffer BEFORE launching the goroutine.
+	// This claims the slot so that complete() for an earlier message can
+	// see this one as still-pending and correctly hold the flush.
+	result := &pendingVoiceResult{
+		tgBot:        tgBot,
+		chatID:       chatID,
+		userID:       userID,
+		statusMsgID:  statusMsg.MessageID,
+		activeDate:   activeDate,
+		isNLReminder: isNLReminder,
+		log:          log,
 	}
+	buf := a.getVoiceBuffer(userID)
+	msgID := update.Message.MessageID
+	buf.register(msgID, result)
 
-	// Fix the active date at the moment the voice message is sent,
-	// so switching days while transcription is in progress won't affect it.
-	activeDate := uc.ActiveDate
-	isNLReminder := uc.State == tgstates.StateReminderCreateNL
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("panic in voice goroutine",
+					zap.Any("recover", r),
+					zap.String("stack", string(debug.Stack())))
+				editStatus(context.Background(), tgBot, chatID, statusMsg.MessageID,
+					"❌ Произошла внутренняя ошибка.")
+				// Always unblock the buffer so later messages can still be delivered.
+				for _, rr := range buf.complete(msgID, "", fmt.Errorf("panic")) {
+					a.deliverVoiceResult(rr)
+				}
+			}
+		}()
 
-	// Run the rest asynchronously so the bot stays responsive.
-	go a.processVoice(tgBot, chatID, userID, statusMsg.MessageID, fileID, format, activeDate, isNLReminder, log)
-}
+		text, transcribeErr := a.transcribeVoice(tgBot, chatID, statusMsg.MessageID, fileID, format, log)
 
-// processVoice handles file download, whisper submission, polling, and result delivery in background.
-func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusMsgID int, fileID, format, activeDate string, isNLReminder bool, log *zap.Logger) {
-	ctx := context.Background()
+		ready := buf.complete(msgID, text, transcribeErr)
 
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("panic in processVoice", zap.Any("recover", r), zap.String("stack", string(debug.Stack())))
-			editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Произошла внутренняя ошибка.")
+		// If this message's transcription succeeded but it is being held
+		// (waiting for an earlier message to finish), show an indicator so
+		// the user knows the result is ready but kept in order.
+		if transcribeErr == nil && text != "" && len(ready) == 0 {
+			editStatus(context.Background(), tgBot, chatID, statusMsg.MessageID,
+				"⏳ Расшифровано, жду очерёдности...")
+		}
+
+		for _, rr := range ready {
+			a.deliverVoiceResult(rr)
 		}
 	}()
+}
+
+// transcribeVoice downloads the audio file, submits it to Whisper, and polls
+// until transcription completes or fails. It keeps the Telegram status message
+// updated throughout. Returns the recognised text (empty if nothing was heard)
+// and any fatal error. All user-visible error messages are sent here.
+func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID int, fileID, format string, log *zap.Logger) (string, error) {
+	ctx := context.Background()
 
 	// Download the file.
+	editStatus(ctx, tgBot, chatID, statusMsgID, "⏳ Скачиваю аудио...")
 	fileConfig := tgbotapi.FileConfig{FileID: fileID}
 	tgFile, err := tgBot.GetFile(fileConfig)
 	if err != nil {
 		log.Error("get file", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при загрузке файла.")
-		return
+		return "", err
 	}
 
 	fileURL := tgFile.Link(tgBot.Token)
@@ -113,27 +234,26 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 	if err != nil {
 		log.Error("download file", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при загрузке файла.")
-		return
+		return "", err
 	}
 	defer rc.Close()
 
-	// Submit to whisper.
+	// Submit to Whisper.
 	editStatus(ctx, tgBot, chatID, statusMsgID, "⏳ Отправляю на расшифровку...")
-
 	jobID, queuePos, err := a.Whisper.Submit(ctx, rc, format, "voice")
 	if err != nil {
 		if _, ok := errors.AsType[*clients.ServiceUnavailableError](err); ok {
 			editStatus(ctx, tgBot, chatID, statusMsgID,
 				"⏳ Сервис распознавания ещё запускается. Попробуйте через несколько секунд.")
-			return
+			return "", err
 		}
 		log.Error("submit error", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при обработке голосового сообщения.")
-		return
+		return "", err
 	}
 	log.Info("whisper job submitted", zap.String("job_id", jobID), zap.Int("queue_pos", queuePos))
 
-	// Show initial status with cancel button.
+	// Show initial polling status with cancel button.
 	statusText := "⏳ Расшифровываю..."
 	if queuePos > 1 {
 		statusText = fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", queuePos)
@@ -144,59 +264,72 @@ func (a *App) processVoice(tgBot *tgbotapi.BotAPI, chatID, userID int64, statusM
 	// Set up cancellation.
 	pollCtx, pollCancel := context.WithCancel(ctx)
 	a.voiceCancels.Store(jobID, pollCancel)
+	defer func() {
+		a.voiceCancels.Delete(jobID)
+		pollCancel()
+	}()
 
-	// Poll for result with progress updates.
-	// Pass statusText so the poller doesn't immediately overwrite the queue position message.
-	text, err := a.pollTranscription(pollCtx, tgBot, chatID, statusMsgID, jobID, statusText, log)
-	a.voiceCancels.Delete(jobID)
-	pollCancel()
-
+	// Poll for result.
+	text, err := a.pollTranscription(pollCtx, tgBot, chatID, statusMsgID, jobID, statusText, queuePos, log)
 	if err != nil {
 		if pollCtx.Err() != nil {
 			editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Отменено.")
-			return
+			return "", err
 		}
 		if _, ok := errors.AsType[*clients.ServiceUnavailableError](err); ok {
 			editStatus(ctx, tgBot, chatID, statusMsgID,
 				"⏳ Сервис распознавания недоступен. Попробуйте позже.")
-			return
+			return "", err
 		}
 		log.Error("transcription error", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при обработке голосового сообщения.")
-		return
+		return "", err
 	}
 
 	if text == "" {
 		editStatus(ctx, tgBot, chatID, statusMsgID, "⚠️ Не удалось распознать речь.")
+		return "", nil
+	}
+
+	return text, nil
+}
+
+// deliverVoiceResult appends text to the note and updates the status message.
+// It is only called once a result has reached the front of the reorder queue,
+// so note appends always happen in the user's original send order.
+func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
+	// Errors and empty transcriptions were already surfaced in transcribeVoice.
+	if r.transcribeErr != nil || r.text == "" {
 		return
 	}
 
-	// If user was in NL reminder creation state when they sent the voice, route to the NL handler.
-	if isNLReminder {
-		tgBot.Request(tgbotapi.NewDeleteMessage(chatID, statusMsgID)) //nolint:errcheck
-		a.handleReminderNLInput(ctx, tgBot, chatID, userID, text)
+	ctx := context.Background()
+
+	// If user was in NL reminder creation state, route to the NL handler.
+	if r.isNLReminder {
+		r.tgBot.Request(tgbotapi.NewDeleteMessage(r.chatID, r.statusMsgID)) //nolint:errcheck
+		a.handleReminderNLInput(ctx, r.tgBot, r.chatID, r.userID, r.text)
 		return
 	}
 
-	// Use the date that was active when the voice message was sent.
-	if _, err := a.Core.AppendToNote(ctx, activeDate, text); err != nil {
-		log.Error("append to note", zap.Error(err))
-		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при сохранении в заметку.")
+	// Append to the note that was active when the message was sent.
+	if _, err := a.Core.AppendToNote(ctx, r.activeDate, r.text); err != nil {
+		r.log.Error("append to note", zap.Error(err))
+		editStatus(ctx, r.tgBot, r.chatID, r.statusMsgID, "❌ Ошибка при сохранении в заметку.")
 		return
 	}
 
-	// Store the text for pagination and show the first page.
-	a.voiceTexts.Store(statusMsgID, text)
-	if err := a.showVoicePage(ctx, tgBot, chatID, statusMsgID, text, 0); err != nil {
-		log.Error("show voice page failed, sending as plain message", zap.Error(err))
-		// Fallback: send the transcription as a new plain message so the user gets the result.
-		runes := []rune(text)
+	// Store text for pagination and show the first page.
+	a.voiceTexts.Store(r.statusMsgID, r.text)
+	if err := a.showVoicePage(ctx, r.tgBot, r.chatID, r.statusMsgID, r.text, 0); err != nil {
+		r.log.Error("show voice page failed, sending as plain message", zap.Error(err))
+		runes := []rune(r.text)
 		preview := string(runes[:min(len(runes), 3500)])
 		suffix := ""
 		if len(runes) > 3500 {
 			suffix = "\n\n_(используй кнопки навигации или попробуй снова)_"
 		}
-		sendText(ctx, tgBot, chatID, "🎙 Расшифровка:\n\n"+preview+suffix, nil, true)
+		sendText(ctx, r.tgBot, r.chatID, "🎙 Расшифровка:\n\n"+preview+suffix, nil, true)
 	}
 }
 
@@ -265,7 +398,9 @@ func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.Inline
 // pollTranscription polls whisper service for job completion, updating the status message with progress.
 // initialStatusText is the text already shown before polling started — used to avoid an
 // unnecessary duplicate edit on the first tick.
-func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText string, log *zap.Logger) (string, error) {
+// whisperQueuePos is the position returned by Submit (1 = running, 2+ = waiting); kept visible
+// while the job is queued since StatusResponse does not include a live position field.
+func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText string, whisperQueuePos int, log *zap.Logger) (string, error) {
 	ticker := time.NewTicker(voicePollInterval)
 	defer ticker.Stop()
 	deadline := time.After(voicePollDeadline)
@@ -297,7 +432,12 @@ func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 
 			switch result.Status {
 			case pb.JobStatus_ACCEPTED, pb.JobStatus_QUEUED:
+				// Keep the queue position from Submit visible — StatusResponse does
+				// not carry a live position field, so we reuse the value from Submit.
 				statusText := "⏳ В очереди..."
+				if whisperQueuePos > 1 {
+					statusText = fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", whisperQueuePos)
+				}
 				if statusText != lastStatusText {
 					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
 					lastStatusText = statusText
