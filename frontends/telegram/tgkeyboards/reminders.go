@@ -51,8 +51,9 @@ func RemindersList(reminders []*clients.ReminderInfo, page int) tgbotapi.InlineK
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, r := range reminders[start:end] {
 		label := r.Title
-		if len(label) > 30 {
-			label = label[:30]
+		runes := []rune(label)
+		if len(runes) > 30 {
+			label = string(runes[:30])
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔔 "+label, "reminder:noop"),
