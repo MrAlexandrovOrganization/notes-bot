@@ -11,8 +11,9 @@ const noteCharsPerPage = 3500
 // NotePagination создает клавиатуру с пагинацией для заметки.
 // Возвращает текст заметки (разбитый на страницы) и клавиатуру с навигацией.
 func NotePagination(content string, currentPage int) (string, *tgbotapi.InlineKeyboardMarkup) {
-	// Подсчитываем общее количество страниц
-	totalChars := len(content)
+	// Работаем с рунами, чтобы не разрезать многобайтные символы (кириллица и др.)
+	runes := []rune(content)
+	totalChars := len(runes)
 	totalPages := (totalChars + noteCharsPerPage - 1) / noteCharsPerPage
 	if totalPages == 0 {
 		totalPages = 1
@@ -33,7 +34,7 @@ func NotePagination(content string, currentPage int) (string, *tgbotapi.InlineKe
 		endIdx = totalChars
 	}
 
-	pageContent := content[startIdx:endIdx]
+	pageContent := string(runes[startIdx:endIdx])
 
 	// Добавляем индикатор страницы, если их несколько
 	if totalPages > 1 {

@@ -3,21 +3,15 @@ package tghandlers
 import (
 	"context"
 	"fmt"
-	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
 	"regexp"
-	"runtime/debug"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.uber.org/zap"
 )
 
-const (
-	maxTextLength = 4096
-)
 
 var mdV2EscapeRe = regexp.MustCompile(`([_*\[\]()~>#\+\-=|{}.!])`)
 
@@ -57,10 +51,6 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 		attribute.Bool("has_keyboard", keyboard != nil),
 	)
 	edit := tgbotapi.NewEditMessageText(chatID, messageID, escapedText)
-	if maxTextLength < len(escapedText) {
-		log := applog.With(ctx, &zap.Logger{})
-		log.Error("text is too big", zap.String("stack", string(debug.Stack())))
-	}
 	edit.ParseMode = "MarkdownV2"
 	if keyboard != nil {
 		edit.ReplyMarkup = keyboard
