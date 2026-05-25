@@ -135,27 +135,11 @@ func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.Delete
 func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.PostponeReminderRequest) (resp *pb.ReminderResponse, err error) {
 	defer s.recordRPC(ctx, "PostponeReminder", &err)
 	log := applog.With(ctx, logger)
-	var nextFireAt time.Time
-
-	switch {
-	case req.TargetDate != "":
-		loc := time.FixedZone("tz", s.cfg.TimezoneOffsetHours*3600)
-		d, err := time.ParseInLocation("2006-01-02", req.TargetDate, loc)
-		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, "invalid target_date")
-		}
-		nextFireAt = time.Date(d.Year(), d.Month(), d.Day(), 9, 0, 0, 0, loc).UTC()
-
-	case req.PostponeHours > 0:
-		nextFireAt = time.Now().UTC().Add(time.Duration(req.PostponeHours) * time.Hour)
-
-	default:
-		days := int(req.PostponeDays)
-		if days <= 0 {
-			days = 1
-		}
-		nextFireAt = time.Now().UTC().Add(time.Duration(days) * 24 * time.Hour)
+	minutes := int(req.PostponeMinutes)
+	if minutes <= 0 {
+		minutes = 60
 	}
+	nextFireAt := time.Now().UTC().Add(time.Duration(minutes) * time.Minute)
 
 	ok, err := SetNextFireAt(ctx, s.pool, req.ReminderId, req.UserId, nextFireAt)
 	if err != nil {

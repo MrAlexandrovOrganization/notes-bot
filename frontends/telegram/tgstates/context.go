@@ -17,6 +17,8 @@ const (
 	StateReminderCreateInterval     UserState = "reminder_create_interval"
 	StateReminderCreateDate         UserState = "reminder_create_date"
 	StateReminderPostponeDate       UserState = "reminder_postpone_date"
+	StateReminderPostponeInput      UserState = "reminder_postpone_input"
+	StateReminderPostponeTime       UserState = "reminder_postpone_time"
 	StateReminderCreateTaskConfirm  UserState = "reminder_create_task_confirm"
 	StateReminderCreateNL           UserState = "reminder_create_nl"
 )
@@ -33,6 +35,7 @@ type UserContext struct {
 	LastMessageID             int           `json:"last_message_id"`
 	ReminderDraft             ReminderDraft `json:"reminder_draft"`
 	PendingPostponeReminderID int64         `json:"pending_postpone_reminder_id"`
+	PendingPostponeDate       string        `json:"pending_postpone_date"`
 	ReminderCalMonth          int           `json:"reminder_cal_month"`
 	ReminderCalYear           int           `json:"reminder_cal_year"`
 	ReminderListPage          int           `json:"reminder_list_page"`

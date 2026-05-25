@@ -338,6 +338,18 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 			a.HandleReminderDelete(ctx, tgBot, query, userID, id)
 		}
 
+	case "reject":
+		if len(parts) >= 3 {
+			id, _ := strconv.ParseInt(parts[2], 10, 64)
+			a.HandleReminderReject(ctx, tgBot, query, userID, id)
+		}
+
+	case "postpone_input":
+		if len(parts) >= 3 {
+			id, _ := strconv.ParseInt(parts[2], 10, 64)
+			a.HandleReminderPostponeInput(ctx, tgBot, query, userID, id)
+		}
+
 	case "done":
 		if len(parts) >= 3 {
 			reminderID, _ := strconv.ParseInt(parts[2], 10, 64)
@@ -352,24 +364,10 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 			a.HandleReminderDone(ctx, tgBot, query, userID, reminderID, createTaskFlag, dateStr)
 		}
 
-	case "postpone":
-		if len(parts) >= 4 {
-			days, _ := strconv.ParseInt(parts[2], 10, 64)
-			reminderID, _ := strconv.ParseInt(parts[3], 10, 64)
-			a.HandleReminderPostponeDays(ctx, tgBot, query, userID, days, reminderID)
-		}
-
-	case "postpone_hours":
-		if len(parts) >= 4 {
-			hours, _ := strconv.ParseInt(parts[2], 10, 64)
-			reminderID, _ := strconv.ParseInt(parts[3], 10, 64)
-			a.HandleReminderPostponeHours(ctx, tgBot, query, userID, hours, reminderID)
-		}
-
-	case "custom_date":
+	case "postpone_date":
 		if len(parts) >= 3 {
 			id, _ := strconv.ParseInt(parts[2], 10, 64)
-			a.HandleReminderCustomDate(ctx, tgBot, query, userID, id)
+			a.HandleReminderPostponeDate(ctx, tgBot, query, userID, id)
 		}
 
 	case "cal":

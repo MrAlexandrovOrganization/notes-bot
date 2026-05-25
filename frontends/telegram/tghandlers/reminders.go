@@ -545,25 +545,19 @@ func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAP
 	cancelKb := tgkeyboards.ReminderCancel()
 
 	if contextName == "pp" {
-		uc, err := a.State.GetContext(ctx, userID)
-		if err != nil {
-			applog.With(ctx, a.Logger).Error("get context", zap.Error(err))
-			replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла ошибка."), nil)
-			return
-		}
-		reminderID := uc.PendingPostponeReminderID
-		if reminderID != 0 {
-			if _, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, dateStr, 0); err != nil {
-				applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
-				replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
-				return
-			}
-		}
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
-			u.State = tgstates.StateIdle
-			u.PendingPostponeReminderID = 0
+			u.State = tgstates.StateReminderPostponeTime
+			u.PendingPostponeDate = dateStr
 		})
-		replyToCallback(ctx, tgBot, query, tgfmt.Escape(fmt.Sprintf("✅ Напоминание перенесено на %s.", dateStr)), nil)
+		kb := tgkeyboards.ReminderCancel()
+		replyToCallback(ctx, tgBot, query,
+			tgfmt.Join(
+				tgfmt.Escape("Дата: "), tgfmt.Code(tgfmt.Escape(dateStr)),
+				tgfmt.Escape("\n\nВведите время в формате "),
+				tgfmt.Code(tgfmt.Escape("ЧЧ:ММ")),
+				tgfmt.Escape(":"),
+			),
+			&kb)
 		return
 	}
 
@@ -656,52 +650,131 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
-func (a *App) HandleReminderPostponeDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, days, reminderID int64) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(days), "", 0)
-	if err != nil {
-		applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
-		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
-		return
+// minutesToLabel converts a minute count to a human-readable Russian label.
+func minutesToLabel(n int) string {
+	const week = 7 * 24 * 60
+	const day = 24 * 60
+	const hour = 60
+	switch {
+	case n >= week && n%week == 0:
+		return fmt.Sprintf("%d нед.", n/week)
+	case n >= day && n%day == 0:
+		return fmt.Sprintf("%d д.", n/day)
+	case n >= hour && n%hour == 0:
+		return fmt.Sprintf("%d ч.", n/hour)
+	default:
+		return fmt.Sprintf("%d мин.", n)
 	}
-	a.sendPostponeResult(ctx, tgBot, query, result, days, "д", userID, reminderID)
 }
 
-func (a *App) HandleReminderPostponeHours(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, hours, reminderID int64) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, 0, "", int32(hours))
-	if err != nil {
-		applog.With(ctx, a.Logger).Error("postpone reminder", zap.Error(err))
-		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
-		return
-	}
-	a.sendPostponeResult(ctx, tgBot, query, result, hours, "ч", userID, reminderID)
-}
-
-func (a *App) sendPostponeResult(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, result *clients.ReminderInfo, amount int64, unit string, userID, reminderID int64) {
+// postponeWithMinutes calls PostponeReminder and shows the result as a callback edit.
+func (a *App) postponeWithMinutes(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID, reminderID int64, minutes int32, label string) {
 	log := applog.With(ctx, a.Logger)
-	log.Debug("sendPostponeResult")
+	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, minutes)
+	if err != nil {
+		log.Error("postpone reminder", zap.Error(err))
+		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
+		return
+	}
 	nextFireText := ""
 	if result != nil {
-		nextFire := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours)
-		if nextFire != "" {
-			nextFireText = fmt.Sprintf(" (следующее: %s)", nextFire)
+		if nf := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours); nf != "" {
+			nextFireText = fmt.Sprintf(" (следующее: %s)", nf)
 		}
 	}
 	original := ""
 	if query.Message != nil {
 		original = query.Message.Text
 	}
-	text := tgfmt.Escape(fmt.Sprintf("%s\n\n⏰ Перенесено на %d %s.", original, amount, unit) + nextFireText)
-
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToCallback(ctx, tgBot, query, text, &kb)
+	replyToCallback(ctx, tgBot, query, tgfmt.Escape(fmt.Sprintf("%s\n\n⏰ Перенесено на %s.", original, label)+nextFireText), &kb)
 	log.Info("reminder postponed", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
-func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+// HandleReminderReject dismisses the current reminder firing without affecting the schedule.
+func (a *App) HandleReminderReject(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	original := ""
+	if query.Message != nil {
+		original = query.Message.Text
+	}
+	kb := a.getMainMenuKeyboard(ctx)
+	replyToCallback(ctx, tgBot, query, tgfmt.Escape(original+"\n\n❌ Отклонено."), &kb)
+	applog.With(ctx, a.Logger).Info("reminder rejected", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+}
+
+// HandleReminderPostponeInput handles "⏰ Перенести" — asks user to enter minutes as a number.
+func (a *App) HandleReminderPostponeInput(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateReminderPostponeInput
+		u.PendingPostponeReminderID = reminderID
+	})
+	kb := tgkeyboards.ReminderCancel()
+	replyToCallback(ctx, tgBot, query,
+		tgfmt.Join(
+			tgfmt.Escape("⏰ На сколько минут перенести?\n\nВведите число, например "),
+			tgfmt.Code(tgfmt.Escape("30")),
+			tgfmt.Escape(", "),
+			tgfmt.Code(tgfmt.Escape("120")),
+			tgfmt.Escape(", "),
+			tgfmt.Code(tgfmt.Escape("1440")),
+			tgfmt.Escape(":"),
+		),
+		&kb)
+}
+
+// handleReminderPostponeTextInput parses a plain integer (minutes) and postpones the reminder.
+func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
+	cancelKb := tgkeyboards.ReminderCancel()
+
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Произошла ошибка."), nil)
+		return
+	}
+	reminderID := uc.PendingPostponeReminderID
+
+	n, err := strconv.Atoi(strings.TrimSpace(text))
+	if err != nil || n <= 0 {
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите целое положительное число минут, например 30 или 1440."), &cancelKb)
+		return
+	}
+
+	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, int32(n))
+	if err != nil {
+		log.Error("postpone reminder", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
+		return
+	}
+
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateIdle
+		u.PendingPostponeReminderID = 0
+	})
+
+	nextFireText := ""
+	if result != nil {
+		if nf := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours); nf != "" {
+			nextFireText = fmt.Sprintf(" (следующее: %s)", nf)
+		}
+	}
+	kb := a.getMainMenuKeyboard(ctx)
+	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("⏰ Перенесено на %s.", minutesToLabel(n))+nextFireText), &kb)
+	log.Info("reminder postponed via text", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID), zap.Int("minutes", n))
+}
+
+// HandleReminderPostponeDate handles "📅 На дату" — opens calendar for date selection.
+func (a *App) HandleReminderPostponeDate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
@@ -714,6 +787,73 @@ func (a *App) HandleReminderCustomDate(ctx context.Context, tgBot *tgbotapi.BotA
 	})
 	kb := tgkeyboards.ReminderCalendar(year, month, "pp", a.Cfg.TimezoneOffsetHours)
 	replyToCallback(ctx, tgBot, query, tgfmt.Escape("📅 Выберите дату переноса:"), &kb)
+}
+
+// handleReminderPostponeTimeInput parses HH:MM, computes minutes to the pending date+time,
+// and calls PostponeReminder.
+func (a *App) handleReminderPostponeTimeInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
+	cancelKb := tgkeyboards.ReminderCancel()
+
+	uc, err := a.State.GetContext(ctx, userID)
+	if err != nil {
+		log.Error("get context", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Произошла ошибка."), nil)
+		return
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(text), ":", 2)
+	if len(parts) != 2 {
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
+		return
+	}
+	h, err1 := strconv.Atoi(parts[0])
+	m, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
+		return
+	}
+
+	loc := time.FixedZone("tz", a.Cfg.TimezoneOffsetHours*3600)
+	d, err := time.ParseInLocation("2006-01-02", uc.PendingPostponeDate, loc)
+	if err != nil {
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Дата потеряна. Выберите дату заново."), nil)
+		return
+	}
+	target := time.Date(d.Year(), d.Month(), d.Day(), h, m, 0, 0, loc)
+	minutesUntil := int32(time.Until(target).Minutes())
+	if minutesUntil < 1 {
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Выбранное время уже прошло. Введите другое время:"), &cancelKb)
+		return
+	}
+
+	reminderID := uc.PendingPostponeReminderID
+	result, err := a.Notifications.PostponeReminder(ctx, reminderID, userID, minutesUntil)
+	if err != nil {
+		log.Error("postpone reminder", zap.Error(err))
+		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Ошибка при переносе напоминания."), nil)
+		return
+	}
+
+	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		u.State = tgstates.StateIdle
+		u.PendingPostponeReminderID = 0
+		u.PendingPostponeDate = ""
+	})
+
+	nextFireText := ""
+	if result != nil {
+		if nf := timeutil.FormatLocalTime(result.NextFireAt, a.Cfg.TimezoneOffsetHours); nf != "" {
+			nextFireText = fmt.Sprintf(" (следующее: %s)", nf)
+		}
+	}
+	label := fmt.Sprintf("%s %02d:%02d", uc.PendingPostponeDate, h, m)
+	kb := a.getMainMenuKeyboard(ctx)
+	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("⏰ Перенесено на %s.", label)+nextFireText), &kb)
+	log.Info("reminder postponed to date+time", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
 func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {

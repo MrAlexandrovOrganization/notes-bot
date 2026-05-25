@@ -46,9 +46,7 @@ message DeleteReminderRequest {
 message PostponeReminderRequest {
   int64 reminder_id = 1;
   int64 user_id = 2;
-  int32 postpone_days = 3;
-  string target_date = 4;
-  int32 postpone_hours = 5;
+  int32 postpone_minutes = 3;
 }
 
 message ReminderResponse {

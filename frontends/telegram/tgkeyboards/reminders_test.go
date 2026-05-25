@@ -47,11 +47,8 @@ func TestReminderNotification_WithTask(t *testing.T) {
 		}
 	}
 	assert.Contains(t, cbs, "reminder:done:42:1:01-Mar-2026")
-	assert.Contains(t, cbs, "reminder:postpone_hours:1:42")
-	assert.Contains(t, cbs, "reminder:postpone_hours:3:42")
-	assert.Contains(t, cbs, "reminder:postpone:1:42")
-	assert.Contains(t, cbs, "reminder:postpone:3:42")
-	assert.Contains(t, cbs, "reminder:custom_date:42")
+	assert.Contains(t, cbs, "reminder:reject:42")
+	assert.Contains(t, cbs, "reminder:postpone_input:42")
 }
 
 func TestReminderNotification_WithoutTask(t *testing.T) {

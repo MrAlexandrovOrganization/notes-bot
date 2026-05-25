@@ -24,7 +24,7 @@ type NotificationsService interface {
 	CreateReminder(ctx context.Context, userID int64, title, scheduleType, scheduleParamsJSON string, createTask bool) (*ReminderInfo, error)
 	ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error)
 	DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error)
-	PostponeReminder(ctx context.Context, reminderID, userID int64, postponeDays int32, targetDate string, postponeHours int32) (*ReminderInfo, error)
+	PostponeReminder(ctx context.Context, reminderID, userID int64, postponeMinutes int32) (*ReminderInfo, error)
 }
 
 // WhisperService is the interface for the whisper transcription gRPC service.

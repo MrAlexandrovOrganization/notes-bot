@@ -20,17 +20,11 @@ func ReminderNotification(reminderID int64, createTask bool, todayDate string) t
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Принято", doneCB),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отклонить", fmt.Sprintf("reminder:reject:%d", reminderID)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("+1 ч", fmt.Sprintf("reminder:postpone_hours:1:%d", reminderID)),
-			tgbotapi.NewInlineKeyboardButtonData("+3 ч", fmt.Sprintf("reminder:postpone_hours:3:%d", reminderID)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("+1 д", fmt.Sprintf("reminder:postpone:1:%d", reminderID)),
-			tgbotapi.NewInlineKeyboardButtonData("+3 д", fmt.Sprintf("reminder:postpone:3:%d", reminderID)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📅 Выбрать дату", fmt.Sprintf("reminder:custom_date:%d", reminderID)),
+			tgbotapi.NewInlineKeyboardButtonData("⏰ Перенести", fmt.Sprintf("reminder:postpone_input:%d", reminderID)),
+			tgbotapi.NewInlineKeyboardButtonData("📅 На дату", fmt.Sprintf("reminder:postpone_date:%d", reminderID)),
 		),
 	)
 }

@@ -128,7 +128,7 @@ func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, us
 }
 
 func (c *NotificationsClient) PostponeReminder(ctx context.Context,
-	reminderID, userID int64, postponeDays int32, targetDate string, postponeHours int32,
+	reminderID, userID int64, postponeMinutes int32,
 ) (*ReminderInfo, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
@@ -137,11 +137,9 @@ func (c *NotificationsClient) PostponeReminder(ctx context.Context,
 	defer cancel()
 
 	resp, err := c.stub.PostponeReminder(timeoutCtx, &pb.PostponeReminderRequest{
-		ReminderId:    reminderID,
-		UserId:        userID,
-		PostponeDays:  postponeDays,
-		TargetDate:    targetDate,
-		PostponeHours: postponeHours,
+		ReminderId:      reminderID,
+		UserId:          userID,
+		PostponeMinutes: postponeMinutes,
 	})
 	if err != nil {
 		if isUnavailable(err) {
