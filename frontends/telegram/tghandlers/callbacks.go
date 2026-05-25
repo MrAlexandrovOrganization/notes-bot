@@ -236,8 +236,13 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		go a.Core.EnsureNote(ctx, date)
 		a.State.SetActiveDate(ctx, userID, date)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
-		text := tgfmt.Escape(fmt.Sprintf("✅ Выбрана дата: %s\n\n📅 Активная дата: %s\n\nВыберите действие:",
-			date, date))
+		text := tgfmt.Join(
+			tgfmt.Escape("✅ Выбрана дата: "),
+			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", date))),
+			tgfmt.Escape("\n\n📅 Активная дата: "),
+			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", date))),
+			tgfmt.Escape("\n\nВыберите действие:"),
+		)
 		kb := a.getMainMenuKeyboard(ctx)
 		return replyToCallback(ctx, tgBot, query, text, &kb)
 
