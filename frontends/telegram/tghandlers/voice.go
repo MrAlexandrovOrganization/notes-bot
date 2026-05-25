@@ -46,8 +46,8 @@ type pendingVoiceResult struct {
 	log          *zap.Logger
 
 	// Output — set by transcribeVoice when it finishes.
-	done         bool
-	text         string
+	done          bool
+	text          string
 	transcribeErr error
 }
 
