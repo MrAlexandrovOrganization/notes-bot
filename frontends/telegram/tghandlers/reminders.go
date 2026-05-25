@@ -208,7 +208,7 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 	})
 	kb := tgkeyboards.ScheduleType()
 	replyToUpdate(ctx, tgBot, update,
-		fmt.Sprintf("Название: **%s**\n\nВыберите тип расписания:", text),
+		fmt.Sprintf("Название: %s\n\nВыберите тип расписания:", text),
 		&kb)
 }
 
