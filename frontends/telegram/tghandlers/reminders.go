@@ -445,7 +445,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 		if draft.CreateTask {
 			taskNote = " (задача будет создана)"
 		}
-		msgText = fmt.Sprintf("✅ Напоминание создано!\n\n```%s```%s\nТип: %s\nСледующее: %s",
+		msgText = fmt.Sprintf("✅ Напоминание создано!\n\n```\n%s```%s\nТип: %s\nСледующее: %s",
 			title, taskNote,
 			scheduleLabel(scheduleType),
 			nextFire)
