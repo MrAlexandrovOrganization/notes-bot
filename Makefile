@@ -73,7 +73,7 @@ build-telegram:
 	$(DOCKER_COMPOSE) build telegram
 
 format:
-	gofmt -w ./notifications/ ./frontends/telegram/ ./cmd/
+	gofmt -w ./core/ ./notifications/ ./frontends/telegram/ ./cmd/
 
 clean:
 	find . -type f -name '*.pyc' -delete
