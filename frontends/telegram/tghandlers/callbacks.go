@@ -413,7 +413,11 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	if err != nil {
 		return fmt.Errorf("get context: %w", err)
 	}
-	text := tgfmt.Escape(fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate))
+	text := tgfmt.Join(
+		tgfmt.Escape("📅 Активная дата: "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Escape("\n\nВыберите действие:"),
+	)
 	kb := a.getMainMenuKeyboard(ctx)
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }

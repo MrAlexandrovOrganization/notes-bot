@@ -725,16 +725,18 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла ошибка."), nil)
 		return
 	}
-	activeDate := uc.ActiveDate
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.ReminderDraft = tgstates.ReminderDraft{}
 		u.PendingPostponeReminderID = 0
 	})
+	text := tgfmt.Join(
+		tgfmt.Escape("\n\n📅 Активная дата: "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Escape("\n\nВыберите действие:"),
+	)
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToCallback(ctx, tgBot, query,
-		tgfmt.Escape(fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", activeDate)),
-		&kb)
+	replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
 func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {

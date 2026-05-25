@@ -32,10 +32,11 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 		return
 	}
 
-	text := tgfmt.Escape(fmt.Sprintf(
-		"👋 Добро пожаловать!\n\n📅 Активная дата: %s\n\nВыберите действие:",
-		uc.ActiveDate,
-	))
+	text := tgfmt.Join(
+		tgfmt.Escape("👋 Добро пожаловать!\n\n📅 Активная дата: "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Escape("\n\nВыберите действие:"),
+	)
 	kb := a.getMainMenuKeyboard(ctx)
 	if err := replyToUpdate(ctx, tgBot, update, text, &kb); err != nil {
 		a.Logger.Error("send start message", zap.Error(err))
