@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgstates"
 )
 
@@ -33,25 +34,25 @@ func TestScheduleLabel_Unknown(t *testing.T) {
 // ── calPrompt ──────────────────────────────────────────────────────────────
 
 func TestCalPrompt_Postpone(t *testing.T) {
-	assert.Equal(t, "📅 Выберите дату переноса:", calPrompt("pp"))
+	assert.Equal(t, tgfmt.Escape("📅 Выберите дату переноса:"), calPrompt("pp"))
 }
 
 func TestCalPrompt_Other(t *testing.T) {
-	assert.Equal(t, "📅 Выберите дату:", calPrompt("once"))
-	assert.Equal(t, "📅 Выберите дату:", calPrompt("yr"))
-	assert.Equal(t, "📅 Выберите дату:", calPrompt(""))
+	assert.Equal(t, tgfmt.Escape("📅 Выберите дату:"), calPrompt("once"))
+	assert.Equal(t, tgfmt.Escape("📅 Выберите дату:"), calPrompt("yr"))
+	assert.Equal(t, tgfmt.Escape("📅 Выберите дату:"), calPrompt(""))
 }
 
 // ── reminderListText ───────────────────────────────────────────────────────
 
 func TestReminderListText_Empty(t *testing.T) {
 	text := reminderListText(nil, 0, 0)
-	assert.Contains(t, text, "Напоминаний пока нет.")
+	assert.Contains(t, text.String(), "Напоминаний пока нет.")
 }
 
 func TestReminderListText_Header(t *testing.T) {
 	text := reminderListText(nil, 0, 0)
-	assert.True(t, strings.HasPrefix(text, "🔔 Уведомления:"))
+	assert.True(t, strings.HasPrefix(text.String(), "🔔 Уведомления:"))
 }
 
 func TestReminderListText_SingleReminder(t *testing.T) {
@@ -63,9 +64,9 @@ func TestReminderListText_SingleReminder(t *testing.T) {
 		},
 	}
 	text := reminderListText(reminders, 0, 0)
-	assert.Contains(t, text, "Утренняя зарядка")
-	assert.Contains(t, text, "каждый день")
-	assert.Contains(t, text, "15.01.2025 09:30")
+	assert.Contains(t, text.String(), "Утренняя зарядка")
+	assert.Contains(t, text.String(), "каждый день")
+	assert.Contains(t, text.String(), "15.01.2025 09:30")
 }
 
 func TestReminderListText_PageClamping(t *testing.T) {
@@ -76,9 +77,9 @@ func TestReminderListText_PageClamping(t *testing.T) {
 		{Title: "R3", ScheduleType: "monthly"},
 	}
 	text := reminderListText(reminders, 99, 0)
-	assert.Contains(t, text, "R1")
-	assert.Contains(t, text, "R2")
-	assert.Contains(t, text, "R3")
+	assert.Contains(t, text.String(), "R1")
+	assert.Contains(t, text.String(), "R2")
+	assert.Contains(t, text.String(), "R3")
 }
 
 func TestReminderListText_SecondPage(t *testing.T) {
@@ -92,9 +93,9 @@ func TestReminderListText_SecondPage(t *testing.T) {
 		{Title: "Last", ScheduleType: "once"},
 	}
 	text := reminderListText(reminders, 1, 0)
-	assert.Contains(t, text, "Last")
-	assert.NotContains(t, text, "• A")
-	assert.NotContains(t, text, "• E")
+	assert.Contains(t, text.String(), "Last")
+	assert.NotContains(t, text.String(), "• A")
+	assert.NotContains(t, text.String(), "• E")
 }
 
 // --- pluralDays ---

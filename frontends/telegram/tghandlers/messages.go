@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
+	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
@@ -59,7 +60,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	log := applog.With(ctx, a.Logger)
 	userID := update.Message.From.ID
 	if !a.authorized(userID) {
-		sendText(ctx, tgBot, update.Message.Chat.ID, "⛔ Unauthorized access.", nil, true)
+		sendText(ctx, tgBot, update.Message.Chat.ID, tgfmt.Escape("⛔ Unauthorized access."), nil, true)
 		log.Warn("unauthorized message", zap.Int64("user_id", userID))
 		return
 	}
@@ -77,7 +78,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("panic in text handler", zap.Any("recover", r), zap.String("stack", string(debug.Stack())))
-			sendText(ctx, tgBot, chatID, "❌ Произошла внутренняя ошибка.", nil, true)
+			sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Произошла внутренняя ошибка."), nil, true)
 		}
 	}()
 
@@ -95,13 +96,13 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 	log := applog.With(ctx, a.Logger)
 	rating, err := strconv.Atoi(text)
 	if err != nil || rating < 0 || rating > 10 {
-		sendText(ctx, tgBot, chatID, "❌ Оценка должна быть от 0 до 10. Попробуйте снова.", nil, true)
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Оценка должна быть от 0 до 10. Попробуйте снова."), nil, true)
 		return
 	}
 
 	ok, err := a.Core.UpdateRating(ctx, activeDate, rating)
 	if err != nil || !ok {
-		sendText(ctx, tgBot, chatID, "❌ Ошибка при сохранении оценки.", nil, true)
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при сохранении оценки."), nil, true)
 		return
 	}
 
@@ -109,7 +110,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 		uc.State = tgstates.StateIdle
 	})
 	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Оценка %d сохранена!", rating), &kb, true)
+	sendText(ctx, tgBot, chatID, tgfmt.Escape(fmt.Sprintf("✅ Оценка %d сохранена!", rating)), &kb, true)
 	log.Info("user set rating", zap.Int64("user_id", userID), zap.Int("rating", rating))
 }
 
@@ -120,15 +121,15 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 	log := applog.With(ctx, a.Logger)
 	ok, err := a.Core.AddTask(ctx, activeDate, text)
 	if err != nil || !ok {
-		sendText(ctx, tgBot, chatID, "❌ Ошибка при добавлении задачи.", nil, true)
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при добавлении задачи."), nil, true)
 		return
 	}
 	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateTasksView
 	})
-	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Задача добавлена: %s", text), nil, true)
+	sendText(ctx, tgBot, chatID, tgfmt.Escape(fmt.Sprintf("✅ Задача добавлена: %s", text)), nil, true)
 	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, chatID, "Используйте кнопку \"Задачи\" для просмотра.", &kb, true)
+	sendText(ctx, tgBot, chatID, tgfmt.Escape("Используйте кнопку \"Задачи\" для просмотра."), &kb, true)
 	log.Info("user added task", zap.Int64("user_id", userID))
 }
 
@@ -139,10 +140,10 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 	log := applog.With(ctx, a.Logger)
 	ok, err := a.Core.AppendToNote(ctx, activeDate, text)
 	if err != nil || !ok {
-		sendText(ctx, tgBot, chatID, "❌ Ошибка при сохранении текста.", nil, true)
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при сохранении текста."), nil, true)
 		return
 	}
 	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, chatID, fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate), &kb, true)
+	sendText(ctx, tgBot, chatID, tgfmt.Escape(fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate)), &kb, true)
 	log.Info("user appended text", zap.Int64("user_id", userID))
 }

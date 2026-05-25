@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
@@ -48,7 +49,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 
 	userID := query.From.ID
 	if !a.authorized(userID) {
-		replyToCallback(ctx, tgBot, query, "⛔ Unauthorized access.", nil)
+		replyToCallback(ctx, tgBot, query, tgfmt.Escape("⛔ Unauthorized access."), nil)
 		log.Warn("unauthorized callback", zap.Int64("user_id", userID))
 		return
 	}
@@ -63,7 +64,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("panic in callback handler", zap.Any("recover", r), zap.String("data", query.Data), zap.String("stack", string(debug.Stack())))
-			replyToCallback(ctx, tgBot, query, "❌ Произошла внутренняя ошибка.", nil)
+			replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла внутренняя ошибка."), nil)
 		}
 	}()
 
@@ -79,11 +80,11 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 		span.SetStatus(codes.Error, err.Error())
 		var svcErr *clients.ServiceUnavailableError
 		if errors.As(err, &svcErr) {
-			replyToCallback(ctx, tgBot, query, "⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд.", nil)
+			replyToCallback(ctx, tgBot, query, tgfmt.Escape("⏳ Сервис уведомлений ещё запускается. Попробуйте через несколько секунд."), nil)
 			return
 		}
 		log.Error("callback error", zap.String("data", query.Data), zap.Error(err))
-		replyToCallback(ctx, tgBot, query, "❌ Произошла ошибка при обработке действия.", nil)
+		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла ошибка при обработке действия."), nil)
 	}
 }
 
@@ -105,7 +106,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		currentRating, hasRating, _ := a.Core.GetRating(ctx, uc.ActiveDate)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingRating })
 		kb := tgkeyboards.RatingPrompt(hasRating, currentRating)
-		return replyToCallback(ctx, tgBot, query, "📊 Введите оценку дня (0-10):", &kb)
+		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("📊 Введите оценку дня (0-10):"), &kb)
 
 	case "back":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
@@ -170,7 +171,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	case "add":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })
 		kb := tgkeyboards.TaskAdd()
-		return replyToCallback(ctx, tgBot, query, "➕ Введите текст новой задачи:", &kb)
+		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("➕ Введите текст новой задачи:"), &kb)
 
 	case "page":
 		if len(parts) < 3 {
@@ -235,8 +236,8 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		go a.Core.EnsureNote(ctx, date)
 		a.State.SetActiveDate(ctx, userID, date)
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
-		text := fmt.Sprintf("✅ Выбрана дата: %s\n\n📅 Активная дата: %s\n\nВыберите действие:",
-			date, date)
+		text := tgfmt.Escape(fmt.Sprintf("✅ Выбрана дата: %s\n\n📅 Активная дата: %s\n\nВыберите действие:",
+			date, date))
 		kb := a.getMainMenuKeyboard(ctx)
 		return replyToCallback(ctx, tgBot, query, text, &kb)
 
@@ -407,7 +408,7 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	if err != nil {
 		return fmt.Errorf("get context: %w", err)
 	}
-	text := fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate)
+	text := tgfmt.Escape(fmt.Sprintf("📅 Активная дата: %s\n\nВыберите действие:", uc.ActiveDate))
 	kb := a.getMainMenuKeyboard(ctx)
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
@@ -418,16 +419,18 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("get context: %w", err)
+		return fmt.Errorf("get tasks: %w", err)
 	}
 	tasks, err := a.Core.GetTasks(ctx, uc.ActiveDate)
 	if err != nil {
 		return fmt.Errorf("get tasks: %w", err)
 	}
 	kb := tgkeyboards.Tasks(tasks, uc.TaskPage)
-	text := fmt.Sprintf("✅ Задачи на %s:\n\nВсего задач: %d", uc.ActiveDate, len(tasks))
+	var text tgfmt.HTML
 	if len(tasks) == 0 {
-		text = fmt.Sprintf("✅ Задачи на %s:\n\nЗадач пока нет.", uc.ActiveDate)
+		text = tgfmt.Escape(fmt.Sprintf("✅ Задачи на %s:\n\nЗадач пока нет.", uc.ActiveDate))
+	} else {
+		text = tgfmt.Escape(fmt.Sprintf("✅ Задачи на %s:\n\nВсего задач: %d", uc.ActiveDate, len(tasks)))
 	}
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
@@ -449,7 +452,7 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 		existingDates[d] = true
 	}
 	kb := tgkeyboards.Calendar(ctx, uc.CalendarYear, uc.CalendarMonth, uc.ActiveDate, existingDates)
-	text := fmt.Sprintf("📅 Календарь\n\nАктивная дата: %s", uc.ActiveDate)
+	text := tgfmt.Escape(fmt.Sprintf("📅 Календарь\n\nАктивная дата: %s", uc.ActiveDate))
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
@@ -495,7 +498,7 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	g.Wait() //nolint:errcheck // errors are handled per-call inside goroutines above
 
 	if content == "" {
-		return replyToCallback(ctx, tgBot, query, "❌ Не удалось прочитать заметку.", nil)
+		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Не удалось прочитать заметку."), nil)
 	}
 
 	if !utf8.ValidString(content) {
@@ -516,10 +519,10 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 		attribute.Int("content_len", len(pageContent)),
 	)
 
-	text := fmt.Sprintf("📝 Заметка %s\n\n%s\n\n```\n%s\n```",
-		activeDate,
-		ratingText,
-		pageContent,
+	text := tgfmt.Join(
+		tgfmt.Raw("📝 Заметка "), tgfmt.Escape(activeDate), tgfmt.Raw("\n\n"),
+		tgfmt.Escape(ratingText), tgfmt.Raw("\n\n"),
+		tgfmt.Pre(tgfmt.Escape(pageContent)),
 	)
 	return replyToCallback(ctx, tgBot, query, text, kb)
 }

@@ -3,30 +3,23 @@ package tghandlers
 import (
 	"context"
 	"fmt"
-	"notes-bot/internal/telemetry"
-	"regexp"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	"notes-bot/frontends/telegram/tgfmt"
+	"notes-bot/internal/telemetry"
 )
 
-
-var mdV2EscapeRe = regexp.MustCompile(`([_*\[\]()~>#\+\-=|{}.!])`)
-
-func EscapeMarkdownV2(text string) string {
-	return mdV2EscapeRe.ReplaceAllString(text, `\$1`)
-}
-
-// sendText sends a new text message to a chat with optional keyboard, using MarkdownV2.
-func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
+// sendText sends a new text message to a chat with optional keyboard, using HTML parse mode.
+func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	escapedText := EscapeMarkdownV2(text)
-	msg := tgbotapi.NewMessage(chatID, escapedText)
-	msg.ParseMode = "MarkdownV2"
+	msg := tgbotapi.NewMessage(chatID, text.String())
+	msg.ParseMode = "HTML"
 	msg.DisableNotification = disableNotification
 	if keyboard != nil {
 		msg.ReplyMarkup = *keyboard
@@ -39,19 +32,17 @@ func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text stri
 	return err
 }
 
-// editText edits an existing message with optional keyboard, using MarkdownV2.
-func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+// editText edits an existing message with optional keyboard, using HTML parse mode.
+func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.Int64("chat_id", chatID), attribute.Int("message_id", messageID))
 	defer span.End()
 
-	escapedText := EscapeMarkdownV2(text)
-
 	_, buildSpan := telemetry.StartSpan(ctx,
-		attribute.Int("text_len", len(escapedText)),
+		attribute.Int("text_len", len(text)),
 		attribute.Bool("has_keyboard", keyboard != nil),
 	)
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, escapedText)
-	edit.ParseMode = "MarkdownV2"
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text.String())
+	edit.ParseMode = "HTML"
 	if keyboard != nil {
 		edit.ReplyMarkup = keyboard
 	}
@@ -71,35 +62,13 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		span.SetAttributes(attribute.Int("text_len", len(escapedText)))
-	}
-	return err
-}
-
-// editTextRaw edits an existing message with pre-built MarkdownV2 text (no re-escaping).
-func editTextRaw(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, rawMarkdownV2 string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
-	ctx, span := telemetry.StartSpan(ctx, attribute.Int64("chat_id", chatID), attribute.Int("message_id", messageID))
-	defer span.End()
-
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, rawMarkdownV2)
-	edit.ParseMode = "MarkdownV2"
-	if keyboard != nil {
-		edit.ReplyMarkup = keyboard
-	}
-
-	_, err := bot.Send(edit)
-	if err != nil {
-		if strings.Contains(err.Error(), "message is not modified") {
-			return nil
-		}
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.Int("text_len", len(text)))
 	}
 	return err
 }
 
 // replyToUpdate sends a reply to a message update.
-func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -110,7 +79,7 @@ func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.U
 }
 
 // replyToCallback edits the message of a callback query.
-func replyToCallback(ctx context.Context, bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, text string, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToCallback(ctx context.Context, bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

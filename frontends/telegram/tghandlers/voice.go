@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
@@ -161,7 +162,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 
 	// Send the main-menu message so the user can keep working.
 	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, chatID, "Голосовое принято, можешь продолжать работу.", &kb, true)
+	sendText(ctx, tgBot, chatID, tgfmt.Escape("Голосовое принято, можешь продолжать работу."), &kb, true)
 
 	// Register in the reorder buffer BEFORE launching the goroutine.
 	// This claims the slot so that complete() for an earlier message can
@@ -254,9 +255,9 @@ func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID 
 	log.Info("whisper job submitted", zap.String("job_id", jobID), zap.Int("queue_pos", queuePos))
 
 	// Show initial polling status with cancel button.
-	statusText := "⏳ Расшифровываю..."
+	var statusText tgfmt.HTML = "⏳ Расшифровываю..."
 	if queuePos > 1 {
-		statusText = fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", queuePos)
+		statusText = tgfmt.Escape(fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", queuePos))
 	}
 	cancelKb := voiceCancelKeyboard(jobID)
 	editText(ctx, tgBot, chatID, statusMsgID, statusText, &cancelKb)
@@ -327,9 +328,9 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 		preview := string(runes[:min(len(runes), 3500)])
 		suffix := ""
 		if len(runes) > 3500 {
-			suffix = "\n\n_(используй кнопки навигации или попробуй снова)_"
+			suffix = "\n\n(используй кнопки навигации или попробуй снова)"
 		}
-		sendText(ctx, r.tgBot, r.chatID, "🎙 Расшифровка:\n\n"+preview+suffix, nil, true)
+		sendText(ctx, r.tgBot, r.chatID, tgfmt.Escape("🎙 Расшифровка:\n\n"+preview+suffix), nil, true)
 	}
 }
 
@@ -351,17 +352,13 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 	end := min(start+voiceCharsPerPage, len(runes))
 	pageText := string(runes[start:end])
 
-	// Build the message with code block.
-	// The header is escaped for MarkdownV2, but the code block content
-	// only needs ` and \ escaped (MarkdownV2 code block rules).
-	var header string
+	var header tgfmt.HTML
 	if totalPages > 1 {
-		header = EscapeMarkdownV2(fmt.Sprintf("🎙 Добавлено в заметку [%d/%d]:", page+1, totalPages))
+		header = tgfmt.Escape(fmt.Sprintf("🎙 Добавлено в заметку [%d/%d]:", page+1, totalPages))
 	} else {
-		header = EscapeMarkdownV2("🎙 Добавлено в заметку:")
+		header = tgfmt.Escape("🎙 Добавлено в заметку:")
 	}
-	codeContent := escapeCodeBlock(pageText)
-	msg := fmt.Sprintf("%s\n\n```\n%s\n```", header, codeContent)
+	msg := tgfmt.Join(header, tgfmt.Raw("\n\n"), tgfmt.Pre(tgfmt.Escape(pageText)))
 
 	var kb *tgbotapi.InlineKeyboardMarkup
 	if totalPages > 1 {
@@ -369,15 +366,7 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 		kb = &keyboard
 	}
 
-	return editTextRaw(ctx, tgBot, chatID, msgID, msg, kb)
-}
-
-// escapeCodeBlock escapes only the characters that need escaping inside
-// a MarkdownV2 code block: ` and \.
-func escapeCodeBlock(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, "`", "\\`")
-	return s
+	return editText(ctx, tgBot, chatID, msgID, msg, kb)
 }
 
 func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.InlineKeyboardMarkup {
@@ -400,7 +389,7 @@ func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.Inline
 // unnecessary duplicate edit on the first tick.
 // whisperQueuePos is the position returned by Submit (1 = running, 2+ = waiting); kept visible
 // while the job is queued since StatusResponse does not include a live position field.
-func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText string, whisperQueuePos int, log *zap.Logger) (string, error) {
+func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText tgfmt.HTML, whisperQueuePos int, log *zap.Logger) (string, error) {
 	ticker := time.NewTicker(voicePollInterval)
 	defer ticker.Stop()
 	deadline := time.After(voicePollDeadline)
@@ -434,24 +423,24 @@ func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 			case pb.JobStatus_ACCEPTED, pb.JobStatus_QUEUED:
 				// Keep the queue position from Submit visible — StatusResponse does
 				// not carry a live position field, so we reuse the value from Submit.
-				statusText := "⏳ В очереди..."
+				var statusText tgfmt.HTML = "⏳ В очереди..."
 				if whisperQueuePos > 1 {
-					statusText = fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", whisperQueuePos)
+					statusText = tgfmt.Escape(fmt.Sprintf("⏳ В очереди (позиция %d), подожди немного...", whisperQueuePos))
 				}
 				if statusText != lastStatusText {
 					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
 					lastStatusText = statusText
 				}
 			case pb.JobStatus_DOWNLOADING:
-				statusText := "⏳ Загружаю аудио в сервис..."
+				var statusText tgfmt.HTML = "⏳ Загружаю аудио в сервис..."
 				if statusText != lastStatusText {
 					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
 					lastStatusText = statusText
 				}
 			case pb.JobStatus_RUNNING:
-				statusText := "⏳ Расшифровываю..."
+				var statusText tgfmt.HTML = "⏳ Расшифровываю..."
 				if result.ProgressPercent > 0 {
-					statusText = fmt.Sprintf("⏳ Расшифровываю... %.0f%%", result.ProgressPercent)
+					statusText = tgfmt.Escape(fmt.Sprintf("⏳ Расшифровываю... %.0f%%", result.ProgressPercent))
 				}
 				if statusText != lastStatusText {
 					editText(context.Background(), tgBot, chatID, msgID, statusText, &cancelKb)
@@ -516,7 +505,7 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 }
 
 func editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
-	editText(ctx, tgBot, chatID, msgID, text, nil)
+	editText(ctx, tgBot, chatID, msgID, tgfmt.Escape(text), nil)
 }
 
 func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
