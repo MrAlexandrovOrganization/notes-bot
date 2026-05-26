@@ -133,7 +133,13 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateTasksView
 	})
-	sendText(ctx, tgBot, chatID, tgfmt.Escape(fmt.Sprintf("✅ Задача добавлена: %s", text)), nil, true)
+
+	text_to_send := tgfmt.Join(
+		tgfmt.Escape("✅ Задача добавлена: "),
+		tgfmt.Blockquote(tgfmt.Escape(fmt.Sprintf("%s", text))),
+	)
+	sendText(ctx, tgBot, chatID, text_to_send, nil, true)
+
 	kb := a.getMainMenuKeyboard(ctx)
 	sendText(ctx, tgBot, chatID, tgfmt.Escape("Используйте кнопку \"Задачи\" для просмотра."), &kb, true)
 	log.Info("user added task", zap.Int64("user_id", userID))
@@ -150,6 +156,10 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 		return
 	}
 	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, chatID, tgfmt.Escape(fmt.Sprintf("✅ Текст добавлен в заметку %s", activeDate)), &kb, true)
+	text_to_send := tgfmt.Join(
+		tgfmt.Escape("✅ Текст добавлен в заметку "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", activeDate))),
+	)
+	sendText(ctx, tgBot, chatID, text_to_send, &kb, true)
 	log.Info("user appended text", zap.Int64("user_id", userID))
 }

@@ -707,7 +707,7 @@ func (a *App) HandleReminderReject(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		original = query.Message.Text
 	}
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToCallback(ctx, tgBot, query, tgfmt.Escape(original+"\n\n❌ Отклонено."), &kb)
+	replyToCallback(ctx, tgBot, query, tgfmt.Escape(original+"\n\n❌ Отклонено."), &kb) // TODO: display reminder as Block quote
 	applog.With(ctx, a.Logger).Info("reminder rejected", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
