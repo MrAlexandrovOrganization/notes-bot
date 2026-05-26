@@ -108,6 +108,7 @@ docker-clean:
 	docker system prune -f
 
 # Sync whisper.proto from the canonical source (backends/transcriber), then regenerate.
+# The go_package in whisper.proto is not patched — buf.gen.yaml overrides it via the M mapping.
 proto:
 	@echo "Syncing whisper.proto from $(WHISPER_PROTO_SRC)..."
 	@if echo "$(WHISPER_PROTO_SRC)" | grep -qE "^https?://"; then \
@@ -115,9 +116,15 @@ proto:
 	else \
 		cp "$(WHISPER_PROTO_SRC)" proto/whisper/whisper.proto; \
 	fi
-	@sed -i.bak 's|option go_package = "[^"]*";|option go_package = "notes-bot/proto/whisper";|' proto/whisper/whisper.proto
-	@rm -f proto/whisper/whisper.proto.bak
 	buf generate
+
+# Same as proto but runs buf inside Docker — no local buf installation required.
+proto-docker:
+	docker run --rm \
+		-v $(PWD):/workspace \
+		-w /workspace \
+		bufbuild/buf:1.67.0 \
+		generate
 
 proto-lint:
 	buf lint proto
@@ -134,4 +141,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-lint format monitoring-register monitoring-unregister
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format monitoring-register monitoring-unregister

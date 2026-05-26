@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"notes-bot/internal/applog"
 	"notes-bot/internal/kafkacarrier"
@@ -224,7 +225,7 @@ func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 	if stub == nil {
 		return s.localTodayDate(ctx)
 	}
-	resp, err := stub.GetTodayDate(ctx, &pb.Empty{})
+	resp, err := stub.GetTodayDate(ctx, &emptypb.Empty{})
 	if err != nil {
 		log.Error("failed to get today date from core", zap.Error(err))
 		return s.localTodayDate(ctx)

@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"notes-bot/internal/grpcutil"
 	pb "notes-bot/proto/notes"
@@ -37,7 +38,7 @@ func (c *CoreClient) Close() {
 }
 
 func (c *CoreClient) GetTodayDate(ctx context.Context) (string, error) {
-	resp, err := c.stub.GetTodayDate(ctx, &pb.Empty{})
+	resp, err := c.stub.GetTodayDate(ctx, &emptypb.Empty{})
 	if err != nil {
 		return "", err
 	}
@@ -45,7 +46,7 @@ func (c *CoreClient) GetTodayDate(ctx context.Context) (string, error) {
 }
 
 func (c *CoreClient) GetExistingDates(ctx context.Context) ([]string, error) {
-	resp, err := c.stub.GetExistingDates(ctx, &pb.Empty{})
+	resp, err := c.stub.GetExistingDates(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, err
 	}

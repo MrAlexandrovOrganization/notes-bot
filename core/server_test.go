@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // --- Моки с function-полями ---
@@ -142,7 +143,7 @@ func TestServer_GetTodayDate_ReturnsDate(t *testing.T) {
 		todayDateFn: func(ctx context.Context) string { return "08-Mar-2026" },
 	}, nil, nil, nil)
 
-	resp, err := srv.GetTodayDate(t.Context(), &pb.Empty{})
+	resp, err := srv.GetTodayDate(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	assert.Equal(t, "08-Mar-2026", resp.Date)
 }
@@ -156,7 +157,7 @@ func TestServer_GetExistingDates_ReturnsDates(t *testing.T) {
 		},
 	}, nil, nil, nil)
 
-	resp, err := srv.GetExistingDates(t.Context(), &pb.Empty{})
+	resp, err := srv.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"01-Mar-2026", "02-Mar-2026"}, resp.Dates)
 }
@@ -168,7 +169,7 @@ func TestServer_GetExistingDates_InternalError(t *testing.T) {
 		},
 	}, nil, nil, nil)
 
-	_, err := srv.GetExistingDates(t.Context(), &pb.Empty{})
+	_, err := srv.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 }

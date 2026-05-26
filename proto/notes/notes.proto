@@ -2,11 +2,13 @@ syntax = "proto3";
 
 package notes;
 
+import "google/protobuf/empty.proto";
+
 option go_package = "notes-bot/proto/notes";
 
 service NotesService {
-  rpc GetTodayDate(Empty) returns (DateResponse);
-  rpc GetExistingDates(Empty) returns (ExistingDatesResponse);
+  rpc GetTodayDate(google.protobuf.Empty) returns (DateResponse);
+  rpc GetExistingDates(google.protobuf.Empty) returns (ExistingDatesResponse);
   rpc EnsureNote(DateRequest) returns (SuccessResponse);
   rpc GetNote(DateRequest) returns (NoteResponse);
   rpc GetRating(DateRequest) returns (RatingResponse);
@@ -16,8 +18,6 @@ service NotesService {
   rpc AddTask(AddTaskRequest) returns (SuccessResponse);
   rpc AppendToNote(AppendRequest) returns (SuccessResponse);
 }
-
-message Empty {}
 
 message DateRequest {
   string date = 1;

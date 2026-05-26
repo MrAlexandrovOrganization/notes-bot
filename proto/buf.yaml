@@ -3,13 +3,22 @@ lint:
   use:
     - STANDARD
   except:
-    # Existing proto pre-dates these conventions; fixing would be a breaking change.
+    # Packages intentionally omit the .v1 version suffix; adding it would
+    # require restructuring directories and is a breaking change.
     - PACKAGE_VERSION_SUFFIX
     - PACKAGE_DIRECTORY_MATCH
     - PACKAGE_SAME_DIRECTORY
+    # SuccessResponse is deliberately shared across multiple RPCs within each
+    # service — the extra verbosity of per-RPC response types is not worth it.
     - RPC_REQUEST_RESPONSE_UNIQUE
+    # Parameterless RPCs use google.protobuf.Empty as the request type, which
+    # does not follow the XxxRequest naming convention.
     - RPC_REQUEST_STANDARD_NAME
+    # Some response message names predate this convention and renaming them
+    # would be a breaking change for existing callers.
     - RPC_RESPONSE_STANDARD_NAME
+    # whisper.proto is synced from an external service; its enum values cannot
+    # be changed without coordinating with other consumers of that service.
     - ENUM_VALUE_PREFIX
     - ENUM_ZERO_VALUE_SUFFIX
 breaking:

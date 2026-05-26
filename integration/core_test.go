@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const testDate = "01-Mar-2026"
@@ -87,7 +88,7 @@ func runTests(m *testing.M) int {
 // --- GetTodayDate ---
 
 func TestGetTodayDate_ReturnsDate(t *testing.T) {
-	resp, err := client.GetTodayDate(t.Context(), &pb.Empty{})
+	resp, err := client.GetTodayDate(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	assert.Regexp(t, regexp.MustCompile(`^\d{2}-[A-Z][a-z]{2}-\d{4}$`), resp.Date)
 }
@@ -95,7 +96,7 @@ func TestGetTodayDate_ReturnsDate(t *testing.T) {
 // --- GetExistingDates ---
 
 func TestGetExistingDates_InitiallyEmpty(t *testing.T) {
-	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Dates)
 }
@@ -120,7 +121,7 @@ func TestEnsureNote_IdempotentOnExistingFile(t *testing.T) {
 // --- GetExistingDates (после создания заметки) ---
 
 func TestGetExistingDates_AfterEnsureNote(t *testing.T) {
-	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	assert.Contains(t, resp.Dates, testDate)
 }
@@ -293,7 +294,7 @@ func TestAppendToNote_CreatesNoteIfMissing(t *testing.T) {
 // --- GetExistingDates (финальная проверка) ---
 
 func TestGetExistingDates_ContainsAllCreatedDates(t *testing.T) {
-	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 
 	dates := resp.Dates
@@ -303,7 +304,7 @@ func TestGetExistingDates_ContainsAllCreatedDates(t *testing.T) {
 }
 
 func TestGetExistingDates_ReturnsSorted(t *testing.T) {
-	resp, err := client.GetExistingDates(t.Context(), &pb.Empty{})
+	resp, err := client.GetExistingDates(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 
 	sorted := make([]string, len(resp.Dates))

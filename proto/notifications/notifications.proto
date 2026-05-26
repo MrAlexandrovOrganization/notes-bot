@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package notifications;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "notes-bot/proto/notifications";
 
 service NotificationsService {
@@ -17,7 +19,7 @@ message Reminder {
   string title = 3;
   string schedule_type = 4;
   string schedule_params_json = 5;
-  string next_fire_at = 6;
+  google.protobuf.Timestamp next_fire_at = 6;
   bool is_active = 7;
   bool create_task = 8;
 }

@@ -14,6 +14,7 @@ import (
 	pb "notes-bot/proto/notes"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/grpc/status"
 )
 
@@ -76,12 +77,12 @@ func (s *NotesServer) recordRPC(ctx context.Context, method string, err *error) 
 	)
 }
 
-func (s *NotesServer) GetTodayDate(ctx context.Context, req *pb.Empty) (resp *pb.DateResponse, err error) {
+func (s *NotesServer) GetTodayDate(ctx context.Context, req *emptypb.Empty) (resp *pb.DateResponse, err error) {
 	defer s.recordRPC(ctx, "GetTodayDate", &err)
 	return &pb.DateResponse{Date: s.calendar.TodayDate(ctx)}, nil
 }
 
-func (s *NotesServer) GetExistingDates(ctx context.Context, req *pb.Empty) (resp *pb.ExistingDatesResponse, err error) {
+func (s *NotesServer) GetExistingDates(ctx context.Context, req *emptypb.Empty) (resp *pb.ExistingDatesResponse, err error) {
 	defer s.recordRPC(ctx, "GetExistingDates", &err)
 
 	_, span := telemetry.StartSpan(ctx)

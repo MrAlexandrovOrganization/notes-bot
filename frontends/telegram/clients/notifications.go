@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,7 +19,7 @@ type ReminderInfo struct {
 	Title              string
 	ScheduleType       string
 	ScheduleParamsJSON string
-	NextFireAt         string
+	NextFireAt         time.Time
 	IsActive           bool
 	CreateTask         bool
 }
@@ -123,13 +124,17 @@ func protoToReminderInfo(r *pb.Reminder) *ReminderInfo {
 	if r == nil {
 		return nil
 	}
+	var nextFireAt time.Time
+	if r.NextFireAt != nil {
+		nextFireAt = r.NextFireAt.AsTime()
+	}
 	return &ReminderInfo{
 		ID:                 r.Id,
 		UserID:             r.UserId,
 		Title:              r.Title,
 		ScheduleType:       r.ScheduleType,
 		ScheduleParamsJSON: r.ScheduleParamsJson,
-		NextFireAt:         r.NextFireAt,
+		NextFireAt:         nextFireAt,
 		IsActive:           r.IsActive,
 		CreateTask:         r.CreateTask,
 	}

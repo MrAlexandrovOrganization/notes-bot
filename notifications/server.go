@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"notes-bot/internal/applog"
 	pb "notes-bot/proto/notifications"
@@ -48,7 +49,7 @@ func reminderToProto(r *Reminder) *pb.Reminder {
 		Title:              r.Title,
 		ScheduleType:       r.ScheduleType,
 		ScheduleParamsJson: string(paramsJSON),
-		NextFireAt:         r.NextFireAt.UTC().Format(time.RFC3339),
+		NextFireAt:         timestamppb.New(r.NextFireAt.UTC()),
 		IsActive:           r.IsActive,
 		CreateTask:         r.CreateTask,
 	}
@@ -152,7 +153,7 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 		Reminder: &pb.Reminder{
 			Id:         req.ReminderId,
 			UserId:     req.UserId,
-			NextFireAt: nextFireAt.UTC().Format(time.RFC3339),
+			NextFireAt: timestamppb.New(nextFireAt.UTC()),
 		},
 	}, nil
 }

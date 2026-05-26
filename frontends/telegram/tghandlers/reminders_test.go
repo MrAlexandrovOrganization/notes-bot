@@ -3,6 +3,7 @@ package tghandlers
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -60,7 +61,7 @@ func TestReminderListText_SingleReminder(t *testing.T) {
 		{
 			Title:        "Утренняя зарядка",
 			ScheduleType: "daily",
-			NextFireAt:   "2025-01-15T09:30:00Z",
+			NextFireAt:   time.Date(2025, 1, 15, 9, 30, 0, 0, time.UTC),
 		},
 	}
 	text := reminderListText(reminders, 0, 0)
