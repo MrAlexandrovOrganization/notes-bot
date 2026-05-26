@@ -529,7 +529,7 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	text := tgfmt.Join(
 		tgfmt.Raw("📝 Заметка "), tgfmt.Escape(activeDate), tgfmt.Raw("\n\n"),
 		tgfmt.Escape(ratingText), tgfmt.Raw("\n\n"),
-		tgfmt.Pre(tgfmt.Escape(pageContent)),
+		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
 	return replyToCallback(ctx, tgBot, query, text, kb)
 }
