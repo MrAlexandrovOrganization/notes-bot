@@ -330,7 +330,12 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 		if len(runes) > 3500 {
 			suffix = "\n\n(используй кнопки навигации или попробуй снова)"
 		}
-		sendText(ctx, r.tgBot, r.chatID, tgfmt.Escape("🎙 Расшифровка:\n\n"+preview+suffix), nil, true)
+		text := tgfmt.Join(
+			tgfmt.Escape("🎙 Расшифровка:\n\n"),
+			tgfmt.Blockquote(tgfmt.Escape(preview)),
+			tgfmt.Escape(suffix),
+		)
+		sendText(ctx, r.tgBot, r.chatID, text, nil, true)
 	}
 }
 
@@ -358,7 +363,7 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 	} else {
 		header = tgfmt.Escape("🎙 Добавлено в заметку:")
 	}
-	msg := tgfmt.Join(header, tgfmt.Raw("\n\n"), tgfmt.Pre(tgfmt.Escape(pageText)))
+	msg := tgfmt.Join(header, tgfmt.Raw("\n\n"), tgfmt.Blockquote(tgfmt.Escape(pageText)))
 
 	var kb *tgbotapi.InlineKeyboardMarkup
 	if totalPages > 1 {

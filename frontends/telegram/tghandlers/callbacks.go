@@ -434,10 +434,22 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 	}
 	kb := tgkeyboards.Tasks(tasks, uc.TaskPage)
 	var text tgfmt.HTML
+
+	header := tgfmt.Join(
+		tgfmt.Escape("✅ Задачи на "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Escape(":\n\n"),
+	)
 	if len(tasks) == 0 {
-		text = tgfmt.Escape(fmt.Sprintf("✅ Задачи на %s:\n\nЗадач пока нет.", uc.ActiveDate))
+		text = tgfmt.Join(
+			header,
+			tgfmt.Escape("Задач пока нет."),
+		)
 	} else {
-		text = tgfmt.Escape(fmt.Sprintf("✅ Задачи на %s:\n\nВсего задач: %d", uc.ActiveDate, len(tasks)))
+		text = tgfmt.Join(
+			header,
+			tgfmt.Escape(fmt.Sprintf("Всего задач: %d", len(tasks))),
+		)
 	}
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
@@ -459,7 +471,10 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 		existingDates[d] = true
 	}
 	kb := tgkeyboards.Calendar(ctx, uc.CalendarYear, uc.CalendarMonth, uc.ActiveDate, existingDates)
-	text := tgfmt.Escape(fmt.Sprintf("📅 Календарь\n\nАктивная дата: %s", uc.ActiveDate))
+	text := tgfmt.Join(
+		tgfmt.Escape("📅 Календарь\n\nАктивная дата: "),
+		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+	)
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
@@ -527,8 +542,11 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	)
 
 	text := tgfmt.Join(
-		tgfmt.Raw("📝 Заметка "), tgfmt.Escape(activeDate), tgfmt.Raw("\n\n"),
-		tgfmt.Escape(ratingText), tgfmt.Raw("\n\n"),
+		tgfmt.Raw("📝 Заметка "),
+		tgfmt.Code(tgfmt.Escape(activeDate)),
+		tgfmt.Raw("\n\n"),
+		tgfmt.Escape(ratingText),
+		tgfmt.Raw("\n\n"),
 		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
 	return replyToCallback(ctx, tgBot, query, text, kb)
