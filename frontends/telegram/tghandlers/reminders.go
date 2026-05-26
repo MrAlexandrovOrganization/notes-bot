@@ -51,11 +51,13 @@ func reminderListText(reminders []*clients.ReminderInfo, page, tzOffset int) tgf
 	end := min(start+perPage, amountReminders)
 	lines := make([]tgfmt.HTML, 0, end-start)
 	for _, r := range reminders[start:end] {
-		lines = append(lines, tgfmt.Escape(fmt.Sprintf("• %s (%s) — %s",
-			r.Title,
-			scheduleLabel(r.ScheduleType),
-			timeutil.FormatLocalTime(r.NextFireAt, tzOffset),
-		)))
+		lines = append(lines, tgfmt.Join(
+			tgfmt.Escape("• "),
+			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", r.Title))),
+			tgfmt.Escape(fmt.Sprintf(" (%s) — %s",
+				scheduleLabel(r.ScheduleType),
+				timeutil.FormatLocalTime(r.NextFireAt, tzOffset),
+			))))
 	}
 	parts := make([]tgfmt.HTML, 0, len(lines)*2)
 	for i, l := range lines {
@@ -478,7 +480,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 		}
 		msgText = tgfmt.Join(
 			tgfmt.Raw("✅ Напоминание создано!\n\n"),
-			tgfmt.Pre(tgfmt.Escape(title)), taskNote, tgfmt.Raw("\n"),
+			tgfmt.Blockquote(tgfmt.Escape(title)), taskNote, tgfmt.Raw("\n"),
 			tgfmt.Escape(fmt.Sprintf("Тип: %s\nСледующее: %s", scheduleLabel(scheduleType), nextFire)),
 		)
 	} else {
