@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,6 +23,7 @@ import (
 	"notes-bot/frontends/telegram/tghandlers"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
+	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 )
 
@@ -59,29 +59,22 @@ func main() {
 	if metricsPort == "" {
 		metricsPort = "9102"
 	}
-	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", metricsHandler)
-		logger.Info("starting metrics server", zap.String("port", metricsPort))
-		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
-			logger.Error("metrics server stopped", zap.Error(err))
-		}
-	}()
+	grpcutil.StartMetricsServer(logger, metricsPort, metricsHandler)
 
 	// Clients
-	coreClient, err := clients.NewCoreClient(ctx, cfg.CoreGRPCHost, cfg.CoreGRPCPort)
+	coreClient, err := clients.NewCoreClient(cfg.CoreGRPCHost, cfg.CoreGRPCPort)
 	if err != nil {
 		logger.Fatal("failed to create core client", zap.Error(err))
 	}
 	defer coreClient.Close()
 
-	notifClient, err := clients.NewNotificationsClient(ctx, cfg.NotificationsGRPCHost, cfg.NotificationsGRPCPort)
+	notifClient, err := clients.NewNotificationsClient(cfg.NotificationsGRPCHost, cfg.NotificationsGRPCPort)
 	if err != nil {
 		logger.Fatal("failed to create notifications client", zap.Error(err))
 	}
 	defer notifClient.Close()
 
-	whisperClient, err := clients.NewWhisperClient(ctx, cfg.WhisperGRPCHost, cfg.WhisperGRPCPort)
+	whisperClient, err := clients.NewWhisperClient(cfg.WhisperGRPCHost, cfg.WhisperGRPCPort)
 	if err != nil {
 		logger.Fatal("failed to create whisper client", zap.Error(err))
 	}

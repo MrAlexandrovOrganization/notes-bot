@@ -6,11 +6,9 @@ import (
 	"io"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	"notes-bot/internal/telemetry"
+	"notes-bot/internal/grpcutil"
 	pb "notes-bot/proto/whisper"
 )
 
@@ -20,7 +18,6 @@ const (
 	pollInterval  = 5 * time.Second
 	pollDeadline  = 3 * time.Hour
 	submitTimeout = 120 * time.Second
-	statusTimeout = 10 * time.Second
 )
 
 // JobResult holds the outcome of an async transcription job poll.
@@ -36,14 +33,8 @@ type WhisperClient struct {
 	stub pb.TranscriptionServiceClient
 }
 
-func NewWhisperClient(ctx context.Context, host, port string) (*WhisperClient, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	addr := fmt.Sprintf("%s:%s", host, port)
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+func NewWhisperClient(host, port string) (*WhisperClient, error) {
+	conn, err := grpcutil.Dial(host, port,
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(maxMsgSize),
 			grpc.MaxCallSendMsgSize(maxMsgSize),
@@ -60,10 +51,8 @@ func (c *WhisperClient) Close() {
 }
 
 // Submit uploads audio and returns a job ID and queue position immediately.
+// Uses a manual timeout because Submit is a client-streaming RPC — unary interceptors do not apply.
 func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset string) (jobID string, queuePosition int, err error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
 	ctx, cancel := context.WithTimeout(ctx, submitTimeout)
 	defer cancel()
 
@@ -91,12 +80,6 @@ func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset 
 
 // GetStatus polls the status of a submitted job.
 func (c *WhisperClient) GetStatus(ctx context.Context, jobID string) (*JobResult, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
-	defer cancel()
-
 	resp, err := c.stub.GetStatus(ctx, &pb.StatusRequest{JobId: jobID})
 	if err != nil {
 		if isUnavailable(err) {
@@ -115,12 +98,6 @@ func (c *WhisperClient) GetStatus(ctx context.Context, jobID string) (*JobResult
 
 // Cancel requests cancellation of a job.
 func (c *WhisperClient) Cancel(ctx context.Context, jobID string) (bool, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
-	defer cancel()
-
 	resp, err := c.stub.Cancel(ctx, &pb.CancelRequest{JobId: jobID})
 	if err != nil {
 		if isUnavailable(err) {

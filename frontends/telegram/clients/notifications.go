@@ -3,15 +3,12 @@ package clients
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"notes-bot/internal/telemetry"
+	"notes-bot/internal/grpcutil"
 	pb "notes-bot/proto/notifications"
 )
 
@@ -31,15 +28,8 @@ type NotificationsClient struct {
 	stub pb.NotificationsServiceClient
 }
 
-func NewNotificationsClient(ctx context.Context, host, port string) (*NotificationsClient, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	addr := fmt.Sprintf("%s:%s", host, port)
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-	)
+func NewNotificationsClient(host, port string) (*NotificationsClient, error) {
+	conn, err := grpcutil.Dial(host, port)
 	if err != nil {
 		return nil, fmt.Errorf("dial notifications: %w", err)
 	}
@@ -61,13 +51,7 @@ func isUnavailable(err error) bool {
 func (c *NotificationsClient) CreateReminder(ctx context.Context,
 	userID int64, title, scheduleType, scheduleParamsJSON string, createTask bool,
 ) (*ReminderInfo, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	resp, err := c.stub.CreateReminder(timeoutCtx, &pb.CreateReminderRequest{
+	resp, err := c.stub.CreateReminder(ctx, &pb.CreateReminderRequest{
 		UserId:             userID,
 		Title:              title,
 		ScheduleType:       scheduleType,
@@ -87,13 +71,7 @@ func (c *NotificationsClient) CreateReminder(ctx context.Context,
 }
 
 func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	resp, err := c.stub.ListReminders(timeoutCtx, &pb.ListRemindersRequest{UserId: userID})
+	resp, err := c.stub.ListReminders(ctx, &pb.ListRemindersRequest{UserId: userID})
 	if err != nil {
 		if isUnavailable(err) {
 			return nil, errUnavailable("notifications")
@@ -108,13 +86,7 @@ func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) (
 }
 
 func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	resp, err := c.stub.DeleteReminder(timeoutCtx, &pb.DeleteReminderRequest{
+	resp, err := c.stub.DeleteReminder(ctx, &pb.DeleteReminderRequest{
 		ReminderId: reminderID,
 		UserId:     userID,
 	})
@@ -130,13 +102,7 @@ func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, us
 func (c *NotificationsClient) PostponeReminder(ctx context.Context,
 	reminderID, userID int64, postponeMinutes int32,
 ) (*ReminderInfo, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	resp, err := c.stub.PostponeReminder(timeoutCtx, &pb.PostponeReminderRequest{
+	resp, err := c.stub.PostponeReminder(ctx, &pb.PostponeReminderRequest{
 		ReminderId:      reminderID,
 		UserId:          userID,
 		PostponeMinutes: postponeMinutes,

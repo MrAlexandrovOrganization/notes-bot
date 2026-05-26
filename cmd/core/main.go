@@ -4,18 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"notes-bot/core"
+	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	pb "notes-bot/proto/notes"
 )
@@ -49,30 +45,18 @@ func main() {
 	if metricsPort == "" {
 		metricsPort = "9100"
 	}
-	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", metricsHandler)
-		logger.Info("starting metrics server", zap.String("port", metricsPort))
-		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
-			logger.Error("metrics server stopped", zap.Error(err))
-		}
-	}()
+	grpcutil.StartMetricsServer(logger, metricsPort, metricsHandler)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
 		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
-	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	)
+	grpcServer := grpcutil.NewServer()
 
 	notesServer := core.NewDefaultNotesServer()
 	pb.RegisterNotesServiceServer(grpcServer, notesServer)
-
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpcutil.RegisterHealth(grpcServer)
 
 	go func() {
 		logger.Info("starting gRPC server", zap.String("port", port))
