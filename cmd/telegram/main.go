@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -112,7 +113,12 @@ func main() {
 
 	// Start Kafka consumer in background.
 	// Offsets are committed to Kafka via consumer group — no external store needed.
-	go bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
+	}()
 
 	// Start polling
 	u := tgbotapi.NewUpdate(0)
@@ -126,6 +132,8 @@ func main() {
 		case <-ctx.Done():
 			logger.Info("shutting down bot")
 			tgBot.StopReceivingUpdates()
+			// Wait for Kafka consumer to finish gracefully
+			wg.Wait()
 			return
 
 		case update, ok := <-updates:

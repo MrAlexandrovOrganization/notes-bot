@@ -216,6 +216,17 @@ func (s *Scheduler) getCoreStub(ctx context.Context) pb.NotesServiceClient {
 	return s.coreStub
 }
 
+// Close closes the scheduler and releases all resources.
+// Must be called before the scheduler is discarded.
+func (s *Scheduler) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.coreConn != nil {
+		s.coreConn.Close()
+	}
+	s.producer.Close()
+}
+
 func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()

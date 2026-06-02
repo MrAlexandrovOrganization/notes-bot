@@ -146,6 +146,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
 		log.Error("get context", zap.Error(err))
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при сохранении состояния. Попробуйте позже."), nil, true)
 		return
 	}
 	activeDate := uc.ActiveDate
@@ -499,9 +500,13 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 		if !ok {
 			return nil
 		}
+		text, ok := val.(string)
+		if !ok {
+			return nil
+		}
 		chatID := query.Message.Chat.ID
 		//nolint:errcheck — pagination errors on callback are non-critical
-		a.showVoicePage(ctx, tgBot, chatID, msgID, val.(string), page)
+		a.showVoicePage(ctx, tgBot, chatID, msgID, text, page)
 
 	case "noop":
 		// Do nothing — just the page counter button.

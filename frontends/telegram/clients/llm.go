@@ -45,7 +45,7 @@ func NewLLMClient(host, port, model string) *LLMClient {
 	return &LLMClient{
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
 		model:   model,
-		http:    &http.Client{Timeout: 60 * time.Second},
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

@@ -472,7 +472,11 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
-	reminders, _ := a.Notifications.ListReminders(ctx, userID)
+	reminders, err := a.Notifications.ListReminders(ctx, userID)
+	if err != nil {
+		log.Error("list reminders", zap.Error(err))
+		reminders = nil // fallback to empty list
+	}
 	kb := tgkeyboards.RemindersList(reminders, 0)
 
 	var msgText tgfmt.HTML
@@ -608,7 +612,11 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
-	reminders, _ := a.Notifications.ListReminders(ctx, userID)
+	reminders, err := a.Notifications.ListReminders(ctx, userID)
+	if err != nil {
+		log.Error("list reminders", zap.Error(err))
+		reminders = nil // fallback to empty list
+	}
 	kb := tgkeyboards.RemindersList(reminders, 0)
 	var text tgfmt.HTML
 	if len(reminders) > 0 {
@@ -1064,10 +1072,16 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	log := applog.With(ctx, a.Logger)
 	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
-	reminders, _ := a.Notifications.ListReminders(ctx, userID)
+	reminders, err := a.Notifications.ListReminders(ctx, userID)
+	if err != nil {
+		log.Error("list reminders", zap.Error(err))
+		reminders = nil // fallback to empty list
+	}
 	kb := tgkeyboards.RemindersList(reminders, 0)
 	var text tgfmt.HTML
 	if len(reminders) == 0 {

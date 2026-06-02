@@ -46,7 +46,12 @@ func (a *App) cancelVoiceJob(ctx context.Context, jobID string) {
 	if !ok {
 		return
 	}
-	val.(context.CancelFunc)()
+	cancel, ok := val.(context.CancelFunc)
+	if !ok {
+		a.Logger.Error("invalid cancel function type in voiceCancels", zap.String("job_id", jobID))
+		return
+	}
+	cancel()
 	if _, err := a.Whisper.Cancel(ctx, jobID); err != nil {
 		a.Logger.Warn("cancel whisper job", zap.String("job_id", jobID), zap.Error(err))
 	}

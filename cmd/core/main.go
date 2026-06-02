@@ -62,6 +62,7 @@ func main() {
 		logger.Info("starting gRPC server", zap.String("port", port))
 		if err := grpcServer.Serve(lis); err != nil {
 			logger.Error("server stopped", zap.Error(err))
+			lis.Close() //nolint:errcheck
 		}
 	}()
 
