@@ -774,8 +774,13 @@ func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *tgbota
 			nextFireText = fmt.Sprintf(" (следующее: %s)", nf)
 		}
 	}
+	original := ""
+	if update.Message != nil {
+		original = update.Message.Text
+	}
+	label := minutesToLabel(n)
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("⏰ Перенесено на %s.", minutesToLabel(n))+nextFireText), &kb)
+	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("%s\n\n⏰ Перенесено на %s.", original, label)+nextFireText), &kb)
 	log.Info("reminder postponed via text", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID), zap.Int("minutes", n))
 }
 
@@ -856,9 +861,13 @@ func (a *App) handleReminderPostponeTimeInput(ctx context.Context, tgBot *tgbota
 			nextFireText = fmt.Sprintf(" (следующее: %s)", nf)
 		}
 	}
+	original := ""
+	if update.Message != nil {
+		original = update.Message.Text
+	}
 	label := fmt.Sprintf("%s %02d:%02d", uc.PendingPostponeDate, h, m)
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("⏰ Перенесено на %s.", label)+nextFireText), &kb)
+	replyToUpdate(ctx, tgBot, update, tgfmt.Escape(fmt.Sprintf("%s\n\n⏰ Перенесено на %s.", original, label)+nextFireText), &kb)
 	log.Info("reminder postponed to date+time", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
