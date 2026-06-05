@@ -60,6 +60,18 @@ func Load() (*Config, error) {
 	}, nil
 }
 
+// Validate checks optional configuration values are within valid ranges.
+// BOT_TOKEN and ROOT_ID are already validated by Load().
+func (c *Config) Validate() error {
+	if c.TimezoneOffsetHours < -12 || c.TimezoneOffsetHours > 14 {
+		return fmt.Errorf("TIMEZONE_OFFSET_HOURS must be between -12 and 14, got %d", c.TimezoneOffsetHours)
+	}
+	if c.DayStartHour < 0 || c.DayStartHour > 23 {
+		return fmt.Errorf("DAY_START_HOUR must be between 0 and 23, got %d", c.DayStartHour)
+	}
+	return nil
+}
+
 func envStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

@@ -14,14 +14,13 @@ import (
 )
 
 type ReminderInfo struct {
-	ID                 int64
-	UserID             int64
-	Title              string
-	ScheduleType       string
-	ScheduleParamsJSON string
-	NextFireAt         time.Time
-	IsActive           bool
-	CreateTask         bool
+	ID           int64
+	UserID       int64
+	Title        string
+	ScheduleType string
+	NextFireAt   time.Time
+	IsActive     bool
+	CreateTask   bool
 }
 
 type NotificationsClient struct {
@@ -50,14 +49,14 @@ func isUnavailable(err error) bool {
 }
 
 func (c *NotificationsClient) CreateReminder(ctx context.Context,
-	userID int64, title, scheduleType, scheduleParamsJSON string, createTask bool,
+	userID int64, title, scheduleType string, scheduleParams *pb.ScheduleParams, createTask bool,
 ) (*ReminderInfo, error) {
 	resp, err := c.stub.CreateReminder(ctx, &pb.CreateReminderRequest{
-		UserId:             userID,
-		Title:              title,
-		ScheduleType:       scheduleType,
-		ScheduleParamsJson: scheduleParamsJSON,
-		CreateTask:         createTask,
+		UserId:         userID,
+		Title:          title,
+		ScheduleType:   scheduleType,
+		ScheduleParams: scheduleParams,
+		CreateTask:     createTask,
 	})
 	if err != nil {
 		if isUnavailable(err) {
@@ -129,13 +128,12 @@ func protoToReminderInfo(r *pb.Reminder) *ReminderInfo {
 		nextFireAt = r.NextFireAt.AsTime()
 	}
 	return &ReminderInfo{
-		ID:                 r.Id,
-		UserID:             r.UserId,
-		Title:              r.Title,
-		ScheduleType:       r.ScheduleType,
-		ScheduleParamsJSON: r.ScheduleParamsJson,
-		NextFireAt:         nextFireAt,
-		IsActive:           r.IsActive,
-		CreateTask:         r.CreateTask,
+		ID:           r.Id,
+		UserID:       r.UserId,
+		Title:        r.Title,
+		ScheduleType: r.ScheduleType,
+		NextFireAt:   nextFireAt,
+		IsActive:     r.IsActive,
+		CreateTask:   r.CreateTask,
 	}
 }

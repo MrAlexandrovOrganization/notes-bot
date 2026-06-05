@@ -3,6 +3,8 @@ package clients
 import (
 	"context"
 	"io"
+
+	pb "notes-bot/proto/notifications"
 )
 
 // CoreService is the interface for the core notes gRPC service.
@@ -21,7 +23,7 @@ type CoreService interface {
 
 // NotificationsService is the interface for the notifications gRPC service.
 type NotificationsService interface {
-	CreateReminder(ctx context.Context, userID int64, title, scheduleType, scheduleParamsJSON string, createTask bool) (*ReminderInfo, error)
+	CreateReminder(ctx context.Context, userID int64, title, scheduleType string, scheduleParams *pb.ScheduleParams, createTask bool) (*ReminderInfo, error)
 	ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error)
 	DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error)
 	PostponeReminder(ctx context.Context, reminderID, userID int64, postponeMinutes int32) (*ReminderInfo, error)

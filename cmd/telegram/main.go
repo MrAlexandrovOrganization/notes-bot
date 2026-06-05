@@ -39,6 +39,9 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
+	if err := cfg.Validate(); err != nil {
+		logger.Fatal("invalid config", zap.Error(err))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -2,7 +2,6 @@ package notifications
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -42,30 +41,63 @@ func (s *NotificationsServer) recordRPC(ctx context.Context, method string, err 
 }
 
 func reminderToProto(r *Reminder) *pb.Reminder {
-	paramsJSON, _ := json.Marshal(r.ScheduleParams)
 	return &pb.Reminder{
-		Id:                 r.ID,
-		UserId:             r.UserID,
-		Title:              r.Title,
-		ScheduleType:       r.ScheduleType,
-		ScheduleParamsJson: string(paramsJSON),
-		NextFireAt:         timestamppb.New(r.NextFireAt.UTC()),
-		IsActive:           r.IsActive,
-		CreateTask:         r.CreateTask,
+		Id:         r.ID,
+		UserId:     r.UserID,
+		Title:      r.Title,
+		ScheduleType: r.ScheduleType,
+		NextFireAt: timestamppb.New(r.NextFireAt.UTC()),
+		IsActive:   r.IsActive,
+		CreateTask: r.CreateTask,
 	}
+}
+
+// scheduleParamsToMap converts the typed proto ScheduleParams into the
+// map[string]any used internally by ComputeNextFire and stored as JSONB.
+func scheduleParamsToMap(sp *pb.ScheduleParams) map[string]any {
+	if sp == nil {
+		return map[string]any{}
+	}
+	params := map[string]any{
+		"hour":      int(sp.Hour),
+		"minute":    int(sp.Minute),
+		"tz_offset": int(sp.TzOffset),
+	}
+	switch e := sp.Extra.(type) {
+	case *pb.ScheduleParams_Weekly:
+		if e.Weekly != nil {
+			days := make([]int, len(e.Weekly.Days))
+			for i, d := range e.Weekly.Days {
+				days[i] = int(d)
+			}
+			params["days"] = days
+		}
+	case *pb.ScheduleParams_Monthly:
+		if e.Monthly != nil {
+			params["day_of_month"] = int(e.Monthly.DayOfMonth)
+		}
+	case *pb.ScheduleParams_Yearly:
+		if e.Yearly != nil {
+			params["month"] = int(e.Yearly.Month)
+			params["day"] = int(e.Yearly.Day)
+		}
+	case *pb.ScheduleParams_Once:
+		if e.Once != nil {
+			params["date"] = e.Once.Date
+		}
+	case *pb.ScheduleParams_CustomDays:
+		if e.CustomDays != nil {
+			params["interval_days"] = int(e.CustomDays.IntervalDays)
+		}
+	}
+	return params
 }
 
 func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.CreateReminderRequest) (resp *pb.ReminderResponse, err error) {
 	defer s.recordRPC(ctx, "CreateReminder", &err)
 	log := applog.With(ctx, logger)
-	var params map[string]any
-	if req.ScheduleParamsJson != "" {
-		if err := json.Unmarshal([]byte(req.ScheduleParamsJson), &params); err != nil {
-			return nil, status.Error(codes.InvalidArgument, "invalid schedule_params_json")
-		}
-	} else {
-		params = map[string]any{}
-	}
+
+	params := scheduleParamsToMap(req.ScheduleParams)
 
 	// Compute initial next fire
 	tzOffset := paramInt(params, "tz_offset", s.cfg.TimezoneOffsetHours)
@@ -73,7 +105,11 @@ func (s *NotificationsServer) CreateReminder(ctx context.Context, req *pb.Create
 
 	var nextFireAt time.Time
 	if req.ScheduleType == "once" {
-		dateStr := getParamStr(params, "date", "")
+		once := req.GetScheduleParams().GetOnce()
+		dateStr := ""
+		if once != nil {
+			dateStr = once.Date
+		}
 		hour := paramInt(params, "hour", 9)
 		minute := paramInt(params, "minute", 0)
 		loc := time.FixedZone("tz", tzOffset*3600)
@@ -158,13 +194,3 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 	}, nil
 }
 
-func getParamStr(params map[string]any, key string, def string) string {
-	v, ok := params[key]
-	if !ok {
-		return def
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return def
-}

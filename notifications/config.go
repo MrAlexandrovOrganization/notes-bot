@@ -58,3 +58,18 @@ func (c *Config) DSN() string {
 		c.DBHost, c.DBPort, c.DBName, c.DBUser, c.DBPassword,
 	)
 }
+
+// Validate checks that required configuration values are present and valid.
+// Call this at startup after LoadConfig().
+func (c *Config) Validate() error {
+	if c.DBPassword == "" {
+		return fmt.Errorf("DB_PASSWORD is required")
+	}
+	if c.SchedulerIntervalSecs <= 0 {
+		return fmt.Errorf("SCHEDULER_INTERVAL_SECONDS must be positive, got %d", c.SchedulerIntervalSecs)
+	}
+	if c.TimezoneOffsetHours < -12 || c.TimezoneOffsetHours > 14 {
+		return fmt.Errorf("TIMEZONE_OFFSET_HOURS must be between -12 and 14, got %d", c.TimezoneOffsetHours)
+	}
+	return nil
+}

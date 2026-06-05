@@ -13,22 +13,44 @@ service NotificationsService {
   rpc PostponeReminder(PostponeReminderRequest) returns (ReminderResponse);
 }
 
+// ScheduleParams carries the typed parameters for a reminder schedule.
+// The oneof `extra` holds the schedule-type-specific fields; hour/minute and
+// tz_offset are common to all types (except "once" which also uses hour/minute).
+message ScheduleParams {
+  int32 hour      = 1;
+  int32 minute    = 2;
+  int32 tz_offset = 3;
+
+  message WeeklyExtra     { repeated int32 days = 1; }           // 0=Mon … 6=Sun
+  message MonthlyExtra    { int32 day_of_month = 1; }            // 1–31
+  message YearlyExtra     { int32 month = 1; int32 day = 2; }   // month 1–12, day 1–31
+  message OnceExtra       { string date = 1; }                   // YYYY-MM-DD
+  message CustomDaysExtra { int32 interval_days = 1; }
+
+  oneof extra {
+    WeeklyExtra     weekly      = 4;
+    MonthlyExtra    monthly     = 5;
+    YearlyExtra     yearly      = 6;
+    OnceExtra       once        = 7;
+    CustomDaysExtra custom_days = 8;
+  }
+}
+
 message Reminder {
   int64 id = 1;
   int64 user_id = 2;
   string title = 3;
   string schedule_type = 4;
-  string schedule_params_json = 5;
-  google.protobuf.Timestamp next_fire_at = 6;
-  bool is_active = 7;
-  bool create_task = 8;
+  google.protobuf.Timestamp next_fire_at = 5;
+  bool is_active = 6;
+  bool create_task = 7;
 }
 
 message CreateReminderRequest {
   int64 user_id = 1;
   string title = 2;
   string schedule_type = 3;
-  string schedule_params_json = 4;
+  ScheduleParams schedule_params = 4;
   bool create_task = 5;
 }
 

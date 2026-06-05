@@ -83,6 +83,14 @@ func (b *voiceReorderBuffer) register(msgID int, r *pendingVoiceResult) {
 	b.results[msgID] = r
 }
 
+// isEmpty reports whether the buffer has no registered (pending or done) entries.
+// Safe to call concurrently.
+func (b *voiceReorderBuffer) isEmpty() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.ids) == 0
+}
+
 // complete marks msgID as done and returns all consecutive completed results
 // from the front of the queue — these must be delivered in order by the caller.
 func (b *voiceReorderBuffer) complete(msgID int, text string, transcribeErr error) []*pendingVoiceResult {
@@ -193,6 +201,11 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 				for _, rr := range buf.complete(msgID, "", fmt.Errorf("panic")) {
 					a.deliverVoiceResult(rr)
 				}
+			}
+			// Release the per-user buffer once all queued messages are processed.
+			// New voice messages will create a fresh buffer via getVoiceBuffer.
+			if buf.isEmpty() {
+				a.voiceBuffers.Delete(userID)
 			}
 		}()
 
@@ -322,9 +335,16 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 	}
 
 	// Store text for pagination and show the first page.
+	// For single-page results there are no navigation buttons, so we clean up immediately
+	// after display. Multi-page results stay in voiceTexts until the user pages through them.
+	totalPages := (len([]rune(r.text)) + voiceCharsPerPage - 1) / voiceCharsPerPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
 	a.voiceTexts.Store(r.statusMsgID, r.text)
 	if err := a.showVoicePage(ctx, r.tgBot, r.chatID, r.statusMsgID, r.text, 0); err != nil {
 		r.log.Error("show voice page failed, sending as plain message", zap.Error(err))
+		a.voiceTexts.Delete(r.statusMsgID) // no pagination possible in fallback path
 		runes := []rune(r.text)
 		preview := string(runes[:min(len(runes), 3500)])
 		suffix := ""
@@ -337,6 +357,10 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 			tgfmt.Escape(suffix),
 		)
 		sendText(ctx, r.tgBot, r.chatID, text, nil, true)
+		return
+	}
+	if totalPages == 1 {
+		a.voiceTexts.Delete(r.statusMsgID)
 	}
 }
 

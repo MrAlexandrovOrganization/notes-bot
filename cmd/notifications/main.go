@@ -29,6 +29,9 @@ func main() {
 	notifications.SetLogger(logger)
 
 	cfg := notifications.LoadConfig()
+	if err := cfg.Validate(); err != nil {
+		logger.Fatal("invalid config", zap.Error(err))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
