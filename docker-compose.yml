@@ -27,11 +27,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    logging:
+
+    logging: &default-logging
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+    deploy: &default-deploy
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
 
   pgadmin:
     image: dpage/pgadmin4:9.13.0
@@ -69,11 +76,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
+    deploy: *default-deploy
 
   notifications:
     container_name: notes-bot-notifications
@@ -110,11 +114,8 @@ services:
         condition: service_healthy
       core:
         condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
+    deploy: *default-deploy
 
   telegram:
     container_name: notes-bot-telegram
@@ -149,11 +150,8 @@ services:
     depends_on:
       core:
         condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
+    deploy: *default-deploy
 
 volumes:
   postgres_data:
