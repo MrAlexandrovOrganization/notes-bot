@@ -80,11 +80,7 @@ clean:
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
 up:
-	$(DOCKER_COMPOSE) up --build -d
-	$(DOCKER_COMPOSE) logs -f
-
-up-ci:
-	$(DOCKER_COMPOSE) up --build -d
+	$(DOCKER_COMPOSE) up --build -d --remove-orphans
 
 deploy: proto
 	$(DOCKER_COMPOSE) build --no-cache
