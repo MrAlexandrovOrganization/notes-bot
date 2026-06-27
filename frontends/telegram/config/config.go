@@ -56,7 +56,7 @@ func Load() (*Config, error) {
 		RedisPort:             envStr("REDIS_PORT", "6379"),
 		LLMHost:               envStr("LLM_HOST", "ollama"),
 		LLMPort:               envStr("LLM_PORT", "11434"),
-		LLMModel:              envStr("LLM_MODEL", "qwen2.5:1.5b"),
+		LLMModel:              envStr("LLM_MODEL", "qwen3.5:2b"),
 	}, nil
 }
 
