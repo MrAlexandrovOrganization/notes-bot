@@ -31,10 +31,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
     extends:
       file: docker-compose.base.yml
       service: base
+    deploy:
+      resources:
+        limits:
+          memory: 128mb
 
   elasticsearch:
     container_name: notes-bot-elasticsearch
@@ -52,7 +55,7 @@ services:
       - monitoring-net
       - elastic-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE 'status.*(green|yellow)'"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -60,6 +63,11 @@ services:
     extends:
       file: docker-compose.base.yml
       service: base
+    deploy:
+      resources:
+        limits:
+          memory: 1.0g
+          cpus: "2.0"
 
   core:
     container_name: notes-bot-core
