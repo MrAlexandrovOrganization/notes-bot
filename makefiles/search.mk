@@ -44,7 +44,7 @@ search-metrics:  ## Dump all search_* Prometheus metrics live.
 # ── Actions ───────────────────────────────────────────────────────────────────
 
 search-reindex:  ## Force a full Reindex over gRPC.
-	@docker run --rm --network $(SEARCH_DOCKER_NET) fullstorydev/grpcurl:v1.9.1 -plaintext -d '{"force":true}' $(SEARCH_CONTAINER):50054 search.SearchService/Reindex
+	@docker run --rm --network $(SEARCH_DOCKER_NET) fullstorydev/grpcurl:v1.9.1 -plaintext -emit-defaults -d '{"force":true}' $(SEARCH_CONTAINER):50054 search.SearchService/Reindex
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 
