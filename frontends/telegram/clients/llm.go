@@ -15,9 +15,31 @@ import (
 // ErrLLMUnavailable is returned when the Ollama service is unreachable or returns an error.
 var ErrLLMUnavailable = errors.New("LLM service unavailable")
 
-// LLMService parses a natural-language reminder description.
+// LLMService parses a natural-language reminder description and classifies
+// arbitrary user input into a single high-level intent (note/task/reminder).
+//
+// today/tomorrow/dayAfter передаются в формате YYYY-MM-DD и должны быть посчитаны
+// вызывающим с учётом DAY_START_HOUR (через timeutil.LogicalToday).
 type LLMService interface {
-	ParseReminder(ctx context.Context, text, currentDate string) (*LLMReminderResult, error)
+	ParseReminder(ctx context.Context, text, currentDateTime, today, tomorrow, dayAfter string) (*LLMReminderResult, error)
+	ClassifyIntent(ctx context.Context, text, currentDateTime string) (*LLMIntentResult, error)
+}
+
+// SmartIntent enumerates the high-level actions the smart router can produce.
+const (
+	IntentNote     = "note"
+	IntentTask     = "task"
+	IntentReminder = "reminder"
+	IntentUnknown  = "unknown"
+)
+
+// LLMIntentResult — результат классификации произвольного сообщения пользователя.
+// Распарсенные параметры напоминания (для intent=reminder) забираются отдельным
+// вызовом ParseReminder — так каждый запрос остаётся коротким и стабильным.
+type LLMIntentResult struct {
+	Intent     string  `json:"intent"`     // "note"|"task"|"reminder"|"unknown"
+	Confidence float64 `json:"confidence"` // 0..1
+	Title      string  `json:"title"`      // короткий текст для task (для note берём исходник)
 }
 
 // LLMReminderResult holds the structured reminder data extracted by the LLM.
@@ -105,7 +127,16 @@ var llmSchema = map[string]any{
 	"required": []string{"title", "schedule_type", "hour", "minute", "days", "day_of_month", "interval_days", "date", "create_task"},
 }
 
-const llmSystemPrompt = `Сегодняшняя дата и время: %s
+// llmSystemPrompt принимает 4 аргумента:
+//
+//	currentDateTime — сейчас "YYYY-MM-DD HH:MM"
+//	today           — логическое сегодня "YYYY-MM-DD"
+//	tomorrow        — логическое завтра  "YYYY-MM-DD"
+//	dayAfter        — послезавтра        "YYYY-MM-DD"
+const llmSystemPrompt = `Сейчас: %s
+Сегодня (для слов "сегодня", "сегодня вечером"): %s
+Завтра (для слов "завтра"): %s
+Послезавтра (для слов "послезавтра"): %s
 
 Ты помощник для разбора напоминаний. Из текста пользователя извлеки параметры и верни JSON.
 
@@ -117,79 +148,139 @@ const llmSystemPrompt = `Сегодняшняя дата и время: %s
 - day_of_month: ОБЯЗАТЕЛЬНО для monthly — число месяца (1–31). Для остальных — 0.
 - interval_days: ОБЯЗАТЕЛЬНО для custom_days — интервал в днях. Для остальных — 0.
 - month, day: для yearly — месяц (1–12) и число (1–31).
-- date: для once — дата в формате YYYY-MM-DD. Если год не указан — используй год из сегодняшней даты; если эта дата уже прошла — следующий год.
+- date: для once — РЕАЛЬНАЯ дата в формате YYYY-MM-DD (например 2026-06-29). Никогда не возвращай шаблоны типа "<завтра>" или "<сегодня + 1>".
+  Если пользователь сказал "завтра" — подставь значение поля Завтра выше дословно. Если "послезавтра" — Послезавтра.
+  Если назван месяц без года — используй ближайшую будущую дату (год берётся из Сегодня).
+  Дата ВСЕГДА должна быть >= Сегодня. Если получается прошлая дата — увеличь год на 1.
 - create_task: true только если явно просят создать задачу.
 
 Месяцы: январь=1, февраль=2, март=3, апрель=4, май=5, июнь=6, июль=7, август=8, сентябрь=9, октябрь=10, ноябрь=11, декабрь=12
 
-Примеры:
+Примеры (для контекста Сегодня=%[2]s, Завтра=%[3]s, Послезавтра=%[4]s):
 - "каждый понедельник в 9" → schedule_type="weekly", days=[0], hour=9, minute=0
 - "каждый пн и пт в 8:30" → schedule_type="weekly", days=[0,4], hour=8, minute=30
 - "по будням в 8 утра" → schedule_type="weekly", days=[0,1,2,3,4], hour=8, minute=0
-- "в рабочие дни в 9:00" → schedule_type="weekly", days=[0,1,2,3,4], hour=9, minute=0
 - "по выходным в 10" → schedule_type="weekly", days=[5,6], hour=10, minute=0
-- "каждую субботу и воскресенье в 11" → schedule_type="weekly", days=[5,6], hour=11, minute=0
 - "25 числа каждого месяца в 10" → schedule_type="monthly", day_of_month=25, hour=10, minute=0
 - "каждое 20-е число в 15:00" → schedule_type="monthly", day_of_month=20, hour=15, minute=0
-- "1-го числа в 9 утра" → schedule_type="monthly", day_of_month=1, hour=9, minute=0
 - "каждые 3 дня в 7 утра" → schedule_type="custom_days", interval_days=3, hour=7, minute=0
 - "каждый год 2-го июня в 20:00" → schedule_type="yearly", month=6, day=2, hour=20, minute=0
-- "каждый год 1 января в 0:00" → schedule_type="yearly", month=1, day=1, hour=0, minute=0
 - "каждое 8 марта в 9:00" → schedule_type="yearly", month=3, day=8, hour=9, minute=0
-- "ежегодно 15 августа в 12:00" → schedule_type="yearly", month=8, day=15, hour=12, minute=0
-- "27-го марта в 19:00" → schedule_type="once", date="<ближайший 27 марта>", hour=19, minute=0
-- "15 апреля в 10:00" → schedule_type="once", date="<ближайшее 15 апреля>", hour=10, minute=0
-- "завтра в 8:00" → schedule_type="once", date="<сегодня + 1 день>", hour=8, minute=0`
+- "завтра в 8:00" → schedule_type="once", date="%[3]s", hour=8, minute=0
+- "послезавтра в 14:00" → schedule_type="once", date="%[4]s", hour=14, minute=0
+- "сегодня в 23:00" → schedule_type="once", date="%[2]s", hour=23, minute=0`
 
-// ParseReminder calls Ollama with structured output to parse a natural-language reminder description.
-func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDate string) (*LLMReminderResult, error) {
+// chat выполняет POST /api/chat с отключённым reasoning и компактными options.
+// Возвращает уже очищенное содержимое (без <think> и без markdown-обёртки).
+func (c *LLMClient) chat(ctx context.Context, system, user string, schema any, numPredict int) (string, error) {
 	thinkOff := false
 	reqBody := ollamaChatRequest{
 		Model: c.model,
 		Messages: []ollamaMessage{
-			{Role: "system", Content: fmt.Sprintf(llmSystemPrompt, currentDate)},
-			{Role: "user", Content: text},
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
 		},
 		Stream: false,
-		Format: llmSchema,
+		Format: schema,
 		Think:  &thinkOff,
 		Options: map[string]any{
-			// JSON для напоминания короткий; 256 хватит с запасом и страхует от зацикливания.
-			"num_predict": 256,
+			"num_predict": numPredict,
 			"temperature": 0,
 		},
 	}
 
 	data, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return "", fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrLLMUnavailable, err.Error())
+		return "", fmt.Errorf("%w: %s", ErrLLMUnavailable, err.Error())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %d", ErrLLMUnavailable, resp.StatusCode)
+		return "", fmt.Errorf("%w: status %d", ErrLLMUnavailable, resp.StatusCode)
 	}
 
 	var ollamaResp ollamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+		return "", fmt.Errorf("decode response: %w", err)
 	}
 
 	content := strings.TrimSpace(thinkTagRegexp.ReplaceAllString(ollamaResp.Message.Content, ""))
-	content = extractJSON(content)
+	return extractJSON(content), nil
+}
+
+// ParseReminder calls Ollama with structured output to parse a natural-language reminder description.
+func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDateTime, today, tomorrow, dayAfter string) (*LLMReminderResult, error) {
+	content, err := c.chat(ctx, fmt.Sprintf(llmSystemPrompt, currentDateTime, today, tomorrow, dayAfter), text, llmSchema, 256)
+	if err != nil {
+		return nil, err
+	}
 
 	var result LLMReminderResult
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("parse LLM result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// intentSchema — плоская JSON Schema для классификации намерения.
+var intentSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"intent":     map[string]any{"type": "string", "enum": []string{IntentNote, IntentTask, IntentReminder, IntentUnknown}},
+		"confidence": map[string]any{"type": "number", "minimum": 0, "maximum": 1},
+		"title":      map[string]any{"type": "string"},
+	},
+	"required": []string{"intent", "confidence", "title"},
+}
+
+const intentSystemPrompt = `Сегодняшняя дата и время: %s
+
+Ты классификатор сообщений пользователя. Верни ровно один JSON-объект.
+
+Поля:
+- intent: одно из "note", "task", "reminder", "unknown".
+- confidence: число от 0 до 1, твоя уверенность.
+- title: короткий заголовок (обязательно строка, может быть пустой строкой "" если не применимо).
+
+Как выбирать intent:
+- "note" — пользователь записывает факт, мысль, событие, которое уже произошло. Нет действия в будущем, нет времени. title оставь пустым "".
+- "task" — пользователь хочет добавить задачу-чеклист (есть действие, но НЕТ конкретного времени). title — короткое название задачи без слов "сделать", "нужно".
+- "reminder" — пользователь хочет напоминание (есть указание времени или периодичности: "в 9", "каждый день", "завтра", "по пятницам"). title оставь пустым "".
+- "unknown" — непонятно, вопрос или команда. title пустой.
+
+Примеры:
+"Купил молоко" → {"intent":"note","confidence":0.9,"title":""}
+"Сегодня хороший день, выспался" → {"intent":"note","confidence":0.95,"title":""}
+"Позвонить маме" → {"intent":"task","confidence":0.85,"title":"Позвонить маме"}
+"Купить хлеб и кефир" → {"intent":"task","confidence":0.85,"title":"Купить хлеб и кефир"}
+"Завтра в 9 утра позвонить маме" → {"intent":"reminder","confidence":0.95,"title":""}
+"Каждый понедельник в 10 планёрка" → {"intent":"reminder","confidence":0.95,"title":""}
+"Что у меня сегодня?" → {"intent":"unknown","confidence":0.9,"title":""}
+
+Возвращай ТОЛЬКО JSON, без markdown, без пояснений. Все ключи и строки в двойных кавычках.`
+
+// ClassifyIntent классифицирует произвольное сообщение пользователя.
+// Для intent=reminder параметры напоминания берутся отдельным вызовом ParseReminder —
+// одна короткая schema на запрос стабильнее, чем вложенные.
+func (c *LLMClient) ClassifyIntent(ctx context.Context, text, currentDate string) (*LLMIntentResult, error) {
+	content, err := c.chat(ctx, fmt.Sprintf(intentSystemPrompt, currentDate), text, intentSchema, 128)
+	if err != nil {
+		return nil, err
+	}
+
+	var result LLMIntentResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("parse LLM result: %w", err)
 	}

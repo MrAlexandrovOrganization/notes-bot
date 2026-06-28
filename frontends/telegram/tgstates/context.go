@@ -21,6 +21,10 @@ const (
 	StateReminderPostponeTime       UserState = "reminder_postpone_time"
 	StateReminderCreateTaskConfirm  UserState = "reminder_create_task_confirm"
 	StateReminderCreateNL           UserState = "reminder_create_nl"
+
+	// Smart router: одно сообщение → LLM понимает intent (note/task/reminder) → подтверждение.
+	StateSmartInput   UserState = "smart_input"
+	StateSmartConfirm UserState = "smart_confirm"
 )
 
 // UserContext stores all session data for a user.
@@ -39,4 +43,5 @@ type UserContext struct {
 	ReminderCalMonth          int           `json:"reminder_cal_month"`
 	ReminderCalYear           int           `json:"reminder_cal_year"`
 	ReminderListPage          int           `json:"reminder_list_page"`
+	SmartDraft                SmartDraft    `json:"smart_draft"`
 }

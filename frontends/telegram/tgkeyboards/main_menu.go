@@ -36,5 +36,35 @@ func MainMenu(_ string) tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔔 Уведомления", "menu:notifications"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✨ Понять и сделать", "menu:smart"),
+		),
+	)
+}
+
+// SmartConfirm — Да/Нет для подтверждения гипотезы LLM-классификатора.
+func SmartConfirm() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Да", "smart:yes"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Нет", "smart:no"),
+		),
+	)
+}
+
+// SmartIntentPicker показывается, когда LLM не уверена или не поняла —
+// пользователь выбирает intent вручную.
+func SmartIntentPicker() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📝 Заметка", "smart:pick:note"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Задача", "smart:pick:task"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⏰ Напоминание", "smart:pick:reminder"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "smart:no"),
+		),
 	)
 }

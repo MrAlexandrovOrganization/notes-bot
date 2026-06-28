@@ -12,6 +12,11 @@ var (
 	KafkaMessagesConsumed  metric.Int64Counter
 	ReminderDeliveryErrors metric.Int64Counter
 	HandlerDuration        metric.Float64Histogram
+
+	// Smart router metrics. Labels: intent={note|task|reminder|unknown}.
+	SmartIntentTotal     metric.Int64Counter
+	SmartIntentConfirmed metric.Int64Counter
+	SmartIntentRejected  metric.Int64Counter
 )
 
 // InitTelegramMetrics registers all Telegram service metric instruments
@@ -31,5 +36,14 @@ func InitTelegramMetrics() {
 	HandlerDuration, _ = meter.Float64Histogram("telegram.handler.duration",
 		metric.WithDescription("Telegram update handler duration"),
 		metric.WithUnit("s"),
+	)
+	SmartIntentTotal, _ = meter.Int64Counter("telegram.smart.intent.total",
+		metric.WithDescription("Smart router: total classified intents"),
+	)
+	SmartIntentConfirmed, _ = meter.Int64Counter("telegram.smart.intent.confirmed",
+		metric.WithDescription("Smart router: intents confirmed and executed by the user"),
+	)
+	SmartIntentRejected, _ = meter.Int64Counter("telegram.smart.intent.rejected",
+		metric.WithDescription("Smart router: intents rejected (user pressed No or cancelled)"),
 	)
 }

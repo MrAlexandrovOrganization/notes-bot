@@ -12,6 +12,7 @@ var ValidTransitions = map[UserState][]UserState{
 		StateWaitingNewTask,
 		StateCalendarView,
 		StateReminderList,
+		StateSmartInput,
 	},
 	StateWaitingRating: {StateIdle},
 	StateTasksView:     {StateIdle, StateWaitingNewTask},
@@ -42,6 +43,10 @@ var ValidTransitions = map[UserState][]UserState{
 
 	// Natural-language path.
 	StateReminderCreateNL: {StateReminderList, StateIdle},
+
+	// Smart router.
+	StateSmartInput:   {StateSmartConfirm, StateIdle},
+	StateSmartConfirm: {StateIdle, StateSmartInput},
 
 	// Postpone flow.
 	StateReminderPostponeDate:  {StateReminderPostponeTime, StateIdle},

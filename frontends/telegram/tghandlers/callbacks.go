@@ -33,6 +33,7 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"reminder": (*App).handleReminderAction,
 	"note":     (*App).handleNoteAction,
 	"voice":    (*App).handleVoiceAction,
+	"smart":    (*App).handleSmartAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -137,6 +138,31 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 	case "notifications":
 		a.HandleMenuNotifications(ctx, tgBot, query, userID)
+
+	case "smart":
+		a.HandleSmartStart(ctx, tgBot, query, userID)
+	}
+	return nil
+}
+
+// ── Smart router ──────────────────────────────────────────────────────────
+
+func (a *App) handleSmartAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+	if len(parts) < 2 {
+		return nil
+	}
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("smart.action", parts[1]))
+	defer span.End()
+
+	switch parts[1] {
+	case "yes":
+		a.HandleSmartConfirm(ctx, tgBot, query, userID)
+	case "no":
+		a.HandleSmartReject(ctx, tgBot, query, userID)
+	case "pick":
+		if len(parts) >= 3 {
+			a.HandleSmartPickIntent(ctx, tgBot, query, userID, parts[2])
+		}
 	}
 	return nil
 }

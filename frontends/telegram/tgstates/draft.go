@@ -6,6 +6,17 @@ import (
 	pb "notes-bot/proto/notifications"
 )
 
+// SmartDraft хранит исходное сообщение пользователя и гипотезу LLM-классификатора
+// между шагом "обработала" и шагом "пользователь подтвердил". Для reminder
+// детали хранятся в UserContext.ReminderDraft — там же, где их ждёт
+// finalizeReminderFromUpdate.
+type SmartDraft struct {
+	RawText    string  `json:"raw_text"`
+	Intent     string  `json:"intent"`     // "note" | "task" | "reminder" | "unknown"
+	Confidence float64 `json:"confidence"` // 0..1
+	TaskTitle  string  `json:"task_title,omitempty"`
+}
+
 // ReminderDraft holds the in-progress state of the reminder creation wizard.
 // It replaces the previous untyped map[string]any, giving compile-time safety.
 type ReminderDraft struct {

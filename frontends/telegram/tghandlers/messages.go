@@ -53,6 +53,9 @@ var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
 	tgstates.StateReminderPostponeTime: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderPostponeTimeInput(ctx, tgBot, update, userID, text)
 	},
+	tgstates.StateSmartInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleSmartInput(ctx, tgBot, chatID, userID, text)
+	},
 }
 
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {

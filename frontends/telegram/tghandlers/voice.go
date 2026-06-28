@@ -44,6 +44,7 @@ type pendingVoiceResult struct {
 	statusMsgID  int
 	activeDate   string
 	isNLReminder bool
+	isSmart      bool
 	log          *zap.Logger
 
 	// Output — set by transcribeVoice when it finishes.
@@ -159,6 +160,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	}
 	activeDate := uc.ActiveDate
 	isNLReminder := uc.State == tgstates.StateReminderCreateNL
+	isSmart := uc.State == tgstates.StateSmartInput
 
 	// Reply with initial status — the goroutine will update it with progress.
 	replyMsg := tgbotapi.NewMessage(chatID, "⏳ Принято...")
@@ -183,6 +185,7 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 		statusMsgID:  statusMsg.MessageID,
 		activeDate:   activeDate,
 		isNLReminder: isNLReminder,
+		isSmart:      isSmart,
 		log:          log,
 	}
 	buf := a.getVoiceBuffer(userID)
@@ -324,6 +327,13 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 	if r.isNLReminder {
 		r.tgBot.Request(tgbotapi.NewDeleteMessage(r.chatID, r.statusMsgID)) //nolint:errcheck
 		a.handleReminderNLInput(ctx, r.tgBot, r.chatID, r.userID, r.text)
+		return
+	}
+
+	// Smart router: транскрипт идёт через классификатор намерения.
+	if r.isSmart {
+		r.tgBot.Request(tgbotapi.NewDeleteMessage(r.chatID, r.statusMsgID)) //nolint:errcheck
+		a.handleSmartInput(ctx, r.tgBot, r.chatID, r.userID, r.text)
 		return
 	}
 

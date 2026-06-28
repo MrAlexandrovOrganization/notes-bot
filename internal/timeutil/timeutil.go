@@ -23,6 +23,17 @@ func TodayDate(tzOffsetHours, dayStartHour int) string {
 	return local.Format("02-Jan-2006")
 }
 
+// LogicalToday returns the current logical date as a time.Time anchored at 00:00 local time.
+// The day boundary is at dayStartHour — before that hour, the previous calendar day is returned.
+// Используется LLM-промптами, чтобы "сегодня" и "завтра" совпадали с восприятием пользователя.
+func LogicalToday(tzOffsetHours, dayStartHour int) time.Time {
+	local := LocalNow(tzOffsetHours)
+	if local.Hour() < dayStartHour {
+		local = local.AddDate(0, 0, -1)
+	}
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
+}
+
 // FormatLocalTime formats t in the given timezone as "DD.MM.YYYY HH:MM".
 // Returns "" for zero time.
 func FormatLocalTime(t time.Time, tzOffsetHours int) string {
