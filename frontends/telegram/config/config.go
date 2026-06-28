@@ -17,6 +17,8 @@ type Config struct {
 	NotificationsGRPCPort string
 	WhisperGRPCHost       string
 	WhisperGRPCPort       string
+	SearchGRPCHost        string
+	SearchGRPCPort        string
 	KafkaBootstrapServers string
 	RedisHost             string
 	RedisPort             string
@@ -51,6 +53,8 @@ func Load() (*Config, error) {
 		NotificationsGRPCPort: envStr("NOTIFICATIONS_GRPC_PORT", "50052"),
 		WhisperGRPCHost:       envStr("WHISPER_GRPC_HOST", "localhost"),
 		WhisperGRPCPort:       envStr("WHISPER_GRPC_PORT", "50053"),
+		SearchGRPCHost:        envStr("SEARCH_GRPC_HOST", "localhost"),
+		SearchGRPCPort:        envStr("SEARCH_GRPC_PORT", "50054"),
 		KafkaBootstrapServers: envStr("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
 		RedisHost:             envStr("REDIS_HOST", "localhost"),
 		RedisPort:             envStr("REDIS_PORT", "6379"),

@@ -269,3 +269,18 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }
+
+func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPathRequest) (resp *pb.SuccessResponse, err error) {
+	defer s.recordRPC(ctx, "AppendToNoteByPath", &err)
+
+	_, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
+	defer span.End()
+
+	if err := s.notes.AppendByPath(ctx, req.Relpath, req.Text); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to append to note: %v", err)
+	}
+	if s.noteFileOps != nil {
+		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "append_by_path")))
+	}
+	return &pb.SuccessResponse{Success: true}, nil
+}

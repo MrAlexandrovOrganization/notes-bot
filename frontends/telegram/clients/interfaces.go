@@ -19,6 +19,15 @@ type CoreService interface {
 	ToggleTask(ctx context.Context, date string, taskIndex int) (bool, error)
 	AddTask(ctx context.Context, date, taskText string) (bool, error)
 	AppendToNote(ctx context.Context, date, text string) (bool, error)
+	AppendToNoteByPath(ctx context.Context, relpath, text string) (bool, error)
+}
+
+// SearchService is the interface for the search gRPC service.
+type SearchService interface {
+	SearchByName(ctx context.Context, query string, limit int) ([]*SearchHit, error)
+	SearchByContent(ctx context.Context, query string, limit int) ([]*SearchHit, error)
+	SearchSemantic(ctx context.Context, query string, limit int) ([]*SearchHit, error)
+	GetNoteByID(ctx context.Context, id int64) (*SearchNote, error)
 }
 
 // NotificationsService is the interface for the notifications gRPC service.
@@ -40,3 +49,4 @@ type WhisperService interface {
 var _ CoreService = (*CoreClient)(nil)
 var _ NotificationsService = (*NotificationsClient)(nil)
 var _ WhisperService = (*WhisperClient)(nil)
+var _ SearchService = (*SearchClient)(nil)

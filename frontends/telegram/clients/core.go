@@ -128,3 +128,11 @@ func (c *CoreClient) AppendToNote(ctx context.Context, date, text string) (bool,
 	}
 	return resp.Success, nil
 }
+
+func (c *CoreClient) AppendToNoteByPath(ctx context.Context, relpath, text string) (bool, error) {
+	resp, err := c.stub.AppendToNoteByPath(ctx, &pb.AppendByPathRequest{Relpath: relpath, Text: text})
+	if err != nil {
+		return false, err
+	}
+	return resp.Success, nil
+}

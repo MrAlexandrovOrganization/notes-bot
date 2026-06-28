@@ -56,6 +56,12 @@ var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
 	tgstates.StateSmartInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleSmartInput(ctx, tgBot, chatID, userID, text)
 	},
+	tgstates.StateFindNoteInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleFindInput(ctx, tgBot, chatID, userID, text)
+	},
+	tgstates.StateAppendToNoteInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleAppendToNoteInput(ctx, tgBot, chatID, userID, text)
+	},
 }
 
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {

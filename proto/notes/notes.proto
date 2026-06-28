@@ -17,6 +17,7 @@ service NotesService {
   rpc ToggleTask(ToggleTaskRequest) returns (SuccessResponse);
   rpc AddTask(AddTaskRequest) returns (SuccessResponse);
   rpc AppendToNote(AppendRequest) returns (SuccessResponse);
+  rpc AppendToNoteByPath(AppendByPathRequest) returns (SuccessResponse);
 }
 
 message DateRequest {
@@ -69,6 +70,14 @@ message AddTaskRequest {
 message AppendRequest {
   string date = 1;
   string text = 2;
+}
+
+// AppendByPathRequest appends text to an arbitrary note by its relative path
+// (relative to NOTES_DIR). The file must already exist — this RPC does not
+// create new notes. Path traversal (..) is rejected.
+message AppendByPathRequest {
+  string relpath = 1;
+  string text    = 2;
 }
 
 message SuccessResponse {

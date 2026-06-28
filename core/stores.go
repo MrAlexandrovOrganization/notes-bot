@@ -25,6 +25,7 @@ type NoteStore interface {
 	ReadNote(ctx context.Context, date string) (string, error)
 	EnsureNote(ctx context.Context, date string) error
 	AppendToNote(ctx context.Context, date, text string) error
+	AppendByPath(ctx context.Context, relpath, text string) error
 }
 
 type RatingStore interface {
@@ -114,13 +115,86 @@ func (r *realNoteStore) AppendToNote(ctx context.Context, date, text string) err
 			return err
 		}
 	}
+	return appendToFile(filePath, text)
+}
+
+func (r *realNoteStore) AppendByPath(ctx context.Context, relpath, text string) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	logger.Debug("AppendByPath")
+	notesDir := GetConfig(ctx).NotesDir
+	filePath, err := resolveVaultPath(notesDir, relpath)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("note not found: %s", relpath)
+		}
+		return fmt.Errorf("stat note: %w", err)
+	}
+	return appendToFile(filePath, text)
+}
+
+// resolveVaultPath joins notesDir + relpath and ensures the result stays under notesDir.
+// Rejects absolute paths, parent traversal, and symlinks escaping the vault.
+func resolveVaultPath(notesDir, relpath string) (string, error) {
+	if relpath == "" {
+		return "", fmt.Errorf("empty relpath")
+	}
+	if filepath.IsAbs(relpath) {
+		return "", fmt.Errorf("relpath must be relative")
+	}
+	cleaned := filepath.Clean(relpath)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("relpath escapes vault")
+	}
+	absVault, err := filepath.Abs(notesDir)
+	if err != nil {
+		return "", fmt.Errorf("abs vault: %w", err)
+	}
+	full := filepath.Join(absVault, cleaned)
+	if !strings.HasPrefix(full, absVault+string(filepath.Separator)) && full != absVault {
+		return "", fmt.Errorf("relpath escapes vault")
+	}
+	return full, nil
+}
+
+func appendToFile(filePath, text string) error {
 	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("error opening file for append: %w", err)
 	}
 	defer f.Close()
+
+	if needLeadingNewline(filePath) {
+		if _, err := f.WriteString("\n"); err != nil {
+			return err
+		}
+	}
 	_, err = fmt.Fprintf(f, "%s\n", text)
 	return err
+}
+
+func needLeadingNewline(filePath string) bool {
+	info, err := os.Stat(filePath)
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	f, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if _, err := f.Seek(-1, 2); err != nil {
+		return false
+	}
+	last := make([]byte, 1)
+	if _, err := f.Read(last); err != nil {
+		return false
+	}
+	return last[0] != '\n'
 }
 
 func (r *realNoteStore) createFromTemplate(ctx context.Context, filePath, dateStr string) error {

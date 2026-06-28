@@ -34,6 +34,7 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"note":     (*App).handleNoteAction,
 	"voice":    (*App).handleVoiceAction,
 	"smart":    (*App).handleSmartAction,
+	"find":     (*App).handleFindAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -141,6 +142,9 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 	case "smart":
 		a.HandleSmartStart(ctx, tgBot, query, userID)
+
+	case "find":
+		return a.HandleMenuFind(ctx, tgBot, query, userID)
 	}
 	return nil
 }
@@ -315,6 +319,9 @@ func (a *App) handleNoteAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	case "back":
 		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		return a.showMainMenu(ctx, tgBot, query, userID)
+
+	case "append":
+		return a.handleNoteAppendAction(ctx, tgBot, query, userID)
 
 	case "noop":
 	}

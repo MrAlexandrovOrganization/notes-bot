@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package search;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "notes-bot/proto/search";
+
+service SearchService {
+  rpc SearchByName    (SearchRequest) returns (SearchResponse);
+  rpc SearchByContent (SearchRequest) returns (SearchResponse);
+  rpc SearchSemantic  (SearchRequest) returns (SearchResponse);
+  rpc GetNote         (GetNoteRequest) returns (Note);
+  rpc Reindex         (ReindexRequest) returns (ReindexResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  int32  limit = 2;
+  // Optional date filters (DD-Mmm-YYYY format if note has a date frontmatter); reserved for semantic search.
+  string date_from = 3;
+  string date_to   = 4;
+  // Optional chunk kinds filter for semantic search: "note" | "paragraph" | "task".
+  repeated string kinds = 5;
+}
+
+message Hit {
+  int64  note_id    = 1;
+  string relpath    = 2;
+  string name       = 3;
+  string snippet    = 4;
+  double score      = 5;
+  string chunk_kind = 6;
+}
+
+message SearchResponse {
+  repeated Hit hits = 1;
+}
+
+message GetNoteRequest {
+  oneof key {
+    int64  id      = 1;
+    string relpath = 2;
+  }
+}
+
+message Note {
+  int64  id      = 1;
+  string relpath = 2;
+  string name    = 3;
+  string content = 4;
+  google.protobuf.Timestamp mtime = 5;
+}
+
+message ReindexRequest {
+  bool force = 1;
+}
+
+message ReindexResponse {
+  int32 added    = 1;
+  int32 updated  = 2;
+  int32 deleted  = 3;
+  int32 embedded = 4;
+}

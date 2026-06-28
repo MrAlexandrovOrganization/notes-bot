@@ -97,6 +97,73 @@ services:
       file: docker-compose.base.yml
       service: base
 
+  postgres-search:
+    image: pgvector/pgvector:pg16
+    container_name: notes-bot-postgres-search
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${SEARCH_DB_NAME:-search}
+      - POSTGRES_USER=${SEARCH_DB_USER:-search}
+      - POSTGRES_PASSWORD=${SEARCH_DB_PASSWORD}
+    volumes:
+      - postgres_search_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${SEARCH_DB_USER:-search}", "-d", "${SEARCH_DB_NAME:-search}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    extends:
+      file: docker-compose.base.yml
+      service: base
+
+  search:
+    container_name: notes-bot-search
+    build:
+      context: .
+      dockerfile: search/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ${NOTES_DIR}:/notes:ro
+    environment:
+      - DB_HOST=postgres-search
+      - DB_PORT=5432
+      - DB_NAME=${SEARCH_DB_NAME:-search}
+      - DB_USER=${SEARCH_DB_USER:-search}
+      - DB_PASSWORD=${SEARCH_DB_PASSWORD}
+      - GRPC_PORT=50054
+      - METRICS_PORT=9103
+      - NOTES_DIR=/notes
+      - INDEX_INTERVAL=${SEARCH_INDEX_INTERVAL:-5m}
+      - LLM_HOST=ollama
+      - LLM_PORT=11434
+      - EMBED_MODEL=${SEARCH_EMBED_MODEL:-bge-m3}
+      - EMBED_DIM=${SEARCH_EMBED_DIM:-1024}
+      - ENABLE_EMBEDDINGS=${SEARCH_ENABLE_EMBEDDINGS:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+    networks:
+      - default
+      - ollama-net
+      - monitoring-net
+    healthcheck:
+      test: ["CMD", "/grpc_health_probe", "-addr=:50054"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      postgres-search:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    extends:
+      file: docker-compose.base.yml
+      service: base
+
   telegram:
     container_name: notes-bot-telegram
     build:
@@ -112,6 +179,8 @@ services:
       - NOTIFICATIONS_GRPC_PORT=50052
       - WHISPER_GRPC_HOST=whisper-ingress
       - WHISPER_GRPC_PORT=50053
+      - SEARCH_GRPC_HOST=search
+      - SEARCH_GRPC_PORT=50054
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - METRICS_PORT=9102
       - REDIS_HOST=redis
@@ -130,9 +199,12 @@ services:
     depends_on:
       core:
         condition: service_healthy
+      search:
+        condition: service_healthy
     extends:
       file: docker-compose.base.yml
       service: base
 
 volumes:
   postgres_data:
+  postgres_search_data:

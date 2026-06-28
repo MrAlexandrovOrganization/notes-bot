@@ -25,6 +25,12 @@ const (
 	// Smart router: одно сообщение → LLM понимает intent (note/task/reminder) → подтверждение.
 	StateSmartInput   UserState = "smart_input"
 	StateSmartConfirm UserState = "smart_confirm"
+
+	// Find / view / append flow over arbitrary vault notes.
+	StateFindNoteInput     UserState = "find_note_input"
+	StateFindNoteResults   UserState = "find_note_results"
+	StateViewNote          UserState = "view_note"
+	StateAppendToNoteInput UserState = "append_to_note_input"
 )
 
 // UserContext stores all session data for a user.
@@ -44,4 +50,19 @@ type UserContext struct {
 	ReminderCalYear           int           `json:"reminder_cal_year"`
 	ReminderListPage          int           `json:"reminder_list_page"`
 	SmartDraft                SmartDraft    `json:"smart_draft"`
+
+	// Find/view/append flow state.
+	FindQuery       string       `json:"find_query"`
+	FindResults     []SearchHit  `json:"find_results"`
+	FindResultsPage int          `json:"find_results_page"`
+	ActiveRelpath   string       `json:"active_relpath"`
+}
+
+// SearchHit is the minimum view of a search hit kept in user context for pagination.
+// Mirrors clients.SearchHit but avoids importing the clients package.
+type SearchHit struct {
+	NoteID  int64  `json:"note_id"`
+	Relpath string `json:"relpath"`
+	Name    string `json:"name"`
+	Snippet string `json:"snippet"`
 }

@@ -84,6 +84,12 @@ func main() {
 	}
 	defer whisperClient.Close()
 
+	searchClient, err := clients.NewSearchClient(cfg.SearchGRPCHost, cfg.SearchGRPCPort)
+	if err != nil {
+		logger.Fatal("failed to create search client", zap.Error(err))
+	}
+	defer searchClient.Close()
+
 	// Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
@@ -102,6 +108,7 @@ func main() {
 		Core:          coreClient,
 		Notifications: notifClient,
 		Whisper:       whisperClient,
+		Search:        searchClient,
 		LLM:           llmClient,
 		State:         stateManager,
 		Logger:        logger,

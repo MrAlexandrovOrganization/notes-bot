@@ -15,15 +15,15 @@ install:
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
 # All Go unit test packages (no integration)
-GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... \
+GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
                ./frontends/telegram/tghandlers/... \
                ./frontends/telegram/tgkeyboards/... \
                ./frontends/telegram/tgstates/...
 
 # All packages to instrument for coverage
 TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
-GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,$(TELEGRAM_COVERPKGS)
-GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,$(TELEGRAM_COVERPKGS)
+GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS)
+GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)
@@ -72,15 +72,21 @@ build-notifications:
 build-telegram:
 	$(DOCKER_COMPOSE) build telegram
 
+build-search:
+	$(DOCKER_COMPOSE) build search
+
+test-search:
+	go test ./search/... -v
+
 format:
-	gofmt -w ./core/ ./notifications/ ./frontends/telegram/ ./cmd/
+	gofmt -w ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./cmd/
 
 clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
 up:
-	$(DOCKER_COMPOSE) up --build -d --remove-orphans
+	$(DOCKER_COMPOSE) up --build -d
 
 deploy: proto
 	$(DOCKER_COMPOSE) build --no-cache
@@ -137,4 +143,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test clean build-core build-notifications build-telegram up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format monitoring-register monitoring-unregister
+.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format monitoring-register monitoring-unregister

@@ -13,6 +13,7 @@ var ValidTransitions = map[UserState][]UserState{
 		StateCalendarView,
 		StateReminderList,
 		StateSmartInput,
+		StateFindNoteInput,
 	},
 	StateWaitingRating: {StateIdle},
 	StateTasksView:     {StateIdle, StateWaitingNewTask},
@@ -47,6 +48,12 @@ var ValidTransitions = map[UserState][]UserState{
 	// Smart router.
 	StateSmartInput:   {StateSmartConfirm, StateIdle},
 	StateSmartConfirm: {StateIdle, StateSmartInput},
+
+	// Find/view/append flow.
+	StateFindNoteInput:     {StateFindNoteResults, StateIdle},
+	StateFindNoteResults:   {StateViewNote, StateFindNoteInput, StateIdle},
+	StateViewNote:          {StateAppendToNoteInput, StateFindNoteResults, StateIdle},
+	StateAppendToNoteInput: {StateViewNote, StateIdle},
 
 	// Postpone flow.
 	StateReminderPostponeDate:  {StateReminderPostponeTime, StateIdle},

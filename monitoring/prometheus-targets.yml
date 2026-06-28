@@ -2,5 +2,6 @@
     - 'notes-bot-core:9100'
     - 'notes-bot-notifications:9101'
     - 'notes-bot-telegram:9102'
+    - 'notes-bot-search:9103'
   labels:
     project: 'notes-bot'

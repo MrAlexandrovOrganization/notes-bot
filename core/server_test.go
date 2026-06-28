@@ -41,6 +41,7 @@ type mockNoteStore struct {
 	readNoteFn     func(ctx context.Context, date string) (string, error)
 	ensureNoteFn   func(ctx context.Context, date string) error
 	appendToNoteFn func(ctx context.Context, date, text string) error
+	appendByPathFn func(ctx context.Context, relpath, text string) error
 }
 
 func (m *mockNoteStore) ReadNote(ctx context.Context, date string) (string, error) {
@@ -60,6 +61,13 @@ func (m *mockNoteStore) EnsureNote(ctx context.Context, date string) error {
 func (m *mockNoteStore) AppendToNote(ctx context.Context, date, text string) error {
 	if m.appendToNoteFn != nil {
 		return m.appendToNoteFn(ctx, date, text)
+	}
+	return nil
+}
+
+func (m *mockNoteStore) AppendByPath(ctx context.Context, relpath, text string) error {
+	if m.appendByPathFn != nil {
+		return m.appendByPathFn(ctx, relpath, text)
 	}
 	return nil
 }
