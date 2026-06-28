@@ -129,6 +129,10 @@ services:
       - .env
     volumes:
       - ${NOTES_DIR}:/notes:ro
+    ports:
+      # Local-only — for `make search-metrics` to curl /metrics without
+      # round-tripping through a docker-run pull.
+      - "127.0.0.1:9103:9103"
     environment:
       - DB_HOST=postgres-search
       - DB_PORT=5432

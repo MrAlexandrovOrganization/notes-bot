@@ -1,6 +1,10 @@
 DOCKER_COMPOSE = docker compose
 MONITORING_DATA_DIR ?= $(HOME)/.monitoring
 
+# Per-service targets live in makefiles/ to keep this file focused on
+# top-level workflows (build, test, deploy).
+include makefiles/search.mk
+
 # Canonical source of whisper.proto (shared with backends/transcriber).
 # For remote fetch (e.g. in CI without access to the backend repo):
 #   make proto-whisper WHISPER_PROTO_SRC=https://raw.githubusercontent.com/org/transcriber/main/proto/whisper.proto
