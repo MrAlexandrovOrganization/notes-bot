@@ -18,6 +18,8 @@ service NotesService {
   rpc AddTask(AddTaskRequest) returns (SuccessResponse);
   rpc AppendToNote(AppendRequest) returns (SuccessResponse);
   rpc AppendToNoteByPath(AppendByPathRequest) returns (SuccessResponse);
+  rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+  rpc GetNoteByPath(GetNoteByPathRequest) returns (NoteResponse);
 }
 
 message DateRequest {
@@ -82,4 +84,22 @@ message AppendByPathRequest {
 
 message SuccessResponse {
   bool success = 1;
+}
+
+message ListDirectoryRequest {
+  string relpath = 1;
+}
+
+message DirEntry {
+  string name = 1;
+  string relpath = 2;
+  bool is_dir = 3;
+}
+
+message ListDirectoryResponse {
+  repeated DirEntry entries = 1;
+}
+
+message GetNoteByPathRequest {
+  string relpath = 1;
 }

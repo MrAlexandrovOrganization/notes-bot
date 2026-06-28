@@ -42,13 +42,13 @@ func (s *NotificationsServer) recordRPC(ctx context.Context, method string, err 
 
 func reminderToProto(r *Reminder) *pb.Reminder {
 	return &pb.Reminder{
-		Id:         r.ID,
-		UserId:     r.UserID,
-		Title:      r.Title,
+		Id:           r.ID,
+		UserId:       r.UserID,
+		Title:        r.Title,
 		ScheduleType: r.ScheduleType,
-		NextFireAt: timestamppb.New(r.NextFireAt.UTC()),
-		IsActive:   r.IsActive,
-		CreateTask: r.CreateTask,
+		NextFireAt:   timestamppb.New(r.NextFireAt.UTC()),
+		IsActive:     r.IsActive,
+		CreateTask:   r.CreateTask,
 	}
 }
 
@@ -193,4 +193,3 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 		},
 	}, nil
 }
-

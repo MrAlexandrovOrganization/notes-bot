@@ -14,8 +14,8 @@ import (
 	pb "notes-bot/proto/notes"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type NotesServer struct {
@@ -283,4 +283,41 @@ func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPa
 		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "append_by_path")))
 	}
 	return &pb.SuccessResponse{Success: true}, nil
+}
+
+func (s *NotesServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryRequest) (resp *pb.ListDirectoryResponse, err error) {
+	defer s.recordRPC(ctx, "ListDirectory", &err)
+
+	_, span := telemetry.StartSpan(ctx, attribute.String("browse.relpath", req.Relpath))
+	defer span.End()
+
+	entries, err := s.notes.ListDirectory(ctx, req.Relpath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list directory: %v", err)
+	}
+	pbEntries := make([]*pb.DirEntry, len(entries))
+	for i, e := range entries {
+		pbEntries[i] = &pb.DirEntry{
+			Name:    e.Name,
+			Relpath: e.Relpath,
+			IsDir:   e.IsDir,
+		}
+	}
+	return &pb.ListDirectoryResponse{Entries: pbEntries}, nil
+}
+
+func (s *NotesServer) GetNoteByPath(ctx context.Context, req *pb.GetNoteByPathRequest) (resp *pb.NoteResponse, err error) {
+	defer s.recordRPC(ctx, "GetNoteByPath", &err)
+
+	_, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
+	defer span.End()
+
+	content, err := s.notes.ReadNoteByPath(ctx, req.Relpath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read note: %v", err)
+	}
+	if content == "" {
+		return nil, status.Errorf(codes.NotFound, "note not found: %s", req.Relpath)
+	}
+	return &pb.NoteResponse{Content: content}, nil
 }

@@ -136,3 +136,36 @@ func (c *CoreClient) AppendToNoteByPath(ctx context.Context, relpath, text strin
 	}
 	return resp.Success, nil
 }
+
+type DirEntry struct {
+	Name    string
+	Relpath string
+	IsDir   bool
+}
+
+func (c *CoreClient) ListDirectory(ctx context.Context, relpath string) ([]DirEntry, error) {
+	resp, err := c.stub.ListDirectory(ctx, &pb.ListDirectoryRequest{Relpath: relpath})
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]DirEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = DirEntry{
+			Name:    e.Name,
+			Relpath: e.Relpath,
+			IsDir:   e.IsDir,
+		}
+	}
+	return entries, nil
+}
+
+func (c *CoreClient) GetNoteByPath(ctx context.Context, relpath string) (string, error) {
+	resp, err := c.stub.GetNoteByPath(ctx, &pb.GetNoteByPathRequest{Relpath: relpath})
+	if err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return "", nil
+		}
+		return "", err
+	}
+	return resp.Content, nil
+}

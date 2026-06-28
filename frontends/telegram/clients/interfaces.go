@@ -20,6 +20,8 @@ type CoreService interface {
 	AddTask(ctx context.Context, date, taskText string) (bool, error)
 	AppendToNote(ctx context.Context, date, text string) (bool, error)
 	AppendToNoteByPath(ctx context.Context, relpath, text string) (bool, error)
+	ListDirectory(ctx context.Context, relpath string) ([]DirEntry, error)
+	GetNoteByPath(ctx context.Context, relpath string) (string, error)
 }
 
 // SearchService is the interface for the search gRPC service.

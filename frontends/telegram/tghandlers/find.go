@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	findSearchLimit   = 25
-	notePreviewChars  = 3500
-	snippetMaxRunes   = 120
+	findSearchLimit  = 25
+	notePreviewChars = 3500
+	snippetMaxRunes  = 120
 )
 
 // HandleMenuFind opens the find-note prompt — user types a query, we search by

@@ -16,10 +16,10 @@ var ValidTransitions = map[UserState][]UserState{
 		StateFindNoteInput,
 		StateAskQuestion,
 	},
-	StateWaitingRating: {StateIdle},
-	StateTasksView:     {StateIdle, StateWaitingNewTask},
+	StateWaitingRating:  {StateIdle},
+	StateTasksView:      {StateIdle, StateWaitingNewTask},
 	StateWaitingNewTask: {StateIdle},
-	StateCalendarView:  {StateIdle},
+	StateCalendarView:   {StateIdle},
 
 	// Reminder list is the hub for all reminder actions.
 	StateReminderList: {

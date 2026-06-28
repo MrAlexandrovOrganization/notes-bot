@@ -1,7 +1,7 @@
 syntax = "proto3";
 package whisper;
 
-option go_package = "notes-bot/proto/whisper";
+option go_package = "transcriber-bot/gen/whisper";
 
 service TranscriptionService {
   // Synchronous (legacy) — client streams audio, blocks until transcription is done.

@@ -34,6 +34,10 @@ const (
 
 	// Semantic Q&A — vector search + LLM RAG.
 	StateAskQuestion UserState = "ask_question"
+
+	// Vault browser — навигация по структуре хранилища.
+	StateBrowseView UserState = "browse_view"
+	StateBrowseFile UserState = "browse_file"
 )
 
 // UserContext stores all session data for a user.
@@ -55,10 +59,13 @@ type UserContext struct {
 	SmartDraft                SmartDraft    `json:"smart_draft"`
 
 	// Find/view/append flow state.
-	FindQuery       string       `json:"find_query"`
-	FindResults     []SearchHit  `json:"find_results"`
-	FindResultsPage int          `json:"find_results_page"`
-	ActiveRelpath   string       `json:"active_relpath"`
+	FindQuery       string      `json:"find_query"`
+	FindResults     []SearchHit `json:"find_results"`
+	FindResultsPage int         `json:"find_results_page"`
+	ActiveRelpath   string      `json:"active_relpath"`
+
+	// Vault browse state.
+	BrowsePath string `json:"browse_path"`
 }
 
 // SearchHit is the minimum view of a search hit kept in user context for pagination.

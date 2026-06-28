@@ -72,6 +72,14 @@ func (m *mockNoteStore) AppendByPath(ctx context.Context, relpath, text string) 
 	return nil
 }
 
+func (m *mockNoteStore) ListDirectory(ctx context.Context, relpath string) ([]DirEntry, error) {
+	return nil, nil
+}
+
+func (m *mockNoteStore) ReadNoteByPath(ctx context.Context, relpath string) (string, error) {
+	return "", nil
+}
+
 type mockRatingStore struct {
 	getRatingFn    func(ctx context.Context, content string) *int
 	updateRatingFn func(ctx context.Context, date string, rating int) error
