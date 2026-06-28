@@ -16,7 +16,7 @@ import (
 )
 
 // searchCallTimeout is generous because SearchSemantic may trigger Ollama to
-// load the embedding model from disk on cold start (5-15s for bge-m3).
+// load the embedding model from disk on cold start (5-15s for bge-m3:567m).
 const searchCallTimeout = 60 * time.Second
 
 // SearchHit is the user-facing result of any search RPC.
