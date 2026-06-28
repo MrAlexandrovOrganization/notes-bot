@@ -145,6 +145,9 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 	case "find":
 		return a.HandleMenuFind(ctx, tgBot, query, userID)
+
+	case "ask":
+		return a.HandleMenuAsk(ctx, tgBot, query, userID)
 	}
 	return nil
 }

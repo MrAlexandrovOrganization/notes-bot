@@ -40,6 +40,9 @@ func MainMenu(_ string) tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("✨ Понять и сделать", "menu:smart"),
 			tgbotapi.NewInlineKeyboardButtonData("🔎 Найти заметку", "menu:find"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧠 Спросить", "menu:ask"),
+		),
 	)
 }
 

@@ -62,6 +62,9 @@ var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
 	tgstates.StateAppendToNoteInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleAppendToNoteInput(ctx, tgBot, chatID, userID, text)
 	},
+	tgstates.StateAskQuestion: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+		a.handleAskInput(ctx, tgBot, chatID, userID, text)
+	},
 }
 
 func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {

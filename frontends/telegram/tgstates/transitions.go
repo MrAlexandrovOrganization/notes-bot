@@ -14,6 +14,7 @@ var ValidTransitions = map[UserState][]UserState{
 		StateReminderList,
 		StateSmartInput,
 		StateFindNoteInput,
+		StateAskQuestion,
 	},
 	StateWaitingRating: {StateIdle},
 	StateTasksView:     {StateIdle, StateWaitingNewTask},
@@ -54,6 +55,9 @@ var ValidTransitions = map[UserState][]UserState{
 	StateFindNoteResults:   {StateViewNote, StateFindNoteInput, StateIdle},
 	StateViewNote:          {StateAppendToNoteInput, StateFindNoteResults, StateIdle},
 	StateAppendToNoteInput: {StateViewNote, StateIdle},
+
+	// Ask flow.
+	StateAskQuestion: {StateIdle},
 
 	// Postpone flow.
 	StateReminderPostponeDate:  {StateReminderPostponeTime, StateIdle},

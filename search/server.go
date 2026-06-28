@@ -15,14 +15,15 @@ import (
 
 type SearchServer struct {
 	pb.UnimplementedSearchServiceServer
-	pool    *pgxpool.Pool
-	cfg     *Config
-	indexer *Indexer
-	metrics *searchMetrics
+	pool     *pgxpool.Pool
+	cfg      *Config
+	indexer  *Indexer
+	metrics  *searchMetrics
+	embedder *Embedder
 }
 
-func NewSearchServer(pool *pgxpool.Pool, cfg *Config, indexer *Indexer, metrics *searchMetrics) *SearchServer {
-	return &SearchServer{pool: pool, cfg: cfg, indexer: indexer, metrics: metrics}
+func NewSearchServer(pool *pgxpool.Pool, cfg *Config, indexer *Indexer, metrics *searchMetrics, embedder *Embedder) *SearchServer {
+	return &SearchServer{pool: pool, cfg: cfg, indexer: indexer, metrics: metrics, embedder: embedder}
 }
 
 func hitsToProto(hits []SearchHit, kind string) []*pb.Hit {
@@ -82,10 +83,26 @@ func (s *SearchServer) SearchByContent(ctx context.Context, req *pb.SearchReques
 func (s *SearchServer) SearchSemantic(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchSemantic", &err)
 	defer s.metrics.recordSearch(ctx, "semantic", &err)
-	if !s.cfg.EnableEmbeddings {
-		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set ENABLE_EMBEDDINGS=true)")
+	log := applog.With(ctx, logger)
+
+	if !s.cfg.EnableEmbeddings || s.embedder == nil {
+		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set SEARCH_ENABLE_EMBEDDINGS=true)")
 	}
-	return nil, status.Error(codes.Unimplemented, "semantic search not implemented yet")
+	if req.Query == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+
+	vec, err := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
+	if err != nil {
+		log.Error("embed query", zap.Error(err))
+		return nil, status.Error(codes.Unavailable, err.Error())
+	}
+	hits, err := SearchByVector(ctx, s.pool, vec, int(req.Limit), req.Kinds)
+	if err != nil {
+		log.Error("vector search", zap.Error(err))
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.SearchResponse{Hits: hitsToProto(hits, "")}, nil
 }
 
 func (s *SearchServer) GetNote(ctx context.Context, req *pb.GetNoteRequest) (resp *pb.Note, err error) {

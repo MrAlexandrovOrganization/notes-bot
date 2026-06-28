@@ -77,7 +77,12 @@ func main() {
 		logger.Warn("failed to register notes gauge", zap.Error(err))
 	}
 
-	indexer := search.NewIndexer(cfg, pool, metrics)
+	var embedder *search.Embedder
+	if cfg.EnableEmbeddings {
+		embedder = search.NewEmbedder(cfg.LLMHost, cfg.LLMPort, cfg.EmbedModel, cfg.EmbedDim)
+	}
+
+	indexer := search.NewIndexer(cfg, pool, metrics, embedder)
 	scheduler := search.NewScheduler(indexer, cfg)
 	go scheduler.Run(ctx)
 
@@ -87,7 +92,7 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer()
-	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics))
+	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder))
 	grpcutil.RegisterHealth(grpcServer)
 
 	go func() {

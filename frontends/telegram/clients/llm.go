@@ -23,6 +23,7 @@ var ErrLLMUnavailable = errors.New("LLM service unavailable")
 type LLMService interface {
 	ParseReminder(ctx context.Context, text, currentDateTime, today, tomorrow, dayAfter string) (*LLMReminderResult, error)
 	ClassifyIntent(ctx context.Context, text, currentDateTime string) (*LLMIntentResult, error)
+	Ask(ctx context.Context, system, user string, numPredict int) (string, error)
 }
 
 // SmartIntent enumerates the high-level actions the smart router can produce.
@@ -286,4 +287,54 @@ func (c *LLMClient) ClassifyIntent(ctx context.Context, text, currentDate string
 	}
 
 	return &result, nil
+}
+
+// Ask runs a free-form chat call against Ollama with the given system and user
+// messages. Used for RAG-style answers — no JSON schema, returns the raw model
+// reply with <think> blocks stripped.
+func (c *LLMClient) Ask(ctx context.Context, system, user string, numPredict int) (string, error) {
+	thinkOff := false
+	if numPredict <= 0 {
+		numPredict = 512
+	}
+	reqBody := ollamaChatRequest{
+		Model: c.model,
+		Messages: []ollamaMessage{
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
+		},
+		Stream: false,
+		Think:  &thinkOff,
+		Options: map[string]any{
+			"num_predict": numPredict,
+			"temperature": 0.3,
+		},
+	}
+
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", ErrLLMUnavailable, err.Error())
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%w: status %d", ErrLLMUnavailable, resp.StatusCode)
+	}
+
+	var ollamaResp ollamaChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	return strings.TrimSpace(thinkTagRegexp.ReplaceAllString(ollamaResp.Message.Content, "")), nil
 }

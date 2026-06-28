@@ -34,6 +34,10 @@ type Config struct {
 	// EnableEmbeddings toggles the chunking + embedding pipeline.
 	// Commit 1 ships with this off — semantic search lands in commit 2.
 	EnableEmbeddings bool
+
+	// BackfillBatchPerPass caps how many embedding-less notes the indexer
+	// processes per tick. 0 = no cap (drain the queue in one pass).
+	BackfillBatchPerPass int
 }
 
 func getEnvStr(key, def string) string {
@@ -104,10 +108,11 @@ func LoadConfig() *Config {
 		IgnoreDirs:       getEnvStrSlice("INDEX_IGNORE_DIRS", []string{".obsidian", ".trash"}),
 		LLMHost:          getEnvStr("LLM_HOST", "ollama"),
 		LLMPort:          getEnvStr("LLM_PORT", "11434"),
-		EmbedModel:       getEnvStr("EMBED_MODEL", "bge-m3"),
+		EmbedModel:       getEnvStr("EMBED_MODEL", "bge-m3:567m"),
 		IndexInterval:    getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
-		EmbedDim:         getEnvInt("EMBED_DIM", 1024),
-		EnableEmbeddings: getEnvBool("ENABLE_EMBEDDINGS", false),
+		EmbedDim:             getEnvInt("EMBED_DIM", 1024),
+		EnableEmbeddings:     getEnvBool("ENABLE_EMBEDDINGS", false),
+		BackfillBatchPerPass: getEnvInt("BACKFILL_BATCH_PER_PASS", 0),
 	}
 }
 

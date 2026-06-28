@@ -5,13 +5,19 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	"notes-bot/internal/grpcutil"
 	pb "notes-bot/proto/search"
 )
+
+// searchCallTimeout is generous because SearchSemantic may trigger Ollama to
+// load the embedding model from disk on cold start (5-15s for bge-m3).
+const searchCallTimeout = 60 * time.Second
 
 // SearchHit is the user-facing result of any search RPC.
 type SearchHit struct {
@@ -38,7 +44,14 @@ type SearchClient struct {
 }
 
 func NewSearchClient(host, port string) (*SearchClient, error) {
-	conn, err := grpcutil.Dial(host, port)
+	// Custom dial — bypasses grpcutil.Dial's 10s default. Semantic search can
+	// take longer when Ollama is warming up the embedding model.
+	conn, err := grpc.NewClient(
+		fmt.Sprintf("%s:%s", host, port),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithChainUnaryInterceptor(grpcutil.TimeoutInterceptor(searchCallTimeout)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("dial search: %w", err)
 	}

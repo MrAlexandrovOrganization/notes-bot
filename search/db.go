@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/exaring/otelpgx"
@@ -303,4 +304,181 @@ func CountNotes(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	var n int64
 	err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM notes`).Scan(&n)
 	return n, err
+}
+
+// NotesMissingChunks returns (id, content) for notes that have no chunk rows yet.
+// Used to backfill embeddings after enabling vector search on an existing index.
+func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, limit int) ([]NoteFull, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content
+		FROM notes n
+		WHERE NOT EXISTS (SELECT 1 FROM note_chunks c WHERE c.note_id = n.id)
+		ORDER BY n.id ASC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("notes missing chunks: %w", err)
+	}
+	defer rows.Close()
+	var out []NoteFull
+	for rows.Next() {
+		var n NoteFull
+		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// ChunkRow is a row in note_chunks (without embedding or text — those are
+// fetched only on demand to keep listings cheap).
+type ChunkRow struct {
+	ID        int64
+	NoteID    int64
+	Kind      string
+	Ord       int
+	ChunkHash []byte
+}
+
+// vecLiteral serialises a float32 vector to the pgvector textual format
+// "[v1,v2,...]". pgvector accepts this on insert and uses fewer bytes than
+// the binary protocol in pgx without the pgvector-pgx adapter.
+func vecLiteral(v []float32) string {
+	var b strings.Builder
+	b.Grow(len(v) * 8)
+	b.WriteByte('[')
+	for i, x := range v {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		// strconv would be faster but fmt is fine for our batch sizes (~hundreds).
+		fmt.Fprintf(&b, "%g", x)
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// ListChunkHashes returns existing (kind, ord, hash) triples for a note.
+// Used by the indexer to decide which chunks need re-embedding.
+func ListChunkHashes(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]ChunkRow, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	rows, err := pool.Query(ctx,
+		`SELECT id, note_id, kind, ord, chunk_hash FROM note_chunks WHERE note_id = $1`,
+		noteID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunk hashes: %w", err)
+	}
+	defer rows.Close()
+	var out []ChunkRow
+	for rows.Next() {
+		var c ChunkRow
+		if err := rows.Scan(&c.ID, &c.NoteID, &c.Kind, &c.Ord, &c.ChunkHash); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UpsertChunk inserts or updates a chunk row. Embeddings are written only when
+// content actually changes — callers should skip the embed call if the hash
+// matches an existing row.
+func UpsertChunk(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, ord int, text string, hash []byte, vec []float32) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO note_chunks (note_id, kind, ord, text, chunk_hash, embedding)
+		VALUES ($1, $2, $3, $4, $5, $6::vector)
+		ON CONFLICT (note_id, kind, ord) DO UPDATE SET
+			text       = EXCLUDED.text,
+			chunk_hash = EXCLUDED.chunk_hash,
+			embedding  = EXCLUDED.embedding
+	`, noteID, kind, ord, text, hash, vecLiteral(vec))
+	if err != nil {
+		return fmt.Errorf("upsert chunk: %w", err)
+	}
+	return nil
+}
+
+// DeleteChunksOutsideOrd removes chunks for a note that fall outside the
+// provided per-kind keep-set. Used after re-chunking when the new chunk list is
+// shorter than the previous one.
+func DeleteChunksOutsideOrd(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, keepOrds []int) (int64, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	if len(keepOrds) == 0 {
+		tag, err := pool.Exec(ctx,
+			`DELETE FROM note_chunks WHERE note_id = $1 AND kind = $2`,
+			noteID, kind)
+		if err != nil {
+			return 0, fmt.Errorf("delete chunks: %w", err)
+		}
+		return tag.RowsAffected(), nil
+	}
+	tag, err := pool.Exec(ctx, `
+		DELETE FROM note_chunks
+		WHERE note_id = $1 AND kind = $2 AND ord <> ALL($3::int[])
+	`, noteID, kind, keepOrds)
+	if err != nil {
+		return 0, fmt.Errorf("delete stale chunks: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// SearchByVector runs an HNSW cosine-distance ANN search and joins to notes
+// for the result metadata. score is 1 - distance, so higher is closer.
+func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, kinds []string) ([]SearchHit, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	if limit <= 0 {
+		limit = 8
+	}
+
+	// Snippet budget by kind: note-chunks carry the entire body, paragraph/task
+	// are already short. Without this, "note" chunks return useless 240-char
+	// heads and the LLM has no context to answer with.
+	query := `
+		SELECT n.id, n.relpath, n.name,
+		       CASE WHEN c.kind = 'note' THEN LEFT(c.text, 1500)
+		            ELSE LEFT(c.text, 400)
+		       END AS snippet,
+		       1 - (c.embedding <=> $1::vector) AS score,
+		       c.kind
+		FROM note_chunks c
+		JOIN notes n ON n.id = c.note_id
+	`
+	args := []any{vecLiteral(vec)}
+	if len(kinds) > 0 {
+		query += ` WHERE c.kind = ANY($2::text[])`
+		args = append(args, kinds)
+	}
+	query += fmt.Sprintf(` ORDER BY c.embedding <=> $1::vector ASC LIMIT %d`, limit)
+
+	rows, err := pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ann search: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SearchHit
+	for rows.Next() {
+		var h SearchHit
+		if err := rows.Scan(&h.NoteID, &h.Relpath, &h.Name, &h.Snippet, &h.Score, &h.ChunkKind); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }

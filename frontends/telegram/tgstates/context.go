@@ -31,6 +31,9 @@ const (
 	StateFindNoteResults   UserState = "find_note_results"
 	StateViewNote          UserState = "view_note"
 	StateAppendToNoteInput UserState = "append_to_note_input"
+
+	// Semantic Q&A — vector search + LLM RAG.
+	StateAskQuestion UserState = "ask_question"
 )
 
 // UserContext stores all session data for a user.
