@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -59,6 +61,25 @@ type ollamaChatRequest struct {
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
 	Format   any             `json:"format"`
+	// Think turns reasoning on/off for hybrid-thinking models (qwen3, qwen3.5,
+	// deepseek-r1 и т.п.). Указатель — чтобы отличить «не задано» от false.
+	Think   *bool          `json:"think,omitempty"`
+	Options map[string]any `json:"options,omitempty"`
+}
+
+// thinkTagRegexp вырезает блоки <think>…</think> на случай, если модель проигнорирует think=false.
+var thinkTagRegexp = regexp.MustCompile(`(?is)<think>.*?</think>`)
+
+// extractJSON достаёт первый сбалансированный JSON-объект из ответа модели:
+// qwen3.5 иногда заворачивает ответ в ```json … ``` или добавляет текст вокруг,
+// игнорируя format-schema.
+func extractJSON(s string) string {
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start == -1 || end == -1 || end < start {
+		return s
+	}
+	return s[start : end+1]
 }
 
 type ollamaChatResponse struct {
@@ -122,6 +143,7 @@ const llmSystemPrompt = `Сегодняшняя дата и время: %s
 
 // ParseReminder calls Ollama with structured output to parse a natural-language reminder description.
 func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDate string) (*LLMReminderResult, error) {
+	thinkOff := false
 	reqBody := ollamaChatRequest{
 		Model: c.model,
 		Messages: []ollamaMessage{
@@ -130,6 +152,12 @@ func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDate string)
 		},
 		Stream: false,
 		Format: llmSchema,
+		Think:  &thinkOff,
+		Options: map[string]any{
+			// JSON для напоминания короткий; 256 хватит с запасом и страхует от зацикливания.
+			"num_predict": 256,
+			"temperature": 0,
+		},
 	}
 
 	data, err := json.Marshal(reqBody)
@@ -158,8 +186,11 @@ func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDate string)
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
+	content := strings.TrimSpace(thinkTagRegexp.ReplaceAllString(ollamaResp.Message.Content, ""))
+	content = extractJSON(content)
+
 	var result LLMReminderResult
-	if err := json.Unmarshal([]byte(ollamaResp.Message.Content), &result); err != nil {
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("parse LLM result: %w", err)
 	}
 
