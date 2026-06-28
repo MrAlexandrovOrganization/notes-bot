@@ -118,6 +118,11 @@ services:
     extends:
       file: docker-compose.base.yml
       service: base
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
 
   search:
     container_name: notes-bot-search
@@ -163,11 +168,6 @@ services:
     extends:
       file: docker-compose.base.yml
       service: base
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-          cpus: "0.5"
 
   telegram:
     container_name: notes-bot-telegram
