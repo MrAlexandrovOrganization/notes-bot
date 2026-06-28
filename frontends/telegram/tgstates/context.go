@@ -38,6 +38,9 @@ const (
 	// Vault browser — навигация по структуре хранилища.
 	StateBrowseView UserState = "browse_view"
 	StateBrowseFile UserState = "browse_file"
+
+	// Location tracking — вкл/выкл передачи геолокации боту.
+	StateLocationTracking UserState = "location_tracking"
 )
 
 // UserContext stores all session data for a user.
@@ -66,6 +69,9 @@ type UserContext struct {
 
 	// Vault browse state.
 	BrowsePath string `json:"browse_path"`
+
+	// Location tracking state.
+	LocationTrackingActive bool `json:"location_tracking_active"`
 }
 
 // SearchHit is the minimum view of a search hit kept in user context for pagination.

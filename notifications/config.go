@@ -18,6 +18,8 @@ type Config struct {
 	CoreGRPCPort          string
 	TimezoneOffsetHours   int
 	SchedulerIntervalSecs int
+	ElasticsearchHost     string
+	ElasticsearchPort     int
 }
 
 func getEnvStr(key, def string) string {
@@ -49,6 +51,8 @@ func LoadConfig() *Config {
 		CoreGRPCPort:          getEnvStr("CORE_GRPC_PORT", "50051"),
 		TimezoneOffsetHours:   getEnvInt("TIMEZONE_OFFSET_HOURS", 3),
 		SchedulerIntervalSecs: getEnvInt("SCHEDULER_INTERVAL_SECONDS", 60),
+		ElasticsearchHost:     getEnvStr("ELASTICSEARCH_HOST", "localhost"),
+		ElasticsearchPort:     getEnvInt("ELASTICSEARCH_PORT", 9200),
 	}
 }
 

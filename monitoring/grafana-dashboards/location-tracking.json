@@ -1,0 +1,462 @@
+{
+  "annotations": { "list": [] },
+  "description": "Geolocation tracking with Elasticsearch — trajectory visualization on map.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "index": 1, "text": "Inactive" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "index": 0, "text": "Active" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "telegram_location_tracking_active", "legendFormat": "Tracking", "refId": "A" }],
+      "title": "📍 Tracking Active",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "sum(increase(telegram_location_updates_total[24h]))", "legendFormat": "24h", "refId": "A" }],
+      "title": "📍 Updates (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "notifications_location_updates_total", "legendFormat": "Total", "refId": "A" }],
+      "title": "📍 Stored (Prom)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "notifications_active_location_trackers", "legendFormat": "Active", "refId": "A" }],
+      "title": "📍 Active Trackers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "telegram_location_latest_latitude", "legendFormat": "Lat", "refId": "A" }],
+      "title": "📍 Latest Lat",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "pluginVersion": "12.0.0",
+      "targets": [{ "expr": "telegram_location_latest_longitude", "legendFormat": "Lon", "refId": "A" }],
+      "title": "📍 Latest Lon",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 12, "w": 16, "x": 0, "y": 4 },
+      "id": 10,
+      "options": {
+        "basemap": { "config": {}, "type": "default" },
+        "controls": { "mouseWheelZoom": true, "showAttribution": true, "showDebug": false, "showScale": true, "showZoom": true },
+        "layers": [
+          {
+            "config": {
+              "showLegend": true,
+              "tooltip": true,
+              "blendMode": "normal"
+            },
+            "location": {
+              "lookupFromRoute": false,
+              "mode": "location"
+            },
+            "name": "Locations",
+            "type": "markers",
+            "aggregation": "Last"
+          }
+        ],
+        "tooltip": { "mode": "single", "sort": "none" },
+        "view": { "allMaps": true, "id": "zero", "lat": 55.7558, "lon": 37.6173, "zoom": 8 }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "expr": "",
+          "legendFormat": "",
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "Locations",
+          "bucketAggs": [],
+          "metrics": [
+            { "id": "1", "type": "count" }
+          ],
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "🗺️ Location Map (ES geo_point)",
+      "type": "geomap"
+    },
+    {
+      "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 12, "w": 8, "x": 16, "y": 4 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "expr": "",
+          "legendFormat": "Latitude",
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "Latitude",
+          "bucketAggs": [
+            { "field": "timestamp", "id": "2", "settings": { "interval": "auto" }, "type": "date_histogram" }
+          ],
+          "metrics": [
+            { "field": "latitude", "id": "1", "type": "average" }
+          ],
+          "timeField": "timestamp"
+        },
+        {
+          "expr": "",
+          "legendFormat": "Longitude",
+          "refId": "B",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "Longitude",
+          "bucketAggs": [
+            { "field": "timestamp", "id": "2", "settings": { "interval": "auto" }, "type": "date_histogram" }
+          ],
+          "metrics": [
+            { "field": "longitude", "id": "1", "type": "average" }
+          ],
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "📈 Coordinates Over Time (ES)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 4,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "live" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "static" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 12,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "expr": "",
+          "legendFormat": "{{source}}",
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "",
+          "bucketAggs": [
+            { "field": "timestamp", "id": "2", "settings": { "interval": "1h" }, "type": "date_histogram" },
+            { "field": "source", "id": "3", "settings": {}, "type": "terms" }
+          ],
+          "metrics": [
+            { "id": "1", "type": "count" }
+          ],
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "📊 Updates by Source (per hour, ES)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "alignValue": "left",
+            "displayMode": "auto",
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 13,
+      "options": { "frameIndex": 0, "showHeader": true, "sortBy": [] },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "expr": "",
+          "legendFormat": "",
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "",
+          "bucketAggs": [
+            { "field": "timestamp", "id": "1", "settings": { "interval": "auto" }, "type": "date_histogram" }
+          ],
+          "metrics": [
+            { "field": "latitude", "id": "2", "type": "last" },
+            { "field": "longitude", "id": "3", "type": "last" },
+            { "field": "source", "id": "4", "type": "last" },
+            { "field": "accuracy", "id": "5", "type": "last" }
+          ],
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "📋 Recent Locations (ES)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 14,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "expr": "",
+          "legendFormat": "rate",
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "notes-bot-elasticsearch" },
+          "queryType": "raw",
+          "alias": "",
+          "bucketAggs": [
+            { "field": "timestamp", "id": "1", "settings": { "interval": "1m" }, "type": "date_histogram" }
+          ],
+          "metrics": [
+            { "id": "2", "type": "count" }
+          ],
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "📍 Location Rate (per minute, ES)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 40,
+  "tags": ["notes-bot", "location", "telegram", "elasticsearch"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Notes Bot — Location Tracking (ES)",
+  "uid": "notes-bot-location-es",
+  "version": 3,
+  "weekStart": ""
+}

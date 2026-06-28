@@ -38,6 +38,11 @@ type NotificationsService interface {
 	ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error)
 	DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error)
 	PostponeReminder(ctx context.Context, reminderID, userID int64, postponeMinutes int32) (*ReminderInfo, error)
+	StoreLocation(ctx context.Context, userID int64, lat, lon, accuracy, altitude, heading, speed float64, source string, liveMsgID int64) (*LocationInfo, error)
+	GetLatestLocation(ctx context.Context, userID int64) (*LocationInfo, error)
+	GetLocationHistory(ctx context.Context, userID int64, limit, offset int) ([]*LocationInfo, error)
+	ToggleLocationTracking(ctx context.Context, userID int64, active bool) (bool, error)
+	GetLocationTrackingStatus(ctx context.Context, userID int64) (bool, error)
 }
 
 // WhisperService is the interface for the whisper transcription gRPC service.

@@ -182,6 +182,11 @@ func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
 			userID = update.Message.From.ID
 		}
 		return "command", userID
+	case update.Message != nil && (update.Message.Location != nil):
+		if update.Message.From != nil {
+			userID = update.Message.From.ID
+		}
+		return "location", userID
 	case update.Message != nil && (update.Message.Voice != nil || update.Message.VideoNote != nil):
 		if update.Message.From != nil {
 			userID = update.Message.From.ID
@@ -218,6 +223,9 @@ var updateHandlers = map[string]updateHandler{
 	},
 	"voice": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 		app.HandleVoiceMessage(ctx, tgBot, update)
+	},
+	"location": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleLocationMessage(ctx, tgBot, update)
 	},
 	"text": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 		app.HandleTextMessage(ctx, tgBot, update)

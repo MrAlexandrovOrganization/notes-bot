@@ -36,6 +36,7 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"smart":    (*App).handleSmartAction,
 	"find":     (*App).handleFindAction,
 	"browse":   (*App).handleBrowseAction,
+	"location": (*App).handleLocationAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
@@ -152,6 +153,9 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 	case "browse":
 		return a.HandleMenuBrowse(ctx, tgBot, query, userID)
+
+	case "location":
+		return a.HandleMenuLocation(ctx, tgBot, query, userID)
 	}
 	return nil
 }

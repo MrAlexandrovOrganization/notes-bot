@@ -21,10 +21,11 @@ type NotificationsServer struct {
 	pool    *pgxpool.Pool
 	cfg     *Config
 	metrics *notifMetrics
+	es      *ESClient
 }
 
-func NewNotificationsServer(pool *pgxpool.Pool, cfg *Config) *NotificationsServer {
-	return &NotificationsServer{pool: pool, cfg: cfg, metrics: newNotifMetrics()}
+func NewNotificationsServer(pool *pgxpool.Pool, cfg *Config, es *ESClient) *NotificationsServer {
+	return &NotificationsServer{pool: pool, cfg: cfg, metrics: newNotifMetrics(), es: es}
 }
 
 func (s *NotificationsServer) recordRPC(ctx context.Context, method string, err *error) {
@@ -51,6 +52,38 @@ func reminderToProto(r *Reminder) *pb.Reminder {
 		CreateTask:   r.CreateTask,
 	}
 }
+
+func locationToProto(loc *LocationRecord) *pb.LocationRecord {
+	if loc == nil {
+		return nil
+	}
+	p := &pb.LocationRecord{
+		Id:         loc.ID,
+		UserId:     loc.UserID,
+		Latitude:   loc.Latitude,
+		Longitude:  loc.Longitude,
+		Source:     loc.Source,
+		RecordedAt: timestamppb.New(loc.RecordedAt.UTC()),
+	}
+	if loc.LiveMessageID != nil {
+		p.LiveMessageId = *loc.LiveMessageID
+	}
+	if loc.Accuracy != nil {
+		p.Accuracy = *loc.Accuracy
+	}
+	if loc.Altitude != nil {
+		p.Altitude = *loc.Altitude
+	}
+	if loc.Heading != nil {
+		p.Heading = *loc.Heading
+	}
+	if loc.Speed != nil {
+		p.Speed = *loc.Speed
+	}
+	return p
+}
+
+func ptrFloat64(v float64) *float64 { return &v }
 
 // scheduleParamsToMap converts the typed proto ScheduleParams into the
 // map[string]any used internally by ComputeNextFire and stored as JSONB.
@@ -192,4 +225,105 @@ func (s *NotificationsServer) PostponeReminder(ctx context.Context, req *pb.Post
 			NextFireAt: timestamppb.New(nextFireAt.UTC()),
 		},
 	}, nil
+}
+
+func (s *NotificationsServer) StoreLocation(ctx context.Context, req *pb.StoreLocationRequest) (resp *pb.LocationResponse, err error) {
+	defer s.recordRPC(ctx, "StoreLocation", &err)
+	log := applog.With(ctx, logger)
+
+	loc := &LocationRecord{
+		UserID:     req.UserId,
+		Latitude:   req.Latitude,
+		Longitude:  req.Longitude,
+		Source:     req.Source,
+		RecordedAt: time.Now().UTC(),
+	}
+	if req.Accuracy != 0 {
+		loc.Accuracy = ptrFloat64(req.Accuracy)
+	}
+	if req.Altitude != 0 {
+		loc.Altitude = ptrFloat64(req.Altitude)
+	}
+	if req.Heading != 0 {
+		loc.Heading = ptrFloat64(req.Heading)
+	}
+	if req.Speed != 0 {
+		loc.Speed = ptrFloat64(req.Speed)
+	}
+	if req.LiveMessageId != 0 {
+		loc.LiveMessageID = &req.LiveMessageId
+	}
+
+	stored, err := StoreLocation(ctx, s.pool, loc)
+	if err != nil {
+		log.Error("store location", zap.Error(err))
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	s.metrics.RecordLocationUpdate(ctx, req.Source)
+	s.metrics.ObserveLatestLocation(req.Latitude, req.Longitude)
+
+	if s.es != nil {
+		go func() {
+			if err := s.es.IndexLocation(context.Background(), stored); err != nil {
+				logger.Warn("es index location failed", zap.Error(err))
+			}
+		}()
+	}
+
+	return &pb.LocationResponse{Success: true, Location: locationToProto(stored)}, nil
+}
+
+func (s *NotificationsServer) GetLatestLocation(ctx context.Context, req *pb.GetLatestLocationRequest) (resp *pb.LocationResponse, err error) {
+	defer s.recordRPC(ctx, "GetLatestLocation", &err)
+
+	loc, err := GetLatestLocation(ctx, s.pool, req.UserId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.LocationResponse{Success: true, Location: locationToProto(loc)}, nil
+}
+
+func (s *NotificationsServer) GetLocationHistory(ctx context.Context, req *pb.GetLocationHistoryRequest) (resp *pb.LocationHistoryResponse, err error) {
+	defer s.recordRPC(ctx, "GetLocationHistory", &err)
+
+	limit := int(req.Limit)
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	offset := int(req.Offset)
+	if offset < 0 {
+		offset = 0
+	}
+
+	locs, err := GetLocationHistory(ctx, s.pool, req.UserId, limit, offset)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	result := make([]*pb.LocationRecord, len(locs))
+	for i, loc := range locs {
+		result[i] = locationToProto(loc)
+	}
+	return &pb.LocationHistoryResponse{Locations: result}, nil
+}
+
+func (s *NotificationsServer) ToggleLocationTracking(ctx context.Context, req *pb.ToggleLocationTrackingRequest) (resp *pb.LocationTrackingResponse, err error) {
+	defer s.recordRPC(ctx, "ToggleLocationTracking", &err)
+	log := applog.With(ctx, logger)
+
+	if err := SetLocationTracking(ctx, s.pool, req.UserId, req.Active); err != nil {
+		log.Error("toggle location tracking", zap.Error(err))
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.LocationTrackingResponse{IsActive: req.Active}, nil
+}
+
+func (s *NotificationsServer) GetLocationTrackingStatus(ctx context.Context, req *pb.GetLocationTrackingRequest) (resp *pb.LocationTrackingResponse, err error) {
+	defer s.recordRPC(ctx, "GetLocationTrackingStatus", &err)
+
+	isActive, err := GetLocationTracking(ctx, s.pool, req.UserId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.LocationTrackingResponse{IsActive: isActive}, nil
 }

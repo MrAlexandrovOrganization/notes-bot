@@ -11,6 +11,11 @@ service NotificationsService {
   rpc ListReminders(ListRemindersRequest) returns (ListRemindersResponse);
   rpc DeleteReminder(DeleteReminderRequest) returns (SuccessResponse);
   rpc PostponeReminder(PostponeReminderRequest) returns (ReminderResponse);
+  rpc StoreLocation(StoreLocationRequest) returns (LocationResponse);
+  rpc GetLatestLocation(GetLatestLocationRequest) returns (LocationResponse);
+  rpc GetLocationHistory(GetLocationHistoryRequest) returns (LocationHistoryResponse);
+  rpc ToggleLocationTracking(ToggleLocationTrackingRequest) returns (LocationTrackingResponse);
+  rpc GetLocationTrackingStatus(GetLocationTrackingRequest) returns (LocationTrackingResponse);
 }
 
 // ScheduleParams carries the typed parameters for a reminder schedule.
@@ -80,4 +85,63 @@ message ReminderResponse {
 
 message SuccessResponse {
   bool success = 1;
+}
+
+message LocationRecord {
+  int64 id = 1;
+  int64 user_id = 2;
+  double latitude = 3;
+  double longitude = 4;
+  double accuracy = 5;
+  double altitude = 6;
+  double heading = 7;
+  double speed = 8;
+  string source = 9;
+  int64 live_message_id = 10;
+  google.protobuf.Timestamp recorded_at = 11;
+}
+
+message StoreLocationRequest {
+  int64 user_id = 1;
+  double latitude = 2;
+  double longitude = 3;
+  double accuracy = 4;
+  double altitude = 5;
+  double heading = 6;
+  double speed = 7;
+  string source = 8;
+  int64 live_message_id = 9;
+}
+
+message GetLatestLocationRequest {
+  int64 user_id = 1;
+}
+
+message GetLocationHistoryRequest {
+  int64 user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message LocationHistoryResponse {
+  repeated LocationRecord locations = 1;
+}
+
+message ToggleLocationTrackingRequest {
+  int64 user_id = 1;
+  bool active = 2;
+}
+
+message GetLocationTrackingRequest {
+  int64 user_id = 1;
+}
+
+message LocationTrackingResponse {
+  bool is_active = 1;
+  LocationRecord latest_location = 2;
+}
+
+message LocationResponse {
+  bool success = 1;
+  LocationRecord location = 2;
 }

@@ -44,6 +44,9 @@ func MainMenu(_ string) tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("🧠 Спросить", "menu:ask"),
 			tgbotapi.NewInlineKeyboardButtonData("📂 Обзор хранилища", "menu:browse"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📍 Геолокация", "menu:location"),
+		),
 	)
 }
 

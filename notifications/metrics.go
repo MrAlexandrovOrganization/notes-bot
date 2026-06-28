@@ -1,15 +1,26 @@
 package notifications
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 type notifMetrics struct {
-	remindersFired metric.Int64Counter
-	publishErrors  metric.Int64Counter
-	tickDuration   metric.Float64Histogram
-	rpcRequests    metric.Int64Counter
+	remindersFired  metric.Int64Counter
+	publishErrors   metric.Int64Counter
+	tickDuration    metric.Float64Histogram
+	rpcRequests     metric.Int64Counter
+	locationUpdates metric.Int64Counter
+	locationTrackingGauges
+}
+
+type locationTrackingGauges struct {
+	activeTrackers metric.Int64ObservableGauge
+	latestLat      metric.Float64ObservableGauge
+	latestLon      metric.Float64ObservableGauge
 }
 
 func newNotifMetrics() *notifMetrics {
@@ -28,11 +39,39 @@ func newNotifMetrics() *notifMetrics {
 	rpcRequests, _ := meter.Int64Counter("notifications.rpc.requests",
 		metric.WithDescription("Total gRPC requests by method and status"),
 	)
+	locationUpdates, _ := meter.Int64Counter("notifications.location.updates.total",
+		metric.WithDescription("Total location updates received"),
+	)
 
-	return &notifMetrics{
-		remindersFired: remindersFired,
-		publishErrors:  publishErrors,
-		tickDuration:   tickDuration,
-		rpcRequests:    rpcRequests,
+	m := &notifMetrics{
+		remindersFired:  remindersFired,
+		publishErrors:   publishErrors,
+		tickDuration:    tickDuration,
+		rpcRequests:     rpcRequests,
+		locationUpdates: locationUpdates,
 	}
+	m.locationTrackingGauges = locationTrackingGauges{
+		activeTrackers: nil,
+		latestLat:      nil,
+		latestLon:      nil,
+	}
+
+	return m
+}
+
+func (s *notifMetrics) RecordLocationUpdate(ctx context.Context, source string) {
+	s.locationUpdates.Add(ctx, 1,
+		metric.WithAttributes(attribute.String("source", source)),
+	)
+}
+
+type locationGauge struct {
+	lat, lon float64
+}
+
+var globalLocationGauge = &locationGauge{}
+
+func (s *notifMetrics) ObserveLatestLocation(lat, lon float64) {
+	globalLocationGauge.lat = lat
+	globalLocationGauge.lon = lon
 }

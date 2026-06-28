@@ -8,6 +8,8 @@ networks:
     external: true
   kafka-net:
     external: true
+  elastic-net:
+    external: true
   redis-net:
     external: true
 
@@ -19,6 +21,8 @@ services:
       - POSTGRES_DB=${DB_NAME:-notifications}
       - POSTGRES_USER=${DB_USER:-notif}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -28,6 +32,31 @@ services:
       retries: 5
       start_period: 10s
 
+    extends:
+      file: docker-compose.base.yml
+      service: base
+
+  elasticsearch:
+    container_name: notes-bot-elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    # elasticsearch:9.4.2
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - default
+      - monitoring-net
+      - elastic-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     extends:
       file: docker-compose.base.yml
       service: base
@@ -78,10 +107,13 @@ services:
       - CORE_GRPC_PORT=50051
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
     networks:
       - default
       - monitoring-net
       - kafka-net
+      - elastic-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
       interval: 30s
@@ -205,6 +237,7 @@ services:
       - monitoring-net
       - kafka-net
       - redis-net
+      - elastic-net
     depends_on:
       core:
         condition: service_healthy

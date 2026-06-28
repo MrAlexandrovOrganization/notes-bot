@@ -17,6 +17,12 @@ var (
 	SmartIntentTotal     metric.Int64Counter
 	SmartIntentConfirmed metric.Int64Counter
 	SmartIntentRejected  metric.Int64Counter
+
+	// Location tracking metrics.
+	LocationUpdates        metric.Int64Counter
+	LocationTrackingActive metric.Int64Gauge
+	LocationLatestLat      metric.Float64Gauge
+	LocationLatestLon      metric.Float64Gauge
 )
 
 // InitTelegramMetrics registers all Telegram service metric instruments
@@ -45,5 +51,18 @@ func InitTelegramMetrics() {
 	)
 	SmartIntentRejected, _ = meter.Int64Counter("telegram.smart.intent.rejected",
 		metric.WithDescription("Smart router: intents rejected (user pressed No or cancelled)"),
+	)
+
+	LocationUpdates, _ = meter.Int64Counter("telegram.location.updates.total",
+		metric.WithDescription("Total location updates received by source"),
+	)
+	LocationTrackingActive, _ = meter.Int64Gauge("telegram.location.tracking.active",
+		metric.WithDescription("Location tracking status: 1=active, 0=inactive"),
+	)
+	LocationLatestLat, _ = meter.Float64Gauge("telegram.location.latest.latitude",
+		metric.WithDescription("Latest recorded latitude"),
+	)
+	LocationLatestLon, _ = meter.Float64Gauge("telegram.location.latest.longitude",
+		metric.WithDescription("Latest recorded longitude"),
 	)
 }

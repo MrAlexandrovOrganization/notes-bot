@@ -64,6 +64,18 @@ func main() {
 		logger.Fatal("failed to ensure schema", zap.Error(err))
 	}
 
+	var esClient *notifications.ESClient
+	esClient, err = notifications.NewESClient(cfg.ElasticsearchHost, cfg.ElasticsearchPort)
+	if err != nil {
+		logger.Warn("failed to connect to elasticsearch, location tracking will only use postgres", zap.Error(err))
+		esClient = nil
+	} else {
+		logger.Info("connected to elasticsearch",
+			zap.String("host", cfg.ElasticsearchHost),
+			zap.Int("port", cfg.ElasticsearchPort),
+		)
+	}
+
 	// Active reminders gauge — queried from DB on each Prometheus scrape.
 	meter := otel.GetMeterProvider().Meter("notifications")
 	_, err = meter.Int64ObservableGauge("notifications.active.reminders",
@@ -81,6 +93,22 @@ func main() {
 		logger.Warn("failed to register active reminders gauge", zap.Error(err))
 	}
 
+	// Active location trackers gauge.
+	_, err = meter.Int64ObservableGauge("notifications.active.location.trackers",
+		metric.WithDescription("Number of users with active location tracking"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			count, err := notifications.CountActiveLocationTracking(ctx, pool)
+			if err != nil {
+				return err
+			}
+			o.Observe(count)
+			return nil
+		}),
+	)
+	if err != nil {
+		logger.Warn("failed to register active location trackers gauge", zap.Error(err))
+	}
+
 	scheduler := notifications.NewScheduler(ctx, pool, cfg)
 	go scheduler.Run(ctx)
 
@@ -90,7 +118,7 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer()
-	pb.RegisterNotificationsServiceServer(grpcServer, notifications.NewNotificationsServer(pool, cfg))
+	pb.RegisterNotificationsServiceServer(grpcServer, notifications.NewNotificationsServer(pool, cfg, esClient))
 	grpcutil.RegisterHealth(grpcServer)
 
 	go func() {
