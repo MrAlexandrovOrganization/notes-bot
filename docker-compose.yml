@@ -108,7 +108,7 @@ services:
     volumes:
       - postgres_search_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5435:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${SEARCH_DB_USER:-search}", "-d", "${SEARCH_DB_NAME:-search}"]
       interval: 10s
@@ -118,6 +118,11 @@ services:
     extends:
       file: docker-compose.base.yml
       service: base
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
 
   search:
     container_name: notes-bot-search
