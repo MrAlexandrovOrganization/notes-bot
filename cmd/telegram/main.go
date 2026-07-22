@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -139,28 +141,10 @@ func main() {
 		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
 	}()
 
-	// Start polling
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := tgBot.GetUpdatesChan(u)
-
-	logger.Info("bot started polling")
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("shutting down bot")
-			tgBot.StopReceivingUpdates()
-			// Wait for Kafka consumer to finish gracefully
-			wg.Wait()
-			return
-
-		case update, ok := <-updates:
-			if !ok {
-				return
-			}
-			go handleUpdateTraced(ctx, app, tgBot, &update)
-		}
+	if cfg.WebhookURL != "" {
+		runWebhook(ctx, cfg, tgBot, app, &wg, logger)
+	} else {
+		runPolling(ctx, tgBot, app, &wg, logger)
 	}
 }
 
@@ -240,5 +224,76 @@ func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotA
 	updateType, _ := classifyUpdate(update)
 	if h, ok := updateHandlers[updateType]; ok {
 		h(ctx, app, tgBot, update)
+	}
+}
+
+func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := tgBot.GetUpdatesChan(u)
+
+	log.Info("bot started (polling mode)")
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("shutting down bot")
+			tgBot.StopReceivingUpdates()
+			wg.Wait()
+			return
+		case update, ok := <-updates:
+			if !ok {
+				return
+			}
+			go handleUpdateTraced(ctx, app, tgBot, &update)
+		}
+	}
+}
+
+func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
+	parsedURL, err := url.Parse(cfg.WebhookURL)
+	if err != nil {
+		log.Fatal("invalid WEBHOOK_URL", zap.Error(err))
+	}
+
+	wh := tgbotapi.WebhookConfig{URL: parsedURL}
+	if _, err := tgBot.Request(wh); err != nil {
+		log.Fatal("failed to set webhook", zap.Error(err))
+	}
+	log.Info("webhook registered", zap.String("url", cfg.WebhookURL))
+
+	updates := tgBot.ListenForWebhook(parsedURL.Path)
+
+	srv := &http.Server{Addr: cfg.WebhookListenAddr}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("webhook server error", zap.Error(err))
+		}
+	}()
+	log.Info("bot started (webhook mode)", zap.String("addr", cfg.WebhookListenAddr))
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("shutting down bot")
+
+			if _, err := tgBot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}); err != nil {
+				log.Warn("failed to delete webhook", zap.Error(err))
+			}
+
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				log.Warn("webhook server shutdown error", zap.Error(err))
+			}
+
+			wg.Wait()
+			return
+		case update, ok := <-updates:
+			if !ok {
+				return
+			}
+			go handleUpdateTraced(ctx, app, tgBot, &update)
+		}
 	}
 }

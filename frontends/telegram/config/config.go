@@ -25,6 +25,10 @@ type Config struct {
 	LLMHost               string
 	LLMPort               string
 	LLMModel              string
+	// Webhook mode: if WebhookURL is set, bot runs in webhook mode instead of polling.
+	// WebhookURL must be an HTTPS URL reachable by Telegram (e.g. https://bot.example.com/webhook).
+	WebhookURL        string
+	WebhookListenAddr string
 }
 
 func Load() (*Config, error) {
@@ -61,6 +65,8 @@ func Load() (*Config, error) {
 		LLMHost:               envStr("LLM_HOST", "ollama"),
 		LLMPort:               envStr("LLM_PORT", "11434"),
 		LLMModel:              envStr("LLM_MODEL", "qwen3.5:2b"),
+		WebhookURL:            envStr("WEBHOOK_URL", ""),
+		WebhookListenAddr:     envStr("WEBHOOK_LISTEN_ADDR", ":8080"),
 	}, nil
 }
 
