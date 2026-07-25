@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -115,7 +117,14 @@ func main() {
 	}
 
 	// Telegram bot
-	tgBot, err := tgbotapi.NewBotAPI(cfg.BOTToken)
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext:         (&net.Dialer{Timeout: 60 * time.Second}).DialContext,
+			TLSHandshakeTimeout: 60 * time.Second,
+		},
+		Timeout: 120 * time.Second,
+	}
+	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, tgbotapi.APIEndpoint, httpClient)
 	if err != nil {
 		logger.Fatal("failed to create telegram bot", zap.Error(err))
 	}

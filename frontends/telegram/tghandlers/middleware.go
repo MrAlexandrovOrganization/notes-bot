@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.opentelemetry.io/otel/attribute"
@@ -12,6 +13,19 @@ import (
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/internal/telemetry"
 )
+
+// isRetriableNetworkError reports whether err is a transient TCP error safe to retry
+// (stale keep-alive connection reset by the remote side before our request was processed).
+func isRetriableNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "connection reset by peer") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "use of closed network connection")
+}
 
 // sendText sends a new text message to a chat with optional keyboard, using HTML parse mode.
 func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
@@ -24,7 +38,14 @@ func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfm
 	if keyboard != nil {
 		msg.ReplyMarkup = *keyboard
 	}
-	_, err := bot.Send(msg)
+	var err error
+	for range 2 {
+		_, err = bot.Send(msg)
+		if err == nil || !isRetriableNetworkError(err) {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -48,13 +69,20 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 	}
 	buildSpan.End()
 
-	_, sendSpan := telemetry.StartSpan(ctx)
-	_, err := bot.Send(edit)
-	if err != nil {
-		sendSpan.RecordError(err)
-		sendSpan.SetStatus(codes.Error, err.Error())
+	var err error
+	for range 2 {
+		_, sendSpan := telemetry.StartSpan(ctx)
+		_, err = bot.Send(edit)
+		if err != nil {
+			sendSpan.RecordError(err)
+			sendSpan.SetStatus(codes.Error, err.Error())
+		}
+		sendSpan.End()
+		if err == nil || !isRetriableNetworkError(err) {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	sendSpan.End()
 
 	if err != nil {
 		if strings.Contains(err.Error(), "message is not modified") {
