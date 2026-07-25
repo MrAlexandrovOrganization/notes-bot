@@ -1,5 +1,7 @@
 networks:
   default: {}
+  caddy-net:
+    external: true
   whisper-net:
     external: true
   ollama-net:
@@ -200,11 +202,9 @@ services:
       - LLM_MODEL=${OLLAMA_MODEL:-qwen3.5:2b}
       # Webhook mode: set WEBHOOK_URL in .env to enable (leave empty for polling mode)
       - WEBHOOK_URL=${WEBHOOK_URL:-}
-      - WEBHOOK_LISTEN_ADDR=:8080
-    ports:
-      - "${WEBHOOK_PORT:-8080}:8080"
     networks:
       - default
+      - caddy-net
       - whisper-net    # shared Whisper transcription service
       - ollama-net     # shared Ollama LLM service
       - monitoring-net
