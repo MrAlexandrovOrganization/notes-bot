@@ -3,6 +3,8 @@ networks:
     driver: bridge
     driver_opts:
       com.docker.network.driver.mtu: "1376"
+  caddy-net:
+    external: true
   whisper-net:
     external: true
   ollama-net:
