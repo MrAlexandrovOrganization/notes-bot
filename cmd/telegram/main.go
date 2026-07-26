@@ -135,11 +135,9 @@ func main() {
 	// Start Kafka consumer in background.
 	// Offsets are committed to Kafka via consumer group — no external store needed.
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
-	}()
+	})
 
 	if cfg.WebhookURL != "" {
 		runWebhook(ctx, cfg, tgBot, app, &wg, logger)
