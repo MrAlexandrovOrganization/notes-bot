@@ -107,6 +107,8 @@ func main() {
 
 	llmClient := clients.NewLLMClient(cfg.LLMHost, cfg.LLMPort, cfg.LLMModel)
 
+	locationClient := clients.NewLocationClient(cfg.LocationHost, cfg.LocationPort)
+
 	app := &tghandlers.App{
 		Cfg:           cfg,
 		Core:          coreClient,
@@ -114,6 +116,7 @@ func main() {
 		Whisper:       whisperClient,
 		Search:        searchClient,
 		LLM:           llmClient,
+		Location:      locationClient,
 		State:         stateManager,
 		Logger:        logger,
 	}
@@ -179,6 +182,16 @@ func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
 			userID = update.Message.From.ID
 		}
 		return "voice", userID
+	case update.Message != nil && update.Message.Location != nil:
+		if update.Message.From != nil {
+			userID = update.Message.From.ID
+		}
+		return "location", userID
+	case update.EditedMessage != nil && update.EditedMessage.Location != nil:
+		if update.EditedMessage.From != nil {
+			userID = update.EditedMessage.From.ID
+		}
+		return "location", userID
 	case update.Message != nil:
 		if update.Message.From != nil {
 			userID = update.Message.From.ID
@@ -210,6 +223,9 @@ var updateHandlers = map[string]updateHandler{
 	},
 	"voice": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 		app.HandleVoiceMessage(ctx, tgBot, update)
+	},
+	"location": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+		app.HandleLocationMessage(ctx, tgBot, update)
 	},
 	"text": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
 		app.HandleTextMessage(ctx, tgBot, update)

@@ -20,6 +20,7 @@ type App struct {
 	Whisper       clients.WhisperService
 	Search        clients.SearchService
 	LLM           clients.LLMService
+	Location      clients.LocationService
 	State         tgstates.StateStore
 	Logger        *zap.Logger
 

@@ -195,6 +195,8 @@ services:
       - WHISPER_GRPC_PORT=50053
       - SEARCH_GRPC_HOST=search
       - SEARCH_GRPC_PORT=50054
+      - LOCATION_HOST=location
+      - LOCATION_PORT=8080
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - METRICS_PORT=9102
       - REDIS_HOST=redis
@@ -207,7 +209,7 @@ services:
       - WEBHOOK_URL=${WEBHOOK_URL:-}
       # Route Telegram API traffic through Xray SOCKS5 proxy on host
       - HTTPS_PROXY=socks5://host.docker.internal:10808
-      - NO_PROXY=core,notifications,whisper-ingress,search,kafka,redis,ollama,jaeger,localhost,127.0.0.1
+      - NO_PROXY=core,notifications,whisper-ingress,search,location,kafka,redis,ollama,jaeger,localhost,127.0.0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     dns:
@@ -221,6 +223,7 @@ services:
       - monitoring-net
       - kafka-net
       - redis-net
+      - location-api-net  # location microservice (backends/location)
     depends_on:
       core:
         condition: service_healthy
