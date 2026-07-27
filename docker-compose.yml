@@ -15,6 +15,8 @@ networks:
     external: true
   redis-net:
     external: true
+  location-api-net:
+    external: true
 
 services:
   postgres:
@@ -236,3 +238,4 @@ services:
 volumes:
   postgres_data:
   postgres_search_data:
+

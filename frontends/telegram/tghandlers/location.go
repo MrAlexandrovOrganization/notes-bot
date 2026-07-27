@@ -53,18 +53,9 @@ func (a *App) HandleLocationMessage(ctx context.Context, tgBot *tgbotapi.BotAPI,
 
 	log := applog.With(ctx, a.Logger)
 
-	// Get active date from user state; fall back to logical today.
-	uc, err := a.State.GetContext(ctx, userID)
-	if err != nil {
-		log.Error("get user context", zap.Error(err))
-	}
-	activeDate := ""
-	if uc != nil {
-		activeDate = uc.ActiveDate
-	}
-	if activeDate == "" {
-		activeDate = timeutil.TodayDate(a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour)
-	}
+	// Location is always tied to the logical today at the moment of receipt,
+	// not the user's currently browsed date — the user is physically present now.
+	activeDate := timeutil.TodayDate(a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour)
 
 	input := &clients.SaveLocationInput{
 		Latitude:   loc.Latitude,
