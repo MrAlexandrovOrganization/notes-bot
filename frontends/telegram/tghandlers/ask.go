@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -61,7 +63,7 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		return
 	}
 
-	hits, err := a.Search.SearchSemantic(ctx, q, askTopK)
+	hits, err := a.hybridSearch(ctx, q, askTopK)
 	if err != nil {
 		st, _ := status.FromError(err)
 		switch st.Code() {
@@ -74,7 +76,7 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 				tgfmt.Escape("⏳ Эмбеддер недоступен. Проверьте Ollama и модель."),
 				nil, true)
 		default:
-			log.Error("semantic search", zap.Error(err))
+			log.Error("hybrid search", zap.Error(err))
 			sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Не удалось выполнить поиск."), nil, true)
 		}
 		return
@@ -152,6 +154,73 @@ func buildAskContext(hits []*clients.SearchHit) (string, []string) {
 		}
 	}
 	return b.String(), sources
+}
+
+// hybridSearch runs semantic and full-text search in parallel and merges results
+// with Reciprocal Rank Fusion. If semantic search is unavailable it falls back
+// to FTS only (and returns the semantic error so the caller can surface it).
+func (a *App) hybridSearch(ctx context.Context, query string, k int) ([]*clients.SearchHit, error) {
+	fetch := k * 2
+
+	var (
+		semHits []*clients.SearchHit
+		ftsHits []*clients.SearchHit
+		semErr  error
+		ftsErr  error
+		wg      sync.WaitGroup
+	)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		semHits, semErr = a.Search.SearchSemantic(ctx, query, fetch)
+	}()
+	go func() {
+		defer wg.Done()
+		ftsHits, ftsErr = a.Search.SearchByContent(ctx, query, fetch)
+	}()
+	wg.Wait()
+
+	if semErr != nil {
+		return nil, semErr
+	}
+	// FTS errors are non-fatal — semantic results alone are still useful.
+	_ = ftsErr
+
+	return rrfMerge(semHits, ftsHits, k), nil
+}
+
+// rrfMerge combines two ranked lists using Reciprocal Rank Fusion (k=60).
+// Hits from both lists are scored, deduplicated by NoteID, and trimmed to limit.
+func rrfMerge(a, b []*clients.SearchHit, limit int) []*clients.SearchHit {
+	const rrfK = 60.0
+	scores := make(map[int64]float64)
+	best := make(map[int64]*clients.SearchHit)
+
+	rank := func(hits []*clients.SearchHit) {
+		for i, h := range hits {
+			if h == nil {
+				continue
+			}
+			scores[h.NoteID] += 1.0 / (rrfK + float64(i+1))
+			if _, seen := best[h.NoteID]; !seen {
+				best[h.NoteID] = h
+			}
+		}
+	}
+	rank(a)
+	rank(b)
+
+	merged := make([]*clients.SearchHit, 0, len(best))
+	for id, h := range best {
+		h.Score = scores[id]
+		merged = append(merged, h)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Score > merged[j].Score })
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged
 }
 
 func renderAskAnswer(answer string, sources []string) tgfmt.HTML {

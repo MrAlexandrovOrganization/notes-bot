@@ -25,13 +25,38 @@ CREATE TABLE IF NOT EXISTS notes (
     content_hash   BYTEA NOT NULL,
     content        TEXT NOT NULL,
     tsv            tsvector GENERATED ALWAYS AS
-                     (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(content, '')))
+                     (to_tsvector('russian', coalesce(name, '') || ' ' || coalesce(content, '')))
                      STORED,
     indexed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS notes_tsv         ON notes USING GIN (tsv);
 CREATE INDEX IF NOT EXISTS notes_name_trgm   ON notes USING GIN (name gin_trgm_ops);
+`
+
+// migrateTSVDictSQL upgrades the tsv generated column from 'simple' to 'russian'.
+// The DO block checks the actual generation expression via pg_catalog before acting,
+// so it is safe to run on every startup — it's a no-op when already on 'russian'.
+const migrateTSVDictSQL = `
+DO $$
+DECLARE
+    expr text;
+BEGIN
+    SELECT pg_get_expr(d.adbin, d.adrelid)
+      INTO expr
+      FROM pg_attribute a
+      JOIN pg_class     c ON c.oid = a.attrelid
+      JOIN pg_attrdef   d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+     WHERE c.relname = 'notes' AND a.attname = 'tsv';
+
+    IF expr IS NOT NULL AND expr NOT LIKE '%russian%' THEN
+        ALTER TABLE notes DROP COLUMN tsv;
+        ALTER TABLE notes ADD COLUMN tsv tsvector GENERATED ALWAYS AS
+            (to_tsvector('russian', coalesce(name, '') || ' ' || coalesce(content, ''))) STORED;
+        DROP INDEX IF EXISTS notes_tsv;
+        CREATE INDEX notes_tsv ON notes USING GIN (tsv);
+    END IF;
+END $$;
 `
 
 const vectorSchemaSQL = `
@@ -94,6 +119,9 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, enableVector bool, em
 
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("ensure notes schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, migrateTSVDictSQL); err != nil {
+		return fmt.Errorf("migrate tsv dictionary: %w", err)
 	}
 	if enableVector {
 		if _, err := pool.Exec(ctx, fmt.Sprintf(vectorSchemaSQL, embedDim)); err != nil {
