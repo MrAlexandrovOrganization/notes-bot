@@ -24,10 +24,18 @@ const (
 	askAnswerNumPredict  = 768
 )
 
-const askSystemPrompt = `Ты помощник по личной базе заметок. Тебе дают вопрос и фрагменты заметок пользователя (каждый помечен датой или именем).
-Отвечай по содержимому фрагментов — даже если в одном фрагменте только часть ответа, собери его из нескольких. Цитируй конкретные пункты, упоминай даты, когда они есть.
-Отвечай по-русски, кратко и структурно (если уместно — списком). Если фрагменты вообще не про вопрос — скажи "В заметках про это не нашёл".
-Не дублируй список источников в конце — интерфейс добавит сам.`
+// askSystemPromptTemplate is a fmt.Sprintf template; insert currentDate before use.
+const askSystemPromptTemplate = `Ты помощник по личной базе заметок. Сегодня: %s.
+
+Имя каждой заметки — это дата в формате DD-MMM-YYYY (например, "09-Nov-2025"). Используй эти даты при ответах на временны́е вопросы ("вчера", "на прошлой неделе", "в октябре"). Если в вопросе есть относительная дата — вычисли, к какой заметке она относится.
+
+Правила ответа:
+- Отвечай строго по содержимому фрагментов. Собирай ответ из нескольких фрагментов, если нужно.
+- Упоминай конкретные даты: не "недавно", а "09-Nov-2025".
+- Если в заметке упоминается человек или событие — процитируй точную фразу из заметки.
+- Отвечай по-русски, кратко и структурно (если уместно — списком).
+- Если фрагменты не содержат ответа на вопрос — скажи "В заметках про это не нашёл".
+- Не дублируй список источников — интерфейс добавит сам.`
 
 // HandleMenuAsk opens the semantic Q&A prompt.
 func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
@@ -82,8 +90,11 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		return
 	}
 
+	currentDateTime, _, _, _ := a.llmDateContext()
+	systemPrompt := fmt.Sprintf(askSystemPromptTemplate, currentDateTime)
+
 	contextBlock, sources := buildAskContext(hits)
-	answer, err := a.LLM.Ask(ctx, askSystemPrompt,
+	answer, err := a.LLM.Ask(ctx, systemPrompt,
 		fmt.Sprintf("Вопрос: %s\n\nКонтекст из заметок:\n%s", q, contextBlock),
 		askAnswerNumPredict)
 	if err != nil {
