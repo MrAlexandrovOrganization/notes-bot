@@ -121,6 +121,7 @@ func main() {
 	// Telegram bot
 	httpClient := &http.Client{
 		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
 			DialContext:         (&net.Dialer{Timeout: 60 * time.Second}).DialContext,
 			TLSHandshakeTimeout: 60 * time.Second,
 		},
@@ -260,7 +261,11 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 	}
 	log.Info("webhook registered", zap.String("url", cfg.WebhookURL))
 
-	updates := tgBot.ListenForWebhook(parsedURL.Path)
+	path := parsedURL.Path
+	if path == "" {
+		path = "/"
+	}
+	updates := tgBot.ListenForWebhook(path)
 
 	srv := &http.Server{Addr: cfg.WebhookListenAddr}
 	go func() {

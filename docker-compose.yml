@@ -205,6 +205,11 @@ services:
       - LLM_MODEL=${OLLAMA_MODEL:-qwen3.5:2b}
       # Webhook mode: set WEBHOOK_URL in .env to enable (leave empty for polling mode)
       - WEBHOOK_URL=${WEBHOOK_URL:-}
+      # Route Telegram API traffic through Xray SOCKS5 proxy on host
+      - HTTPS_PROXY=socks5://host.docker.internal:10808
+      - NO_PROXY=core,notifications,whisper-ingress,search,kafka,redis,ollama,jaeger,localhost,127.0.0.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     dns:
       - 8.8.8.8
       - 1.1.1.1
