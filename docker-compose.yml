@@ -74,7 +74,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=notes-bot-postgres-1
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-notifications}
       - DB_USER=${DB_USER:-notif}
