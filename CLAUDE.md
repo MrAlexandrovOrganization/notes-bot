@@ -1,129 +1,157 @@
 # Notes Bot — Context for AI Assistants
 
-A personal Telegram bot for managing daily Obsidian-style markdown notes, tasks, ratings, reminders, and voice-to-text transcription. Supports natural-language reminder creation via a local LLM (Ollama).
+A personal Telegram bot for managing daily Obsidian-style markdown notes, tasks, ratings, reminders, voice-to-text transcription, semantic search, and natural-language intent classification. Uses a local LLM (Ollama) for NL reminder parsing and smart routing.
 
 ## Quick Reference
 
 ```bash
-make test-go          # Run Go unit tests (core + notifications + telegram handlers)
-make test-go-cover    # Go unit tests + coverage report
+make test-go          # Run Go unit tests (core + notifications + search + telegram)
+make test-race        # Go unit tests with -race detector
+make test             # Go unit tests with -race + coverage report
+make lint             # gofmt check (fail on diff) + go vet
 make cover            # Combined unit + integration coverage
-make test-integration # Integration tests (requires running services)
-make test-notifications # Notifications package tests
-make proto            # Regenerate gRPC stubs from proto/*.proto
-make format           # gofmt (Go) + ruff (whisper Python)
+make test-integration # Integration tests (requires running core service)
+make proto            # Sync whisper.proto from backends/transcriber + regenerate gRPC stubs
+make format           # gofmt -w (auto-fix formatting)
 make up               # docker-compose build + up + logs
 make build-core       # Rebuild core service image
 make build-notifications # Rebuild notifications image
+make build-search     # Rebuild search image
 make build-telegram   # Rebuild telegram image
 ```
 
-## Architecture: 7 Application Services + 8 Tooling Services
+## Architecture
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]         :50051
                ──gRPC──► [Notifications Service] :50052
-               ──gRPC──► [Whisper Service]        :50053
-               ──HTTP──► [Ollama LLM]             :11434
-               ──────────[Redis]                  :6379  (user state)
+               ──gRPC──► [Search Service]        :50054
+               ──gRPC──► [Whisper Service]        :50053  (external: backends/transcriber)
+               ──HTTP──► [Ollama LLM]             :11434  (external: backends/ollama)
+               ──HTTP──► [Location Service]       :8080   (external: backends/location)
+               ──────────[Redis]                  :6379   (external: infra/redis, user state)
                                  │
-                         [PostgreSQL :5432]
+                          [PostgreSQL :5432]  (reminders)
+                          [PostgreSQL :5432]  (search, pgvector)
 
 [Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
+[Search Service]        ──indexing──► PostgreSQL pgvector + FTS
 ```
 
-All services run in Docker (`docker-compose.yml`). Startup order: postgres + redis + jaeger → core → kafka → notifications + telegram.
+### Service topology
 
-Health checks use `grpc.health.v1`. Core, Notifications, and Telegram use `grpc_health_probe` binary. Whisper uses `whisper/healthcheck.py`. Ollama uses `ollama list`.
+This repo (`notes-bot`) runs **4 Go services** in Docker. All infrastructure (Kafka, Redis, Jaeger, Prometheus, Grafana, Whisper, Ollama, Location) is **external** — consumed via Docker networks declared in `docker-compose.yml` as `external: true`. Sources of truth:
 
-### Application Services
+| External dependency | Source repo | Docker network |
+|---------------------|-------------|-----------------|
+| Whisper transcription | `backends/transcriber` | `whisper-net` |
+| Ollama LLM | `backends/ollama` | `ollama-net` |
+| Location storage | `backends/location` | `location-api-net` |
+| Kafka | `infra/kafka` | `kafka-net` |
+| Redis | `infra/redis` | `redis-net` |
+| Jaeger + Prometheus + Grafana | `infra/observability` | `monitoring-net` |
 
-| Service | Language | Entry Point | Port | Purpose |
-|---------|----------|------------|------|---------|
-| core | Go | `cmd/core/main.go` | 50051 / metrics: 9100 | Notes CRUD, tasks, ratings |
-| notifications | Go | `cmd/notifications/main.go` | 50052 / metrics: 9101 | Reminders with DB persistence, publishes to Kafka |
-| whisper | Python | `whisper/main.py` | 50053 | Voice→text via faster-whisper |
-| telegram | Go | `cmd/telegram/main.go` | metrics: 9102 | User-facing Telegram bot, Kafka consumer |
-| postgres | docker image | — | 5432 | Reminders storage |
-| kafka | confluentinc/cp-kafka:8.2.0 (=Kafka 4.0, KRaft) | — | 9092 | Reminder event queue |
-| redis | redis:7-alpine | — | 6379 | User state (TTL 7 days) |
-| ollama | ollama/ollama:0.18.2 | — | 11434 | Local LLM for NL reminder parsing |
+### Application Services (this repo)
 
-### Tooling Services (localhost-only ports)
+| Service | Entry Point | gRPC Port | Metrics Port | Purpose |
+|---------|------------|-----------|--------------|---------|
+| core | `cmd/core/main.go` | 50051 | 9100 | Notes CRUD, tasks, ratings, directory browsing |
+| notifications | `cmd/notifications/main.go` | 50052 | 9101 | Reminders with DB persistence, publishes to Kafka |
+| search | `cmd/search/main.go` | 50054 | 9103 | Full-text + semantic search (pgvector, Ollama embeddings) |
+| telegram | `cmd/telegram/main.go` | — | 9102 | User-facing Telegram bot, Kafka consumer, LLM smart router |
+| postgres | docker image | 5432 | — | Reminders storage (notifications) |
+| postgres-search | `pgvector/pgvector:pg16` | 5432 | — | Search storage with pgvector extension |
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| jaeger | jaegertracing/jaeger:2.4.0 | 16686 (UI), 4317 (OTLP) | Distributed tracing |
-| prometheus | prom/prometheus:v3.4.0 | 9090 | Metrics scraping |
-| grafana | grafana/grafana:12.0.0 | 3000 | Metrics dashboards |
-| redisinsight | redis/redisinsight:3.2 | 5540 | Redis GUI |
-| kafka-ui | provectuslabs/kafka-ui:v0.7.2 | 8080 | Kafka GUI |
-| pgadmin | dpage/pgadmin4 | 5050 | PostgreSQL GUI |
-| open-webui | ghcr.io/open-webui/open-webui | 3001 | Ollama chat UI |
+Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_probe` binary. Telegram uses HTTP `/metrics` endpoint wget check. All containers run as non-root user `app` (UID 10001).
 
 ## Key Files
 
 ### Core Service (`core/`)
-- `core/server.go` — `NewNotesServer()`, implements all 10 gRPC RPCs
-- `core/stores.go` — 4 DI interfaces: `CalendarStore`, `NoteStore`, `RatingStore`, `TaskStore`
-- `core/notes.go` — File I/O: create note from template, append text
+- `core/server.go` — `NewNotesServer()`, implements gRPC RPCs
+- `core/stores.go` — 4 DI interfaces: `CalendarStore`, `NoteStore`, `RatingStore`, `TaskStore`; file I/O
+- `core/config.go` — singleton config via `goenv` + `sync.Once`
 - `core/utils.go` — `TodayDate()`, timezone helpers
 - `core/features/rating.go` — Parse/update `Оценка:` in YAML frontmatter
 - `core/features/tasks.go` — Parse `- [ ]`/`- [x]`, toggle, add
-- `core/features/calendar_ops.go` — Scan `Daily/` for existing dates
 - `cmd/core/main.go` — gRPC server entry point
 
 ### Notifications Service (`notifications/`)
-- `notifications/server.go` — `NotificationsServer`, 4 gRPC RPCs
-- `notifications/db.go` — PostgreSQL CRUD via pgx/v5 (EnsureSchema, CreateReminder, ListReminders, DeleteReminder, GetDueReminders, UpdateNextFire, SetNextFireAt)
+- `notifications/server.go` — `NotificationsServer`, 4 gRPC RPCs; `reminderToProto` with nil-guard
+- `notifications/db.go` — PostgreSQL CRUD via pgx/v5 (EnsureSchema, CreateReminder, ListReminders, DeleteReminder, GetDueReminders, UpdateNextFire, SetNextFireAt); `scanReminder` returns error on `ErrNoRows` (not nil,nil)
 - `notifications/scheduler.go` — `ComputeNextFire()` for 6 schedule types; `Scheduler.Run()` goroutine publishing to Kafka topic `reminders_due`
 - `notifications/config.go` — `LoadConfig()`, `Config` struct, `DSN()` helper
-- `notifications/metrics.go` — Prometheus metrics for notifications service
+- `notifications/metrics.go` — Prometheus metrics
 - `notifications/scheduler_test.go` — unit tests for all schedule types
+- `notifications/server_test.go` — tests for `reminderToProto`, `scheduleParamsToMap`, `scanReminder`
 - `cmd/notifications/main.go` — entry point
 
-### Whisper Service (`whisper/`) — Python only
-- `whisper/server.py` — `TranscriptionServicer`, 1 RPC (`Transcribe`); model loaded eagerly at `__init__`
-- `whisper/main.py` — gRPC server, sets SERVING only after model is fully loaded
+### Search Service (`search/`)
+- `search/server.go` — `SearchServer`, gRPC RPCs for name/content/semantic search + GetNote
+- `search/db.go` — PostgreSQL + pgvector: FTS (trigram), vector search, chunk storage
+- `search/chunker.go` — Splits markdown notes into chunks for embedding
+- `search/embedder.go` — Ollama embeddings client (`bge-m3` model)
+- `search/indexer.go` — Background indexer loop
+- `search/scheduler.go` — Index scheduling
+- `search/config.go` — Config with embedding model, dimensions, index interval
+- `search/metrics.go` — Prometheus metrics
+- `cmd/search/main.go` — entry point
 
 ### Telegram Frontend (`frontends/telegram/`)
-- `cmd/telegram/main.go` — entry point, polling loop, goroutine for Kafka consumer
-- `frontends/telegram/config/config.go` — `Load()` returns `*Config` (includes LLM config)
-- `frontends/telegram/clients/interfaces.go` — `CoreService`, `NotificationsService`, `WhisperService`, `LLMService` interfaces
-- `frontends/telegram/clients/core.go` — `CoreClient` (10 methods)
+- `cmd/telegram/main.go` — entry point, polling/webhook loop, Kafka consumer goroutine, `semaphore.Weighted` for update concurrency limit (16)
+- `frontends/telegram/config/config.go` — `Load()` returns `*Config` (includes LLM, search, location config)
+- `frontends/telegram/clients/interfaces.go` — `CoreService`, `NotificationsService`, `WhisperService`, `SearchService`, `LLMService`, `LocationService` interfaces
+- `frontends/telegram/clients/core.go` — `CoreClient` (12 methods: notes CRUD + directory browsing)
 - `frontends/telegram/clients/notifications.go` — `NotificationsClient` (4 methods)
-- `frontends/telegram/clients/whisper.go` — `WhisperClient` (50MB max message)
-- `frontends/telegram/clients/llm.go` — `LLMClient` HTTP client for Ollama `/api/chat`; `LLMReminderResult` struct; `ErrLLMUnavailable`
-- `frontends/telegram/clients/errors.go` — shared client errors
-- `frontends/telegram/tgstates/context.go` — `UserState` constants + `UserContext` struct
-- `frontends/telegram/tgstates/manager.go` — `StateManager` backed by Redis (JSON, TTL 7 days)
-- `frontends/telegram/tgstates/draft.go` — typed `ReminderDraft` struct + `ToParamsJSON(tzOffset)`
-- `frontends/telegram/tgkeyboards/` — `MainMenu`, `Tasks`, `Calendar`, `RemindersList`, `ScheduleType`, `ReminderCalendar` keyboards
-- `frontends/telegram/tghandlers/app.go` — `App` struct with all clients (`Core`, `Notifications`, `Whisper`, `LLM`) + state manager
+- `frontends/telegram/clients/whisper.go` — `WhisperClient` (50MB max message, chunked streaming)
+- `frontends/telegram/clients/search.go` — `SearchClient` (4 methods: byName, byContent, semantic, getNote)
+- `frontends/telegram/clients/llm.go` — `LLMClient` HTTP client for Ollama `/api/chat`; `LLMReminderResult`, `LLMIntentResult` structs; `ErrLLMUnavailable`; structured JSON output via schema
+- `frontends/telegram/clients/location.go` — `LocationClient` HTTP client
+- `frontends/telegram/clients/errors.go` — `ServiceUnavailableError` typed error
+- `frontends/telegram/clients/clients_test.go` — tests for `sendChunks`, `isUnavailable`, `extractJSON`, `protoToReminderInfo`
+- `frontends/telegram/tgfmt/tgfmt.go` — **HTML** formatting helpers (`Escape`, `Bold`, `Italic`, `Code`, `Blockquote`, `Link`, `Join`)
+- `frontends/telegram/tgstates/context.go` — `UserState` constants (24 states) + `UserContext` struct (18 fields)
+- `frontends/telegram/tgstates/manager.go` — `StateManager` backed by Redis (JSON, TTL 7 days); **per-user mutex** via `sync.Map` to prevent lost updates
+- `frontends/telegram/tgstates/manager_test.go` — `memoryStore` mock + tests
+- `frontends/telegram/tgstates/draft.go` — typed `ReminderDraft` struct + `ToScheduleParams(tzOffset)` + `SmartDraft`
+- `frontends/telegram/tgstates/transitions.go` — advisory state transition map
+- `frontends/telegram/tgkeyboards/` — `MainMenu`, `Tasks`, `Calendar`, `RemindersList`, `ScheduleType`, `ReminderCalendar`, `BrowseFolder`, `FindResults`, `NoteView`, `SmartConfirm`, `SmartIntentPicker` keyboards
+- `frontends/telegram/tghandlers/app.go` — `App` struct with all clients + state manager; `authorized()`, `updateState()` (logged wrapper), `setActiveDate()`, `cancelVoiceJob()`
 - `frontends/telegram/tghandlers/commands.go` — `/start` with ROOT_ID check
-- `frontends/telegram/tghandlers/messages.go` — text routing by `UserState` via `stateTextHandlers` map
-- `frontends/telegram/tghandlers/callbacks.go` — callback_data routing
-- `frontends/telegram/tghandlers/voice.go` — Voice/VideoNote → Whisper → append to note
-- `frontends/telegram/tghandlers/reminders.go` — multi-step reminder creation wizard + NL handler
+- `frontends/telegram/tghandlers/messages.go` — text routing by `UserState` via `stateTextHandlers` map (14 state handlers + default append-to-note)
+- `frontends/telegram/tghandlers/callbacks.go` — callback_data routing via `callbackActionHandlers` map (9 action namespaces)
+- `frontends/telegram/tghandlers/voice.go` — Voice/VideoNote → Whisper → reorder buffer → append to note / NL / smart
+- `frontends/telegram/tghandlers/reminder_create.go` — multi-step reminder creation wizard
+- `frontends/telegram/tghandlers/reminder_postpone.go` — postpone by duration / by date+time
+- `frontends/telegram/tghandlers/reminder_actions.go` — reminder list, delete, done, reject, back, cancel; `extractReminderTitle` (HTML unescape)
+- `frontends/telegram/tghandlers/reminder_nl.go` — NL reminder parsing via LLM
+- `frontends/telegram/tghandlers/smart.go` — Smart router: LLM classifies intent (note/task/reminder/unknown) → confirm → execute
+- `frontends/telegram/tghandlers/find.go` — Search by name + content, open note, append to note
+- `frontends/telegram/tghandlers/ask.go` — Semantic Q&A: vector search + LLM RAG
+- `frontends/telegram/tghandlers/browse.go` — Vault directory browser (rune-safe truncation)
+- `frontends/telegram/tghandlers/location.go` — Location message handler
 - `frontends/telegram/tghandlers/kafka.go` — `MakeReminderHandler()` for Kafka events
-- `frontends/telegram/tghandlers/middleware.go` — `EscapeMarkdownV2()`, `sendText()`, `editText()`, `replyToUpdate()`, `replyToCallback()`
-- `frontends/telegram/bot/kafka_consumer.go` — `RunKafkaConsumer()` goroutine
-- `frontends/telegram/bot/metrics.go` — Prometheus metrics for telegram service (`UpdatesTotal`, `KafkaMessagesConsumed`, `ReminderDeliveryErrors`, `HandlerDuration`)
+- `frontends/telegram/tghandlers/middleware.go` — `sendText()`, `editText()`, `replyToUpdate()`, `replyToCallback()` (all HTML parse mode); `isRetriableNetworkError()`
+- `frontends/telegram/tghandlers/reminder_actions_test.go` — tests for `extractReminderTitle`
+- `frontends/telegram/bot/kafka_consumer.go` — `RunKafkaConsumer()` goroutine, consumer group, retry loop
+- `frontends/telegram/bot/kafka_consumer_test.go` — tests for `ReminderEvent` JSON round-trip
+- `frontends/telegram/bot/metrics.go` — Prometheus metrics: `UpdatesTotal`, `KafkaMessagesConsumed`, `ReminderDeliveryErrors`, `HandlerDuration`, `SmartIntentTotal`, `SmartIntentConfirmed`, `SmartIntentRejected`
 
 ### Internal Packages (`internal/`)
 - `internal/applog/applog.go` — `New()` creates zap logger; `With(ctx, l)` enriches with OTel trace/span IDs
-- `internal/telemetry/tracer.go` — `InitTracer(ctx, serviceName)` — no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` not set
+- `internal/telemetry/tracer.go` — `InitTracer(ctx, serviceName)` — no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` not set; `StartSpan` auto-resolves caller name
 - `internal/telemetry/metrics.go` — `InitMetrics()` creates Prometheus exporter + global MeterProvider, returns `/metrics` handler
+- `internal/grpcutil/dial.go` — `Dial(host, port, opts...)` shared gRPC client dial helper
+- `internal/grpcutil/server.go` — `NewServer()` shared gRPC server setup with OTel stats handler
+- `internal/grpcutil/interceptors.go` — `TimeoutInterceptor` for unary RPCs
 - `internal/kafkacarrier/carrier.go` — `HeaderCarrier` for W3C trace context in Kafka message headers
-- `internal/timeutil/timeutil.go` — `FixedZone()`, `LocalNow()`, `TodayDate()`, `FormatLocalTime()` — shared across services
+- `internal/timeutil/timeutil.go` — `FixedZone()`, `LocalNow()`, `TodayDate()`, `LogicalToday()`, `FormatLocalTime()` — shared across services
 
 ### Proto / gRPC (`proto/`)
-- `proto/notes.proto` — 10 RPCs for notes
-- `proto/notifications.proto` — 4 RPCs for reminders
-- `proto/whisper.proto` — 1 RPC for transcription
-- `proto/notes/`, `proto/notifications/`, `proto/whisper/` — generated Go stubs
-- `proto/whisper_pb2.py`, `proto/whisper_pb2_grpc.py` — generated Python stubs (Whisper service only)
-- `proto/__init__.py` — makes proto a Python package
+- `proto/notes/notes.proto` — RPCs for notes (CRUD, tasks, ratings, directory)
+- `proto/notifications/notifications.proto` — 4 RPCs for reminders
+- `proto/search/search.proto` — RPCs for search
+- `proto/whisper/whisper.proto` — synced from `backends/transcriber/proto/whisper.proto` via `make proto`
+- `proto/*/*.pb.go`, `proto/*/*_grpc.pb.go` — generated Go stubs (gitignored, regenerated via `buf generate`)
 
 ## Note File Format
 
@@ -155,54 +183,50 @@ Template: `$NOTES_DIR/Templates/Daily.md` (uses `{{date:DD-MMM-YYYY}}` placehold
 
 ## User State Machine
 
+24 states defined in `tgstates/context.go`. Key states:
+
 ```go
-const (
-    StateIdle                       UserState = "idle"
-    StateWaitingRating              UserState = "waiting_rating"
-    StateTasksView                  UserState = "tasks_view"
-    StateWaitingNewTask             UserState = "waiting_new_task"
-    StateCalendarView               UserState = "calendar_view"
-    StateReminderList               UserState = "reminder_list"
-    StateReminderCreateTitle        UserState = "reminder_create_title"
-    StateReminderCreateScheduleType UserState = "reminder_create_schedule_type"
-    StateReminderCreateTime         UserState = "reminder_create_time"
-    StateReminderCreateDay          UserState = "reminder_create_day"
-    StateReminderCreateInterval     UserState = "reminder_create_interval"
-    StateReminderCreateDate         UserState = "reminder_create_date"
-    StateReminderPostponeDate       UserState = "reminder_postpone_date"
-    StateReminderCreateTaskConfirm  UserState = "reminder_create_task_confirm"
-    StateReminderCreateNL           UserState = "reminder_create_nl"  // natural language input
-)
+StateIdle, StateWaitingRating, StateTasksView, StateWaitingNewTask,
+StateCalendarView, StateReminderList,
+StateReminderCreateTitle, StateReminderCreateScheduleType,
+StateReminderCreateTime, StateReminderCreateDay,
+StateReminderCreateInterval, StateReminderCreateDate,
+StateReminderPostponeDate, StateReminderPostponeInput, StateReminderPostponeTime,
+StateReminderCreateTaskConfirm, StateReminderCreateNL,
+StateSmartInput, StateSmartConfirm,
+StateFindNoteInput, StateFindNoteResults, StateViewNote,
+StateAppendToNoteInput, StateAskQuestion,
+StateBrowseView, StateBrowseFile
 ```
 
-`UserContext` stores: `user_id`, `state`, `active_date` (DD-MMM-YYYY), `calendar_month/year`, `task_page`, `last_message_id`, `reminder_draft` (`ReminderDraft` struct), `pending_postpone_reminder_id`, `reminder_cal_month/year`, `reminder_list_page`.
+`UserContext` stores: `user_id`, `state`, `active_date`, `calendar_month/year`, `task_page`, `note_page`, `reminder_draft`, `pending_postpone_reminder_id`, `pending_postpone_date`, `reminder_cal_month/year`, `reminder_list_page`, `smart_draft`, `find_query`, `find_results`, `find_results_page`, `active_relpath`, `browse_path`.
 
-State is persisted in **Redis** — survives bot restarts (TTL 7 days). Key: `user_state:{user_id}`.
+State is persisted in **Redis** — survives bot restarts (TTL 7 days). Key: `user_state:{user_id}`. Per-user mutex (`sync.Map` in `StateManager`) serializes concurrent `UpdateContext` calls to prevent lost updates.
 
 ## Callback Data Format
 
 ```
-"menu:rating"              # Main menu → rating
-"menu:tasks"               # Main menu → tasks
-"task:toggle:0"            # Toggle task index 0
-"task:add"                 # Add task
-"task:page:1"              # Tasks pagination
-"cal:select:09-Nov-2025"   # Calendar date pick
-"cal:prev" / "cal:next"    # Month navigation
-"nav:menu"                 # Back to main menu
-"reminder:list"            # Reminder list
-"reminder:delete:42"       # Delete reminder id=42
-"reminder:postpone:42"     # Postpone reminder (days menu)
-"reminder:postpone_hours:1:42"  # Postpone by N hours
-"reminder:done:42:0"       # Mark done (no task)
-"reminder:done:42:1:DD-MMM-YYYY" # Mark done (create task for date)
-"reminder:custom_date:42"  # Pick custom postpone date
-"reminder:cal:select:YYYY-MM-DD:create" # Calendar date for creation
+"menu:rating"              "menu:tasks"         "menu:calendar"     "menu:notifications"
+"menu:smart"               "menu:find"          "menu:ask"          "menu:browse"
+"menu:back"                "menu:note"          "menu:noop"
+"task:toggle:0"            "task:add"           "task:page:1"       "task:back"       "task:cancel"
+"cal:prev"                 "cal:next"           "cal:select:DD-Mmm-YYYY"  "cal:today"  "cal:back"
+"note:page:1"               "note:back"          "note:append"       "note:noop"
+"reminder:list"            "reminder:create"    "reminder:create_nl" "reminder:nl_confirm"
+"reminder:page:1"          "reminder:type:daily" "reminder:task_confirm:yes"
+"reminder:delete:42"       "reminder:reject:42"  "reminder:done:42:0"
+"reminder:done:42:1:DD-Mmm-YYYY"  "reminder:postpone_input:42"  "reminder:postpone_date:42"
+"reminder:cal:prev:once"   "reminder:cal:next:pp"  "reminder:cal:today:yr"
+"reminder:cal:select:YYYY-MM-DD:create"  "reminder:back"  "reminder:cancel"
+"voice:cancel:<jobID>"     "voice:page:<msgID>:<page>"  "voice:noop"
+"smart:yes"                "smart:no"            "smart:pick:note"   "smart:pick:task"   "smart:pick:reminder"
+"find:open:42"             "find:page:1"         "find:back"         "find:retry"       "find:noop"
+"browse:root"              "browse:up"           "browse:open:0"     "browse:page:1"   "browse:back"   "browse:file_back"   "browse:noop"
 ```
 
 ## Environment Variables
 
-### Required for all setups
+### Required
 ```env
 BOT_TOKEN=<telegram_bot_token>
 ROOT_ID=<telegram_user_id>          # Only this user can use the bot
@@ -210,14 +234,9 @@ NOTES_DIR=/path/to/obsidian/vault
 DB_NAME=notifications
 DB_USER=notif
 DB_PASSWORD=<strong_password>
-```
-
-### Tooling (optional)
-```env
-PGADMIN_EMAIL=admin@example.com
-PGADMIN_PASSWORD=<pgadmin_password>
-GRAFANA_PASSWORD=<grafana_password>
-OLLAMA_MODEL=qwen2.5:1.5b           # LLM model for NL reminder parsing
+SEARCH_DB_NAME=search
+SEARCH_DB_USER=search
+SEARCH_DB_PASSWORD=<search_db_password>
 ```
 
 ### Optional (defaults shown)
@@ -225,30 +244,31 @@ OLLAMA_MODEL=qwen2.5:1.5b           # LLM model for NL reminder parsing
 TIMEZONE_OFFSET_HOURS=3     # UTC+3 Moscow
 DAY_START_HOUR=7             # Day "starts" at 7 AM
 TEMPLATE_SUBDIR=Templates    # Relative to NOTES_DIR
-GRPC_PORT=50051              # core / notifications / whisper (per service)
-METRICS_PORT=9100            # Prometheus /metrics port (9100/9101/9102 per service)
-CORE_GRPC_HOST=core
-CORE_GRPC_PORT=50051
-NOTIFICATIONS_GRPC_HOST=notifications
-NOTIFICATIONS_GRPC_PORT=50052
-WHISPER_GRPC_HOST=whisper
-WHISPER_GRPC_PORT=50053
-WHISPER_MODEL=base            # small/base/medium/large/turbo
+GRPC_PORT=50051              # per-service gRPC port
+METRICS_PORT=9100            # Prometheus /metrics port (9100/9101/9102/9103 per service)
+CORE_GRPC_HOST=core          CORE_GRPC_PORT=50051
+NOTIFICATIONS_GRPC_HOST=notifications  NOTIFICATIONS_GRPC_PORT=50052
+WHISPER_GRPC_HOST=whisper-ingress     WHISPER_GRPC_PORT=50053
+SEARCH_GRPC_HOST=search      SEARCH_GRPC_PORT=50054
+LOCATION_HOST=location       LOCATION_PORT=8080
 SCHEDULER_INTERVAL_SECONDS=60
 KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-REDIS_HOST=redis
-REDIS_PORT=6379
-LLM_HOST=ollama
-LLM_PORT=11434
-LLM_MODEL=qwen2.5:1.5b
+REDIS_HOST=redis             REDIS_PORT=6379
+LLM_HOST=ollama              LLM_PORT=11434
+LLM_MODEL=qwen2.5:7b
+SEARCH_EMBED_MODEL=bge-m3:567m
+SEARCH_EMBED_DIM=1024
+SEARCH_ENABLE_EMBEDDINGS=false
+SEARCH_INDEX_INTERVAL=5m
 OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317  # unset = tracing disabled
+WEBHOOK_URL=                 # empty = polling mode; set URL for webhook mode
 ```
 
 ## Conventions and Patterns
 
 ### Adding a new gRPC method (Go)
 1. Add to the relevant `proto/*.proto` file
-2. Run `make proto`
+2. Run `make proto` (or `buf generate` if proto stubs already synced)
 3. Implement in the service's `server.go`
 4. Add method to the corresponding interface in `frontends/telegram/clients/interfaces.go`
 5. Implement in the corresponding client in `frontends/telegram/clients/`
@@ -256,10 +276,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317  # unset = tracing disabled
 
 ### Adding a new Telegram feature
 1. Add new `UserState` constants if multi-step in `tgstates/context.go`
-2. Add new fields to `UserContext` or `ReminderDraft` if needed
+2. Add new fields to `UserContext` or `ReminderDraft`/`SmartDraft` if needed
 3. Create/update keyboard in `tgkeyboards/`
 4. Add handler function in appropriate `tghandlers/` file
-5. Register routing in `tghandlers/messages.go` (`stateTextHandlers` map) or `tghandlers/callbacks.go`
+5. Register routing in `tghandlers/messages.go` (`stateTextHandlers` map) or `tghandlers/callbacks.go` (`callbackActionHandlers` map)
 6. Wire up in `cmd/telegram/main.go` if needed
 
 ### Go package naming
@@ -267,9 +287,13 @@ Telegram bot sub-packages use prefixed names to avoid conflicts:
 - `tgstates` — user state types and Redis manager
 - `tgkeyboards` — inline keyboard builders
 - `tghandlers` — update/callback handlers + `App` struct
+- `tgfmt` — HTML formatting helpers for Telegram
 
-### Markdown
-All Telegram messages use **MarkdownV2**. Always wrap user-provided text in `EscapeMarkdownV2()` from `frontends/telegram/tghandlers/middleware.go`.
+### HTML formatting
+All Telegram messages use **HTML parse mode** (`msg.ParseMode = "HTML"`). Always wrap user-provided text in `tgfmt.Escape()` from `frontends/telegram/tgfmt/tgfmt.go` to escape `&`, `<`, `>`. Use `tgfmt.Join()`, `tgfmt.Bold()`, `tgfmt.Code()`, `tgfmt.Blockquote()` etc. to compose messages safely.
+
+### State updates
+Always use `a.updateState(ctx, userID, func(u *tgstates.UserContext) { ... })` instead of `a.State.UpdateContext(...)` directly — the wrapper logs Redis errors instead of silently dropping them. Similarly use `a.setActiveDate()` for date changes.
 
 ### Timezone
 Day boundary is at `DAY_START_HOUR` (7 AM), not midnight. Shared logic is in `internal/timeutil/timeutil.go`. Consistency across all services is important.
@@ -278,31 +302,43 @@ Day boundary is at `DAY_START_HOUR` (7 AM), not midnight. Shared logic is in `in
 All Go services use `applog.New()` to create a production zap logger. Use `applog.With(ctx, logger)` inside handlers to get a child logger enriched with OTel trace/span IDs.
 
 ### Metrics
-Each Go service calls `telemetry.InitMetrics()` at startup and exposes `/metrics` on its `METRICS_PORT`. Prometheus scrapes all three. Service-specific metric instruments are in `bot/metrics.go` and `notifications/metrics.go`.
+Each Go service calls `telemetry.InitMetrics()` at startup and exposes `/metrics` on its `METRICS_PORT`. Prometheus scrapes all services. Service-specific metric instruments are in `bot/metrics.go`, `notifications/metrics.go`, and `search/metrics.go`.
 
 ### LLM (Ollama)
-Natural language reminder parsing uses `clients.LLMClient` → Ollama `/api/chat` with structured JSON output (schema enforced). State `StateReminderCreateNL` routes text to `handleReminderNLInput`. If Ollama is unavailable (`ErrLLMUnavailable`), the handler falls back gracefully.
+- **NL reminder parsing**: `clients.LLMClient.ParseReminder()` → Ollama `/api/chat` with structured JSON output (schema enforced). State `StateReminderCreateNL` routes text to `handleReminderNLInput`.
+- **Smart router**: `clients.LLMClient.ClassifyIntent()` classifies arbitrary text into `note`/`task`/`reminder`/`unknown` with confidence. State `StateSmartInput` routes to `handleSmartInput`. If Ollama is unavailable (`ErrLLMUnavailable`), the handler falls back gracefully.
+- **RAG Q&A**: `clients.LLMClient.Ask()` for free-form answers over search results. State `StateAskQuestion` routes to `handleAskInput`.
 
-## Kafka Known Issues
-- `confluentinc/cp-kafka:8.2.0` = Kafka 4.0 (KRaft mode). `kafka-go v0.4.x` GroupID support is **broken**: `FetchMessage` hangs forever on JoinGroup. Do NOT use `GroupID` in `ReaderConfig`.
-- Consumer skips messages older than 5 minutes using `msg.Time` (Kafka broker timestamp) — see `staleMessageThreshold` in `kafka_consumer.go`.
-- Kafka has a persistent volume (`kafka_data`) — topics survive container restarts.
-- Scheduler fires ALL reminders where `next_fire_at <= NOW()` on startup — after downtime, a batch of old notifications may be sent.
+### Concurrency
+- Telegram updates are processed in goroutines limited by `semaphore.Weighted` (max 16 concurrent, `cmd/telegram/main.go`).
+- `StateManager.UpdateContext` uses a per-user mutex (`sync.Map` of `*sync.Mutex`) to serialize concurrent state updates for the same user, preventing lost updates.
+- Voice transcription uses a per-user reorder buffer (`voiceReorderBuffer`) to deliver results in Telegram message ID order.
+
+## Kafka
+
+- Topic: `reminders_due`
+- Producer: `notifications/scheduler.go` — fires when `next_fire_at <= NOW()`
+- Consumer: `frontends/telegram/bot/kafka_consumer.go` — consumer group `telegram-bot-reminders`, commits offsets after processing
+- Kafka 4.0 (KRaft mode, `confluentinc/cp-kafka:8.2.0`) — external broker via `infra/kafka`
+- Scheduler fires ALL due reminders on startup — after downtime, a batch of old notifications may be sent
 
 ## Testing
 
 ```bash
-make test-go               # Go unit tests: core + notifications + telegram handlers/keyboards/states
-make test-notifications    # Notifications package tests (verbose)
-make test-integration      # Integration tests (needs running services)
+make test-go               # Go unit tests (no -race)
+make test-race             # Go unit tests with -race detector (requires CGO_ENABLED=1)
+make test                  # Go unit tests with -race + coverage report
+make lint                  # gofmt check (fail on diff) + go vet
+make test-integration      # Integration tests (needs running core service)
 make cover                 # Combined unit + integration coverage
-make test-go-cover         # Unit tests with coverage report
 make cover-html            # Coverage HTML report (opens in browser)
 ```
 
-Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, `./frontends/telegram/tghandlers/...`, `./frontends/telegram/tgkeyboards/...`, `./frontends/telegram/tgstates/...`
+Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, `./search/...`, `./frontends/telegram/tghandlers/...`, `./frontends/telegram/tgkeyboards/...`, `./frontends/telegram/tgstates/...`, `./frontends/telegram/clients/...`, `./frontends/telegram/bot/...`
 
 Integration tests: `integration/core_test.go` — 22 tests (require running core service).
+
+CI (`.github/workflows/ci-cd.yml`): runs `make lint` + `make test` (with `-race`) on every push/PR to main.
 
 ## Notes Volume Structure (expected)
 
@@ -314,3 +350,12 @@ $NOTES_DIR/
 └── Templates/
     └── Daily.md              # Template with {{date:DD-MMM-YYYY}} placeholders
 ```
+
+## Docker
+
+- All Dockerfiles use multi-stage builds: `golang:1.26-alpine` builder → `alpine:3.20` runtime
+- Binaries built with `CGO_ENABLED=0 -ldflags="-s -w"` (static, stripped)
+- Containers run as non-root user `app` (UID 10001)
+- `grpc_health_probe` downloaded at build time (v0.4.28)
+- `.dockerignore` excludes `.git`, `docs/`, `notes/`, `third_party/`, test artifacts, env files
+- `docker-compose.base.yml` defines shared logging + resource limits

@@ -25,7 +25,7 @@ func (a *App) HandleMenuBrowse(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateBrowseView
 		u.BrowsePath = ""
 	})
@@ -41,7 +41,7 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 	switch parts[1] {
 	case "root":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateBrowseView
 			u.BrowsePath = ""
 		})
@@ -56,7 +56,7 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		if parent == "." {
 			parent = ""
 		}
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateBrowseView
 			u.BrowsePath = parent
 		})
@@ -86,14 +86,14 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		return nil
 
 	case "back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateIdle
 			u.BrowsePath = ""
 		})
 		return a.showMainMenu(ctx, tgBot, query, userID)
 
 	case "file_back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateBrowseView
 		})
 		uc, err := a.State.GetContext(ctx, userID)
@@ -143,7 +143,7 @@ func (a *App) handleBrowseOpenByIndex(ctx context.Context, tgBot *tgbotapi.BotAP
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Не удалось открыть путь."), nil)
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateBrowseView
 		u.BrowsePath = relpath
 	})
@@ -200,8 +200,9 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 	}
 
 	fileName := filepath.Base(relpath)
-	if len(content) > browseNotePreviewMaxChars {
-		content = content[:browseNotePreviewMaxChars] + "\n\n_... обрезано_"
+	if utf8.RuneCountInString(content) > browseNotePreviewMaxChars {
+		runes := []rune(content)
+		content = string(runes[:browseNotePreviewMaxChars]) + "\n\n_... обрезано_"
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
@@ -219,7 +220,7 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		tgfmt.Blockquote(tgfmt.Escape(content)),
 	)
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateBrowseFile
 		u.ActiveRelpath = relpath
 	})

@@ -55,7 +55,6 @@ type scheduleParams struct {
 	Day          int    `json:"day"`
 	Date         string `json:"date,omitempty"`
 	IntervalDays int    `json:"interval_days"`
-	TzOffset     int    `json:"tz_offset"`
 }
 
 // ToParamsJSON serializes the schedule-specific fields into a JSON string.
@@ -71,7 +70,6 @@ func (d ReminderDraft) ToParamsJSON(tzOffset int) (string, error) {
 		Day:          d.Day,
 		Date:         d.Date,
 		IntervalDays: d.IntervalDays,
-		TzOffset:     tzOffset,
 	}
 	data, err := json.Marshal(p)
 	return string(data), err

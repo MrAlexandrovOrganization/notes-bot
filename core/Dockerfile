@@ -17,7 +17,7 @@ COPY internal/ ./internal/
 COPY core/ ./core/
 COPY cmd/ ./cmd/
 
-RUN go build -o /core ./cmd/core/
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /core ./cmd/core/
 
 RUN apk add --no-cache curl && \
     ARCH=$(uname -m) && \
@@ -31,11 +31,14 @@ RUN apk add --no-cache curl && \
     chmod +x /grpc_health_probe
 
 
-FROM alpine:3.19
+FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -u 10001 app
 
 COPY --from=builder /core /core
 COPY --from=builder /grpc_health_probe /grpc_health_probe
+
+USER app
 
 CMD ["/core"]

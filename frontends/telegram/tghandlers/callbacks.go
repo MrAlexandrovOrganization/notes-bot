@@ -107,12 +107,12 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			return fmt.Errorf("get context: %w", err)
 		}
 		currentRating, hasRating, _ := a.Core.GetRating(ctx, uc.ActiveDate)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingRating })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingRating })
 		kb := tgkeyboards.RatingPrompt(hasRating, currentRating)
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("📊 Введите оценку дня (0-10):"), &kb)
 
 	case "back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		return a.showMainMenu(ctx, tgBot, query, userID)
 
 	case "noop":
@@ -123,7 +123,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if err != nil {
 			return fmt.Errorf("get context: %w", err)
 		}
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateTasksView
 			u.TaskPage = 0
 		})
@@ -131,11 +131,11 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "note":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = 0 })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = 0 })
 		return a.showNote(ctx, tgBot, query, userID)
 
 	case "calendar":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateCalendarView })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateCalendarView })
 		return a.showCalendar(ctx, tgBot, query, userID)
 
 	case "notifications":
@@ -206,7 +206,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		go tgBot.Request(tgbotapi.NewCallbackWithAlert(query.ID, "❌ Ошибка при переключении задачи"))
 
 	case "add":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })
 		kb := tgkeyboards.TaskAdd()
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("➕ Введите текст новой задачи:"), &kb)
 
@@ -215,15 +215,15 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			return nil
 		}
 		page, _ := strconv.Atoi(parts[2])
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.TaskPage = page })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.TaskPage = page })
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		return a.showMainMenu(ctx, tgBot, query, userID)
 
 	case "cancel":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateTasksView })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateTasksView })
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "noop":
@@ -247,7 +247,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 			return fmt.Errorf("get context: %w", err)
 		}
 		month, year := stepMonth(uc.CalendarMonth, uc.CalendarYear, -1)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = month
 			u.CalendarYear = year
 		})
@@ -259,7 +259,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 			return fmt.Errorf("get context: %w", err)
 		}
 		month, year := stepMonth(uc.CalendarMonth, uc.CalendarYear, 1)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = month
 			u.CalendarYear = year
 		})
@@ -271,8 +271,8 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		}
 		date := parts[2]
 		go a.Core.EnsureNote(ctx, date)
-		a.State.SetActiveDate(ctx, userID, date)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		a.setActiveDate(ctx, userID, date)
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		text := tgfmt.Join(
 			tgfmt.Escape("✅ Выбрана дата: "),
 			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", date))),
@@ -288,16 +288,16 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		if err != nil {
 			return fmt.Errorf("get today date: %w", err)
 		}
-		a.State.SetActiveDate(ctx, userID, todayDate)
+		a.setActiveDate(ctx, userID, todayDate)
 		now := time.Now()
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = int(now.Month())
 			u.CalendarYear = now.Year()
 		})
 		return a.showCalendar(ctx, tgBot, query, userID)
 
 	case "back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		return a.showMainMenu(ctx, tgBot, query, userID)
 
 	case "noop":
@@ -320,11 +320,11 @@ func (a *App) handleNoteAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			return nil
 		}
 		page, _ := strconv.Atoi(parts[2])
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = page })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = page })
 		return a.showNote(ctx, tgBot, query, userID)
 
 	case "back":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		return a.showMainMenu(ctx, tgBot, query, userID)
 
 	case "append":

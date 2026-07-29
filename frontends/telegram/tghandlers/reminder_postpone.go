@@ -226,7 +226,7 @@ func (a *App) HandleReminderPostponeInput(ctx context.Context, tgBot *tgbotapi.B
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderPostponeInput
 		u.PendingPostponeReminderID = reminderID
 	})
@@ -287,7 +287,7 @@ func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *tgbota
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.PendingPostponeReminderID = 0
 	})
@@ -309,7 +309,7 @@ func (a *App) HandleReminderPostponeDate(ctx context.Context, tgBot *tgbotapi.Bo
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 	month, year := int(now.Month()), now.Year()
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderPostponeDate
 		u.PendingPostponeReminderID = reminderID
 		u.ReminderCalMonth = month
@@ -368,7 +368,7 @@ func (a *App) handleReminderPostponeTimeInput(ctx context.Context, tgBot *tgbota
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.PendingPostponeReminderID = 0
 		u.PendingPostponeDate = ""

@@ -32,6 +32,9 @@ GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notificatio
 test-go:
 	go test $(GO_UNIT_PKGS)
 
+test-race:
+	CGO_ENABLED=1 go test -race $(GO_UNIT_PKGS)
+
 test-go-cover:
 	go test -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go tool cover -func=coverage.out
@@ -66,7 +69,7 @@ test-notifications:
 	go test ./notifications/... -v
 
 test:
-	go test -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
+	go test -race -coverprofile=coverage.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go tool cover -func=coverage.out
 	@rm -f coverage.out
 
@@ -84,6 +87,22 @@ test-search:
 
 format:
 	gofmt -w ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./cmd/
+
+lint:
+	@diff=$$(gofmt -l ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./cmd/); \
+	if [ -n "$$diff" ]; then \
+		echo "gofmt found unformatted files:"; \
+		echo "$$diff"; \
+		exit 1; \
+	fi
+	go vet ./...
+
+# Print helpers for CI / scripts
+print-unit-pkgs:
+	@echo $(GO_UNIT_PKGS)
+
+print-coverpkgs:
+	@echo $(GO_COVERPKGS_UNIT)
 
 clean:
 	find . -type f -name '*.pyc' -delete
@@ -147,4 +166,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install test-go test-go-cover test-go-cover-html cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format monitoring-register monitoring-unregister
+.PHONY: install test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format lint print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

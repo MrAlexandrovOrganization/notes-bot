@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"notes-bot/frontends/telegram/bot"
 	"notes-bot/frontends/telegram/clients"
@@ -31,6 +32,12 @@ import (
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 )
+
+// maxConcurrentUpdates limits how many updates are processed in parallel.
+// Each update may issue gRPC calls, LLM calls, and Telegram API requests;
+// unbounded goroutines on a backlog (e.g. after bot restart) can exhaust
+// file descriptors or cause OOM.
+const maxConcurrentUpdates = 16
 
 var logger *zap.Logger
 
@@ -247,6 +254,8 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 	u.Timeout = 60
 	updates := tgBot.GetUpdatesChan(u)
 
+	sem := semaphore.NewWeighted(maxConcurrentUpdates)
+
 	log.Info("bot started (polling mode)")
 
 	for {
@@ -260,7 +269,13 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 			if !ok {
 				return
 			}
-			go handleUpdateTraced(ctx, app, tgBot, &update)
+			if err := sem.Acquire(ctx, 1); err != nil {
+				return
+			}
+			go func() {
+				defer sem.Release(1)
+				handleUpdateTraced(ctx, app, tgBot, &update)
+			}()
 		}
 	}
 }
@@ -291,6 +306,8 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 	}()
 	log.Info("bot started (webhook mode)", zap.String("addr", cfg.WebhookListenAddr))
 
+	sem := semaphore.NewWeighted(maxConcurrentUpdates)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -312,7 +329,13 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 			if !ok {
 				return
 			}
-			go handleUpdateTraced(ctx, app, tgBot, &update)
+			if err := sem.Acquire(ctx, 1); err != nil {
+				return
+			}
+			go func() {
+				defer sem.Release(1)
+				handleUpdateTraced(ctx, app, tgBot, &update)
+			}()
 		}
 	}
 }

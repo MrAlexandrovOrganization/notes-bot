@@ -28,7 +28,7 @@ func (a *App) HandleSmartStart(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateSmartInput
 		u.SmartDraft = tgstates.SmartDraft{}
 	})
@@ -55,7 +55,7 @@ func (a *App) handleSmartInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 		editText(ctx, tgBot, chatID, processingMsg.MessageID,
 			tgfmt.Escape("❌ Не удалось обработать запрос. Попробуй ещё раз или используй меню."),
 			nil)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateIdle
 		})
 		return
@@ -79,7 +79,7 @@ func (a *App) handleSmartInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 		}
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateSmartConfirm
 		u.SmartDraft = tgstates.SmartDraft{
 			RawText:    text,
@@ -165,7 +165,7 @@ func (a *App) HandleSmartReject(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 	}
 	bot.SmartIntentRejected.Add(ctx, 1, metric.WithAttributes(attribute.String("intent", intent)))
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.SmartDraft = tgstates.SmartDraft{}
 	})
@@ -189,7 +189,7 @@ func (a *App) HandleSmartPickIntent(ctx context.Context, tgBot *tgbotapi.BotAPI,
 	// отправляем raw text через старый NL-пайплайн.
 	if intent == clients.IntentReminder && uc.ReminderDraft.ScheduleType == "" {
 		// Переиспользуем существующий handleReminderNLInput.
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderCreateNL
 		})
 		a.handleReminderNLInput(ctx, tgBot, query.Message.Chat.ID, userID, uc.SmartDraft.RawText)
@@ -247,7 +247,7 @@ func (a *App) executeSmart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	case clients.IntentReminder:
 		fakeUpdate := &tgbotapi.Update{Message: query.Message}
 		a.finalizeReminderFromUpdate(ctx, tgBot, fakeUpdate, userID)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.SmartDraft = tgstates.SmartDraft{}
 		})
 		bot.SmartIntentConfirmed.Add(ctx, 1, confirmedAttr)
@@ -259,7 +259,7 @@ func (a *App) executeSmart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 
 // resetSmart возвращает state в idle и очищает SmartDraft.
 func (a *App) resetSmart(ctx context.Context, userID int64) {
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.SmartDraft = tgstates.SmartDraft{}
 	})

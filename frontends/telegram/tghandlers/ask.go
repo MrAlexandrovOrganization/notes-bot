@@ -44,7 +44,7 @@ func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateAskQuestion
 	})
 	return replyToCallback(ctx, tgBot, query,
@@ -82,7 +82,7 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 
 	if len(hits) == 0 {
 		kb := a.getMainMenuKeyboard(ctx)

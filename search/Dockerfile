@@ -17,7 +17,7 @@ COPY internal/ ./internal/
 COPY search/ ./search/
 COPY cmd/ ./cmd/
 
-RUN go build -o /search-bin ./cmd/search/
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /search-bin ./cmd/search/
 
 RUN apk add --no-cache curl && \
     ARCH=$(uname -m) && \
@@ -33,9 +33,12 @@ RUN apk add --no-cache curl && \
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -u 10001 app
 
 COPY --from=builder /search-bin /search
 COPY --from=builder /grpc_health_probe /grpc_health_probe
+
+USER app
 
 CMD ["/search"]

@@ -30,7 +30,7 @@ func (a *App) HandleMenuFind(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateFindNoteInput
 		u.FindQuery = ""
 		u.FindResults = nil
@@ -60,7 +60,7 @@ func (a *App) handleFindInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatI
 	}
 	span.SetAttributes(attribute.Int("hits", len(hits)))
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateFindNoteResults
 		u.FindQuery = q
 		u.FindResults = hits
@@ -206,7 +206,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if err != nil {
 			return err
 		}
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.FindResultsPage = page })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.FindResultsPage = page })
 		a.showFindResults(ctx, tgBot, query.Message.Chat.ID, page, uc.FindQuery, uc.FindResults, query)
 		return nil
 
@@ -215,7 +215,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if err != nil {
 			return err
 		}
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateFindNoteResults
 			u.ActiveRelpath = ""
 		})
@@ -223,7 +223,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		return nil
 
 	case "retry":
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateFindNoteInput
 		})
 		return replyToCallback(ctx, tgBot, query,
@@ -245,7 +245,7 @@ func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Заметка не найдена."), nil)
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateViewNote
 		u.ActiveRelpath = note.Relpath
 	})
@@ -284,7 +284,7 @@ func (a *App) handleNoteAppendAction(ctx context.Context, tgBot *tgbotapi.BotAPI
 	if uc.ActiveRelpath == "" {
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Сначала откройте заметку через поиск."), nil)
 	}
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateAppendToNoteInput })
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateAppendToNoteInput })
 	text := tgfmt.Join(
 		tgfmt.Escape("✏️ Что добавить в "),
 		tgfmt.Code(tgfmt.Escape(uc.ActiveRelpath)),
@@ -310,7 +310,7 @@ func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *tgbotapi.BotAP
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateViewNote })
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateViewNote })
 
 	confirm := tgfmt.Join(
 		tgfmt.Escape("✅ Добавлено в "),

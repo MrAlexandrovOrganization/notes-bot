@@ -231,6 +231,14 @@ services:
         condition: service_healthy
       search:
         condition: service_healthy
+      notifications:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9102/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     extends:
       file: docker-compose.base.yml
       service: base

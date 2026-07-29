@@ -28,7 +28,7 @@ jobs:
         run: buf generate
 
       - name: Lint
-        run: make format
+        run: make lint
 
       - name: Test
         run: make test

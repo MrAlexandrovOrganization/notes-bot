@@ -22,7 +22,6 @@ func TestToParamsJSON_Daily(t *testing.T) {
 	p := unmarshalParams(t, got)
 	assert.Equal(t, float64(9), p["hour"])
 	assert.Equal(t, float64(30), p["minute"])
-	assert.Equal(t, float64(3), p["tz_offset"])
 }
 
 func TestToParamsJSON_Weekly(t *testing.T) {
@@ -68,12 +67,14 @@ func TestToParamsJSON_CustomDays(t *testing.T) {
 	assert.Equal(t, float64(3), p["interval_days"])
 }
 
-func TestToParamsJSON_TzOffset(t *testing.T) {
+func TestToParamsJSON_NoTzOffset(t *testing.T) {
+	// tz_offset is no longer stored in scheduleParams JSON — the server's
+	// TimezoneOffsetHours config is used instead.
 	d := ReminderDraft{Hour: 9}
 	got, err := d.ToParamsJSON(5)
 	require.NoError(t, err)
 	p := unmarshalParams(t, got)
-	assert.Equal(t, float64(5), p["tz_offset"])
+	assert.NotContains(t, p, "tz_offset")
 }
 
 func TestToParamsJSON_NoDaysOmitted(t *testing.T) {

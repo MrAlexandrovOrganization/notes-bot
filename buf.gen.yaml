@@ -14,4 +14,4 @@ plugins:
     opt:
       - module=notes-bot
       - Mwhisper/whisper.proto=notes-bot/proto/whisper
-      - require_unimplemented_servers=false
+      - require_unimplemented_servers=true

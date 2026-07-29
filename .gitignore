@@ -49,3 +49,22 @@ Thumbs.db
 # Go
 *_grpc.pb.go
 *.pb.go
+
+# Compiled binaries (prevent accidental commits)
+/core
+/notifications
+/search
+/search-bin
+/telegram
+*.exe
+
+# Third-party vendored projects
+third_party/
+
+# Code analysis tool output
+.understand-anything/
+
+# Coverage
+htmlcov/
+*.out
+coverage.out

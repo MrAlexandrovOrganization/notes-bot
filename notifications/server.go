@@ -41,6 +41,9 @@ func (s *NotificationsServer) recordRPC(ctx context.Context, method string, err 
 }
 
 func reminderToProto(r *Reminder) *pb.Reminder {
+	if r == nil {
+		return &pb.Reminder{}
+	}
 	return &pb.Reminder{
 		Id:           r.ID,
 		UserId:       r.UserID,

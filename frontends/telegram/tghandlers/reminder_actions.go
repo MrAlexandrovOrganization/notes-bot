@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -30,7 +31,7 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла ошибка."), nil)
 		return
 	}
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
 
@@ -56,7 +57,7 @@ func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.ReminderListPage = page
 	})
 	reminders, err := a.Notifications.ListReminders(ctx, userID)
@@ -81,7 +82,7 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при удалении напоминания."), nil)
 		return
 	}
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
 	reminders, err := a.Notifications.ListReminders(ctx, userID)
@@ -112,8 +113,7 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 	log := applog.With(ctx, a.Logger)
 	if createTaskFlag == 1 && dateStr != "" && query.Message != nil {
-		msgText := query.Message.Text
-		title := strings.TrimPrefix(msgText, "🔔 Напоминание: ")
+		title := extractReminderTitle(query.Message.Text)
 		tasks, err := a.Core.GetTasks(ctx, dateStr)
 		if err == nil {
 			for _, t := range tasks {
@@ -159,7 +159,7 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Произошла ошибка."), nil)
 		return
 	}
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateIdle
 		u.ReminderDraft = tgstates.ReminderDraft{}
 		u.PendingPostponeReminderID = 0
@@ -178,7 +178,7 @@ func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderList
 	})
 	reminders, err := a.Notifications.ListReminders(ctx, userID)
@@ -194,4 +194,18 @@ func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		text = tgfmt.Raw("🔔 Уведомления:")
 	}
 	replyToCallback(ctx, tgBot, query, text, &kb)
+}
+
+// extractReminderTitle recovers the raw reminder title from the HTML source
+// of the notification message. The message is constructed as:
+//
+//	🔔 Напоминание: <blockquote>escaped_title</blockquote>
+//
+// so we strip the prefix, the blockquote tags, and unescape HTML entities
+// to get back the original title for task matching.
+func extractReminderTitle(msgText string) string {
+	s := strings.TrimPrefix(msgText, "🔔 Напоминание: ")
+	s = strings.TrimPrefix(s, "<blockquote>")
+	s = strings.TrimSuffix(s, "</blockquote>")
+	return html.UnescapeString(s)
 }

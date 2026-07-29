@@ -9,6 +9,7 @@ import (
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/config"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/applog"
 	"notes-bot/internal/timeutil"
 )
 
@@ -41,6 +42,23 @@ type App struct {
 // authorized returns true if the userID is allowed to use the bot.
 func (a *App) authorized(userID int64) bool {
 	return a.Cfg.RootID == 0 || userID == a.Cfg.RootID
+}
+
+// updateState wraps State.UpdateContext with error logging so that Redis
+// failures are never silently swallowed.
+func (a *App) updateState(ctx context.Context, userID int64, updates func(*tgstates.UserContext)) {
+	if err := a.State.UpdateContext(ctx, userID, updates); err != nil {
+		applog.With(ctx, a.Logger).Error("failed to update user state",
+			zap.Int64("user_id", userID), zap.Error(err))
+	}
+}
+
+// setActiveDate wraps State.SetActiveDate with error logging.
+func (a *App) setActiveDate(ctx context.Context, userID int64, date string) {
+	if err := a.State.SetActiveDate(ctx, userID, date); err != nil {
+		applog.With(ctx, a.Logger).Error("failed to set active date",
+			zap.Int64("user_id", userID), zap.String("date", date), zap.Error(err))
+	}
 }
 
 // llmDateContext возвращает четыре строки, которые ждёт LLMService:

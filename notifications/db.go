@@ -224,9 +224,6 @@ type rowScanner interface {
 }
 
 func scanReminder(ctx context.Context, row rowScanner) (*Reminder, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
 	var r Reminder
 	var paramsJSON []byte
 
@@ -235,7 +232,7 @@ func scanReminder(ctx context.Context, row rowScanner) (*Reminder, error) {
 		&paramsJSON, &r.NextFireAt, &r.IsActive, &r.CreateTask,
 	); err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, nil
+			return nil, fmt.Errorf("no reminder row")
 		}
 		return nil, fmt.Errorf("scan: %w", err)
 	}

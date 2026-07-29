@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
+	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
 	"notes-bot/internal/timeutil"
 )
@@ -26,6 +29,10 @@ type StateManager struct {
 	redis               *redis.Client
 	timezoneOffsetHours int
 	dayStartHour        int
+
+	// userLocks provides per-user mutexes to serialize concurrent
+	// UpdateContext calls for the same user, preventing lost updates.
+	userLocks sync.Map // map[int64]*sync.Mutex
 }
 
 var _ StateStore = (*StateManager)(nil)
@@ -36,6 +43,11 @@ func NewStateManager(rdb *redis.Client, tzOffset, dayStartHour int) *StateManage
 
 func (m *StateManager) key(userID int64) string {
 	return fmt.Sprintf("user_state:%d", userID)
+}
+
+func (m *StateManager) lockFor(userID int64) *sync.Mutex {
+	v, _ := m.userLocks.LoadOrStore(userID, &sync.Mutex{})
+	return v.(*sync.Mutex)
 }
 
 func (m *StateManager) todayDate() string {
@@ -53,6 +65,8 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 		if err := json.Unmarshal(data, &uc); err == nil {
 			return &uc, nil
 		}
+		applog.With(ctx, zap.L()).Warn("failed to unmarshal user context, creating fresh",
+			zap.Int64("user_id", userID), zap.Error(err))
 	}
 
 	now := time.Now()
@@ -70,9 +84,15 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 }
 
 // UpdateContext applies field updates to the user context and persists it.
+// A per-user mutex serializes concurrent calls for the same user to prevent
+// lost updates (read-modify-write race).
 func (m *StateManager) UpdateContext(ctx context.Context, userID int64, updates func(*UserContext)) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
+
+	mu := m.lockFor(userID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	uc, err := m.GetContext(ctx, userID)
 	if err != nil {

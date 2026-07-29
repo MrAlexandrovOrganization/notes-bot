@@ -2,7 +2,6 @@
 # See https://pre-commit.com for more information
 
 repos:
-  # Run make format before commit
   - repo: local
     hooks:
       - id: make-format
@@ -20,3 +19,10 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+
+      - id: no-large-files
+        name: Check for large files (>500KB)
+        entry: bash -c 'if files=$(find . -type f -size +500k -not -path "./.git/*" -not -path "./third_party/*" -not -name "*.pb.go" -not -name "*_grpc.pb.go"); [ -n "$files" ]; then echo "$files"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

@@ -17,7 +17,7 @@ COPY internal/ ./internal/
 COPY notifications/ ./notifications/
 COPY cmd/ ./cmd/
 
-RUN go build -o /notifications ./cmd/notifications/
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /notifications ./cmd/notifications/
 
 RUN apk add --no-cache curl && \
     ARCH=$(uname -m) && \
@@ -33,9 +33,12 @@ RUN apk add --no-cache curl && \
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -u 10001 app
 
 COPY --from=builder /notifications /notifications
 COPY --from=builder /grpc_health_probe /grpc_health_probe
+
+USER app
 
 CMD ["/notifications"]

@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+.github
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test artifacts
+htmlcov/
+coverage.out
+*.out
+integration/
+
+# Documentation / notes
+docs/
+notes/
+CLAUDE.md
+README.md
+
+# Tooling output
+.understand-anything/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.example
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Monitoring
+monitoring/
+jaeger.yaml
+
+# Third-party vendored projects
+third_party/
+
+# Pre-commit
+.pre-commit-config.yaml

@@ -63,7 +63,7 @@ func (a *App) HandleReminderCreateNL(ctx context.Context, tgBot *tgbotapi.BotAPI
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateNL
 		u.ReminderDraft = tgstates.ReminderDraft{}
 		u.ReminderCalMonth = int(now.Month())
@@ -93,13 +93,13 @@ func (a *App) handleReminderNLInput(ctx context.Context, tgBot *tgbotapi.BotAPI,
 		editText(ctx, tgBot, chatID, processingMsg.MessageID,
 			tgfmt.Escape("❌ Не удалось обработать запрос. Попробуйте создать напоминание вручную."),
 			&cancelKb)
-		a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderList
 		})
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.ReminderDraft = tgstates.ReminderDraft{
 			Title:        result.Title,
 			ScheduleType: result.ScheduleType,

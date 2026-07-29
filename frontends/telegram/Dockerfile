@@ -17,13 +17,16 @@ COPY internal/ ./internal/
 COPY frontends/ ./frontends/
 COPY cmd/ ./cmd/
 
-RUN go build -o /telegram ./cmd/telegram/
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /telegram ./cmd/telegram/
 
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -u 10001 app
 
 COPY --from=builder /telegram /telegram
+
+USER app
 
 CMD ["/telegram"]

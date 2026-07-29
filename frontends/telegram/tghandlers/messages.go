@@ -124,7 +124,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 		return
 	}
 
-	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateIdle
 	})
 	kb := a.getMainMenuKeyboard(ctx)
@@ -142,7 +142,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при добавлении задачи."), nil, true)
 		return
 	}
-	a.State.UpdateContext(ctx, userID, func(uc *tgstates.UserContext) {
+	a.updateState(ctx, userID, func(uc *tgstates.UserContext) {
 		uc.State = tgstates.StateTasksView
 	})
 
