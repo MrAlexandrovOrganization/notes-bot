@@ -13,7 +13,15 @@ import (
 	"notes-bot/internal/telemetry"
 )
 
-const schemaSQL = `
+// ftsDict is the single source of truth for the Postgres text-search config
+// used both to build the generated tsv column (schemaSQL, migrateTSVDictSQL)
+// and to parse queries against it (SearchByContent). These two sides MUST
+// stay in sync — a stored tsvector built with one dictionary never matches a
+// tsquery parsed with another, and the mismatch fails silently (zero rows,
+// no error) rather than raising an error.
+const ftsDict = "russian"
+
+var schemaSQL = fmt.Sprintf(`
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS notes (
@@ -25,19 +33,20 @@ CREATE TABLE IF NOT EXISTS notes (
     content_hash   BYTEA NOT NULL,
     content        TEXT NOT NULL,
     tsv            tsvector GENERATED ALWAYS AS
-                     (to_tsvector('russian', coalesce(name, '') || ' ' || coalesce(content, '')))
+                     (to_tsvector('%[1]s', coalesce(name, '') || ' ' || coalesce(content, '')))
                      STORED,
     indexed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS notes_tsv         ON notes USING GIN (tsv);
 CREATE INDEX IF NOT EXISTS notes_name_trgm   ON notes USING GIN (name gin_trgm_ops);
-`
+`, ftsDict)
 
-// migrateTSVDictSQL upgrades the tsv generated column from 'simple' to 'russian'.
-// The DO block checks the actual generation expression via pg_catalog before acting,
-// so it is safe to run on every startup — it's a no-op when already on 'russian'.
-const migrateTSVDictSQL = `
+// migrateTSVDictSQL upgrades the tsv generated column to ftsDict when it was
+// built with a different dictionary. The DO block checks the actual
+// generation expression via pg_catalog before acting, so it is safe to run
+// on every startup — it's a no-op when already on ftsDict.
+var migrateTSVDictSQL = fmt.Sprintf(`
 DO $$
 DECLARE
     expr text;
@@ -49,15 +58,15 @@ BEGIN
       JOIN pg_attrdef   d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
      WHERE c.relname = 'notes' AND a.attname = 'tsv';
 
-    IF expr IS NOT NULL AND expr NOT LIKE '%russian%' THEN
+    IF expr IS NOT NULL AND expr NOT LIKE '%%%[1]s%%' THEN
         ALTER TABLE notes DROP COLUMN tsv;
         ALTER TABLE notes ADD COLUMN tsv tsvector GENERATED ALWAYS AS
-            (to_tsvector('russian', coalesce(name, '') || ' ' || coalesce(content, ''))) STORED;
+            (to_tsvector('%[1]s', coalesce(name, '') || ' ' || coalesce(content, ''))) STORED;
         DROP INDEX IF EXISTS notes_tsv;
         CREATE INDEX notes_tsv ON notes USING GIN (tsv);
     END IF;
 END $$;
-`
+`, ftsDict)
 
 const vectorSchemaSQL = `
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -303,12 +312,12 @@ func SearchByContent(ctx context.Context, pool *pgxpool.Pool, query string, limi
 	rows, err := pool.Query(ctx, `
 		SELECT id, relpath, name,
 		       LEFT(content, 200) AS snippet,
-		       ts_rank(tsv, websearch_to_tsquery('simple', $1)) AS score
+		       ts_rank(tsv, websearch_to_tsquery($1, $2)) AS score
 		FROM notes
-		WHERE tsv @@ websearch_to_tsquery('simple', $1)
+		WHERE tsv @@ websearch_to_tsquery($1, $2)
 		ORDER BY score DESC
-		LIMIT $2
-	`, query, limit)
+		LIMIT $3
+	`, ftsDict, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search by content: %w", err)
 	}
