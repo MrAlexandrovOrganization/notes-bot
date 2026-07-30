@@ -76,11 +76,11 @@ func (a *App) HandleLocationMessage(ctx context.Context, tgBot *tgbotapi.BotAPI,
 	}
 
 	if isLiveUpdate {
-		log.Info("live location saved",
-			zap.Float64("lat", loc.Latitude),
-			zap.Float64("lon", loc.Longitude),
-			zap.String("date", activeDate),
-		)
+		// log.Info("live location saved",
+		// 	zap.Float64("lat", loc.Latitude),
+		// 	zap.Float64("lon", loc.Longitude),
+		// 	zap.String("date", activeDate),
+		// )
 		return
 	}
 
