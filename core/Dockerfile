@@ -33,12 +33,9 @@ RUN apk add --no-cache curl && \
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates && \
-    adduser -D -u 10001 app
+RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /core /core
 COPY --from=builder /grpc_health_probe /grpc_health_probe
-
-USER app
 
 CMD ["/core"]
