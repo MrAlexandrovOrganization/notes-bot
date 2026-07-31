@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // ErrLLMUnavailable is returned when the Ollama service is unreachable or returns an error.
@@ -70,7 +72,10 @@ func NewLLMClient(host, port, model string) *LLMClient {
 	return &LLMClient{
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
 		model:   model,
-		http:    &http.Client{Timeout: 3 * time.Minute},
+		http: &http.Client{
+			Timeout:   3 * time.Minute,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 

@@ -8,12 +8,12 @@ import (
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"notes-bot/internal/applog"
 	"notes-bot/internal/kafkacarrier"
-	"notes-bot/internal/telemetry"
 )
 
 const (
@@ -36,9 +36,6 @@ type ReminderEvent struct {
 // On first join (no committed offset) starts from the tail to avoid replaying history.
 // On error retries with a 5-second delay; Kafka resumes from the last committed offset.
 func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func(context.Context, ReminderEvent) error, logger *zap.Logger) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
 	log := applog.With(ctx, logger)
 
 	for attempt := 1; ; attempt++ {
@@ -84,9 +81,6 @@ func RunKafkaConsumer(ctx context.Context, bootstrapServers string, handler func
 // consume reads messages until ctx is cancelled or an error occurs.
 // Commits each message after successful processing so Kafka tracks progress.
 func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context, ReminderEvent) error, logger *zap.Logger) error {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
 	log := applog.With(ctx, logger)
 	for {
 		log.Debug("kafka consumer: waiting for next message")
@@ -137,9 +131,11 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			),
 		)
 		handlerErr := handler(msgCtx, ev)
-		msgSpan.End()
 
 		if handlerErr != nil {
+			msgSpan.RecordError(handlerErr)
+			msgSpan.SetStatus(codes.Error, handlerErr.Error())
+			msgSpan.End()
 			log.Error("reminder handler failed, skipping commit",
 				zap.Error(handlerErr),
 				zap.Int64("offset", msg.Offset),
@@ -149,6 +145,7 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 		}
 		commitMsg(ctx, r, msg, log)
 		KafkaMessagesConsumed.Add(msgCtx, 1)
+		msgSpan.End()
 	}
 }
 

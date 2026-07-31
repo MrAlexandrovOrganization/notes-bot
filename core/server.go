@@ -85,7 +85,7 @@ func (s *NotesServer) GetTodayDate(ctx context.Context, req *emptypb.Empty) (res
 func (s *NotesServer) GetExistingDates(ctx context.Context, req *emptypb.Empty) (resp *pb.ExistingDatesResponse, err error) {
 	defer s.recordRPC(ctx, "GetExistingDates", &err)
 
-	_, span := telemetry.StartSpan(ctx)
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	dates, err := s.calendar.GetExistingDates(ctx)
@@ -98,7 +98,7 @@ func (s *NotesServer) GetExistingDates(ctx context.Context, req *emptypb.Empty) 
 func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "EnsureNote", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	if err := s.notes.EnsureNote(ctx, req.Date); err != nil {
@@ -113,7 +113,7 @@ func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (resp
 func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *pb.NoteResponse, err error) {
 	defer s.recordRPC(ctx, "GetNote", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	content, err := s.notes.ReadNote(ctx, req.Date)
@@ -132,7 +132,7 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *p
 func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (resp *pb.RatingResponse, err error) {
 	defer s.recordRPC(ctx, "GetRating", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	content, err := s.notes.ReadNote(ctx, req.Date)
@@ -149,7 +149,7 @@ func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (resp 
 func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "UpdateRating", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	if err := s.ratings.UpdateRating(ctx, req.Date, int(req.Rating)); err != nil {
@@ -209,7 +209,7 @@ func (s *NotesServer) LoadHistoricalRatings(ctx context.Context) {
 func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *pb.TasksResponse, err error) {
 	defer s.recordRPC(ctx, "GetTasks", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	content, err := s.notes.ReadNote(ctx, req.Date)
@@ -232,7 +232,7 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *
 func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "ToggleTask", &err)
 
-	_, span := telemetry.StartSpan(ctx,
+	ctx, span := telemetry.StartSpan(ctx,
 		attribute.String("note.date", req.Date),
 		attribute.Int("task.index", int(req.TaskIndex)))
 	defer span.End()
@@ -246,7 +246,7 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "AddTask", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	if err := s.tasks.AddTask(ctx, req.Date, req.TaskText); err != nil {
@@ -258,7 +258,7 @@ func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (resp
 func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "AppendToNote", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
 	if err := s.notes.AppendToNote(ctx, req.Date, req.Text); err != nil {
@@ -273,7 +273,7 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPathRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "AppendToNoteByPath", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
 	defer span.End()
 
 	if err := s.notes.AppendByPath(ctx, req.Relpath, req.Text); err != nil {
@@ -288,7 +288,7 @@ func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPa
 func (s *NotesServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryRequest) (resp *pb.ListDirectoryResponse, err error) {
 	defer s.recordRPC(ctx, "ListDirectory", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("browse.relpath", req.Relpath))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("browse.relpath", req.Relpath))
 	defer span.End()
 
 	entries, err := s.notes.ListDirectory(ctx, req.Relpath)
@@ -309,7 +309,7 @@ func (s *NotesServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryRe
 func (s *NotesServer) GetNoteByPath(ctx context.Context, req *pb.GetNoteByPathRequest) (resp *pb.NoteResponse, err error) {
 	defer s.recordRPC(ctx, "GetNoteByPath", &err)
 
-	_, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
+	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
 	defer span.End()
 
 	content, err := s.notes.ReadNoteByPath(ctx, req.Relpath)

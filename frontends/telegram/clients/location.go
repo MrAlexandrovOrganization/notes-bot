@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // LocationService is the interface for the location HTTP service.
@@ -42,7 +44,10 @@ type LocationClient struct {
 func NewLocationClient(host, port string) *LocationClient {
 	return &LocationClient{
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
-		http:    &http.Client{Timeout: 10 * time.Second},
+		http: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -17,7 +18,11 @@ const DefaultTimeout = 10 * time.Second
 func Dial(host, port string, extraOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	base := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler(
+			otelgrpc.WithFilter(filters.Not(filters.FullMethodName(
+				"/whisper.TranscriptionService/GetStatus",
+			))),
+		)),
 		grpc.WithChainUnaryInterceptor(TimeoutInterceptor(DefaultTimeout)),
 	}
 	return grpc.NewClient(

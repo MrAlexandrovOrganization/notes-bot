@@ -16,6 +16,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -130,11 +131,11 @@ func main() {
 
 	// Telegram bot
 	httpClient := &http.Client{
-		Transport: &http.Transport{
+		Transport: otelhttp.NewTransport(&http.Transport{
 			Proxy:               http.ProxyFromEnvironment,
 			DialContext:         (&net.Dialer{Timeout: 60 * time.Second}).DialContext,
 			TLSHandshakeTimeout: 60 * time.Second,
-		},
+		}),
 		Timeout: 120 * time.Second,
 	}
 	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, tgbotapi.APIEndpoint, httpClient)

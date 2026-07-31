@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"notes-bot/internal/telemetry"
 )
 
@@ -34,7 +36,10 @@ func NewEmbedder(host, port, model string, dim int) *Embedder {
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
 		model:   model,
 		dim:     dim,
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 
