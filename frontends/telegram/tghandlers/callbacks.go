@@ -560,6 +560,7 @@ func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbot
 	g.Wait() //nolint:errcheck // errors are handled per-call inside goroutines above
 
 	if content == "" {
+		log.Warn("can not read a note", zap.String("date", activeDate))
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Не удалось прочитать заметку."), nil)
 	}
 
