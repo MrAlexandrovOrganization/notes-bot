@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -283,23 +285,37 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 
 func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
 	parsedURL, err := url.Parse(cfg.WebhookURL)
-	if err != nil {
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
 		log.Fatal("invalid WEBHOOK_URL", zap.Error(err))
 	}
 
-	wh := tgbotapi.WebhookConfig{URL: parsedURL}
-	if _, err := tgBot.Request(wh); err != nil {
+	// telegram-bot-api/v5 v5.5.1 predates SecretToken on WebhookConfig,
+	// so call setWebhook directly with Telegram's official secret_token parameter.
+	if _, err := tgBot.MakeRequest("setWebhook", tgbotapi.Params{
+		"url":          parsedURL.String(),
+		"secret_token": cfg.WebhookSecret,
+	}); err != nil {
 		log.Fatal("failed to set webhook", zap.Error(err))
 	}
-	log.Info("webhook registered", zap.String("url", cfg.WebhookURL))
+	log.Info("webhook registered", zap.String("host", parsedURL.Host), zap.String("path", parsedURL.Path))
 
 	path := parsedURL.Path
 	if path == "" {
 		path = "/"
 	}
-	updates := tgBot.ListenForWebhook(path)
+	updates := make(chan tgbotapi.Update, tgBot.Buffer)
+	mux := http.NewServeMux()
+	mux.Handle(path, telegramWebhookHandler(cfg.WebhookSecret, updates))
 
-	srv := &http.Server{Addr: cfg.WebhookListenAddr}
+	srv := &http.Server{
+		Addr:              cfg.WebhookListenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
+	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal("webhook server error", zap.Error(err))
@@ -339,4 +355,30 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 			}()
 		}
 	}
+}
+
+func telegramWebhookHandler(secret string, updates chan<- tgbotapi.Update) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		provided := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		defer r.Body.Close()
+		var update tgbotapi.Update
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&update); err != nil {
+			http.Error(w, "invalid update", http.StatusBadRequest)
+			return
+		}
+		updates <- update
+		w.WriteHeader(http.StatusOK)
+	})
 }
