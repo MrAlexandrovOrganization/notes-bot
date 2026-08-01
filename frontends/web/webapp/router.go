@@ -48,6 +48,10 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (a *App) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
+		if r.URL.Path == "/healthz" {
+			return
+		}
+
 		applog.With(r.Context(), a.Logger).Info("http request",
 			zap.String("method", r.Method), zap.String("path", r.URL.Path))
 	})
