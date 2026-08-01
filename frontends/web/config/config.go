@@ -10,6 +10,10 @@ type Config struct {
 	WebListenAddr    string
 	WebPassword      string
 	WebSessionSecret string
+	// RootID must match the Telegram frontend's ROOT_ID: reminders are
+	// scoped by user_id in notifications' storage, and both frontends must
+	// use the same user_id to see each other's reminders.
+	RootID int64
 
 	TimezoneOffsetHours int
 	DayStartHour        int
@@ -36,10 +40,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("WEB_SESSION_SECRET is not set")
 	}
 
+	rootIDStr := os.Getenv("ROOT_ID")
+	if rootIDStr == "" {
+		return nil, fmt.Errorf("ROOT_ID is not set")
+	}
+	rootID, err := strconv.ParseInt(rootIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("ROOT_ID is not a valid integer: %w", err)
+	}
+
 	return &Config{
 		WebListenAddr:         envStr("WEB_LISTEN_ADDR", ":8090"),
 		WebPassword:           password,
 		WebSessionSecret:      secret,
+		RootID:                rootID,
 		TimezoneOffsetHours:   envInt("TIMEZONE_OFFSET_HOURS", 3),
 		DayStartHour:          envInt("DAY_START_HOUR", 7),
 		CoreGRPCHost:          envStr("CORE_GRPC_HOST", "localhost"),

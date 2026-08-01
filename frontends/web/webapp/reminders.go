@@ -45,7 +45,7 @@ func (a *App) handleRemindersList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) renderReminders(w http.ResponseWriter, r *http.Request, formError string, form views.ReminderFormData) {
-	reminders, err := a.Notifications.ListReminders(r.Context(), singleUserID)
+	reminders, err := a.Notifications.ListReminders(r.Context(), a.Cfg.RootID)
 	if err != nil {
 		a.serverError(w, r, err)
 		return
@@ -179,7 +179,7 @@ func (a *App) createReminder(w http.ResponseWriter, r *http.Request, form views.
 		scheduleType = "daily"
 	}
 
-	_, err = a.Notifications.CreateReminder(r.Context(), singleUserID, title, scheduleType, scheduleParams, form.CreateTask)
+	_, err = a.Notifications.CreateReminder(r.Context(), a.Cfg.RootID, title, scheduleType, scheduleParams, form.CreateTask)
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
 			a.renderReminders(w, r, "Выбранное время уже прошло — введите другое", form)
@@ -242,7 +242,7 @@ func (a *App) handleDeleteReminder(w http.ResponseWriter, r *http.Request) {
 		a.formError(w, r, "Некорректный идентификатор напоминания")
 		return
 	}
-	if _, err := a.Notifications.DeleteReminder(r.Context(), id, singleUserID); err != nil {
+	if _, err := a.Notifications.DeleteReminder(r.Context(), id, a.Cfg.RootID); err != nil {
 		a.serverError(w, r, err)
 		return
 	}
@@ -297,7 +297,7 @@ func (a *App) handlePostponeReminder(w http.ResponseWriter, r *http.Request) {
 		minutes = minutesUntil
 	}
 
-	if _, err := a.Notifications.PostponeReminder(r.Context(), id, singleUserID, minutes); err != nil {
+	if _, err := a.Notifications.PostponeReminder(r.Context(), id, a.Cfg.RootID, minutes); err != nil {
 		a.serverError(w, r, err)
 		return
 	}

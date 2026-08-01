@@ -145,8 +145,9 @@ Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_p
 ### Web Frontend (`frontends/web/`)
 Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwind for styling) — same feature set as the Telegram bot minus voice transcription and location sharing. Reuses `frontends/telegram/clients` directly (same Go module) for `CoreClient`/`NotificationsClient`/`SearchClient`/`LLMClient` — no separate client layer.
 - `cmd/web/main.go` — entry point, wires clients + `webapp.App`, starts `http.Server`
-- `frontends/web/config/config.go` — `Load()`; requires `WEB_PASSWORD` + `WEB_SESSION_SECRET`
-- `frontends/web/webapp/app.go` — `App` struct (clients + config + logger); `singleUserID = 0` used for all Notifications RPCs (single-user tool, no per-Telegram-user concept)
+- `frontends/web/config/config.go` — `Load()`; requires `WEB_PASSWORD` + `WEB_SESSION_SECRET` + `ROOT_ID`
+- `frontends/web/webapp/app.go` — `App` struct (clients + config + logger)
+- `frontends/web/config/config.go` requires `ROOT_ID` (same env var as the Telegram frontend) and uses it as the `userID` for all Notifications RPCs — reminders are scoped by `user_id` in Postgres, so both frontends must use the same ID to see each other's reminders
 - `frontends/web/webapp/router.go` — `NewRouter()` builds the route table (Go 1.26 method+pattern `http.ServeMux`); `//go:embed static` serves `htmx.min.js` + built `tailwind.css`
 - `frontends/web/webapp/auth.go` — stateless HMAC-signed session cookie (no Redis/DB) checked against `WEB_PASSWORD`; `requireAuth` middleware, sliding 30-day TTL
 - `frontends/web/webapp/render.go` — `(*App).render()` writes a `templ.Component` to the response
