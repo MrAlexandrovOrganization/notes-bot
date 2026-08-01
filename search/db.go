@@ -21,6 +21,11 @@ import (
 // no error) rather than raising an error.
 const ftsDict = "russian"
 
+// CurrentIndexVersion is bumped whenever chunk boundaries or embedding input
+// semantics change. Notes indexed by an older version are picked up by the
+// resumable backfill without requiring a destructive table migration.
+const CurrentIndexVersion = 2
+
 var schemaSQL = fmt.Sprintf(`
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -32,6 +37,15 @@ CREATE TABLE IF NOT EXISTS notes (
     size           BIGINT NOT NULL,
     content_hash   BYTEA NOT NULL,
     content        TEXT NOT NULL,
+	body           TEXT NOT NULL DEFAULT '',
+	note_date      DATE,
+	title          TEXT NOT NULL DEFAULT '',
+	tags           TEXT[] NOT NULL DEFAULT '{}',
+	links          TEXT[] NOT NULL DEFAULT '{}',
+	frontmatter    JSONB NOT NULL DEFAULT '{}'::jsonb,
+	chunk_index_version INT NOT NULL DEFAULT 0,
+	chunk_embedding_model TEXT NOT NULL DEFAULT '',
+	chunks_indexed_at TIMESTAMPTZ,
     tsv            tsvector GENERATED ALWAYS AS
                      (to_tsvector('%[1]s', coalesce(name, '') || ' ' || coalesce(content, '')))
                      STORED,
@@ -41,6 +55,34 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS notes_tsv         ON notes USING GIN (tsv);
 CREATE INDEX IF NOT EXISTS notes_name_trgm   ON notes USING GIN (name gin_trgm_ops);
 `, ftsDict)
+
+const notesMigrationSQL = `
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS body TEXT NOT NULL DEFAULT '';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS note_date DATE;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS links TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS frontmatter JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunk_index_version INT NOT NULL DEFAULT 0;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunk_embedding_model TEXT NOT NULL DEFAULT '';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunks_indexed_at TIMESTAMPTZ;
+CREATE OR REPLACE FUNCTION effective_note_date(stored_date DATE, note_name TEXT)
+RETURNS DATE
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+	SELECT COALESCE(
+		stored_date,
+		CASE
+			WHEN note_name ~* '^[0-9]{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-[0-9]{4}$'
+			THEN to_date(note_name, 'DD-Mon-YYYY')
+		END
+	)
+$$;
+CREATE INDEX IF NOT EXISTS notes_note_date ON notes (note_date);
+CREATE INDEX IF NOT EXISTS notes_tags_gin ON notes USING GIN (tags);
+`
 
 // migrateTSVDictSQL upgrades the tsv generated column to ftsDict when it was
 // built with a different dictionary. The DO block checks the actual
@@ -77,13 +119,32 @@ CREATE TABLE IF NOT EXISTS note_chunks (
     kind         TEXT NOT NULL,
     ord          INT  NOT NULL,
     text         TEXT NOT NULL,
+	heading_path TEXT NOT NULL DEFAULT '',
     chunk_hash   BYTEA NOT NULL,
     embedding    vector(%d) NOT NULL,
+	embedding_model TEXT NOT NULL DEFAULT '',
+	index_version INT NOT NULL DEFAULT 0,
+	tsv_ru tsvector GENERATED ALWAYS AS
+	       (to_tsvector('russian', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED,
+	tsv_simple tsvector GENERATED ALWAYS AS
+	           (to_tsvector('simple', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED,
     UNIQUE (note_id, kind, ord)
 );
 
 CREATE INDEX IF NOT EXISTS note_chunks_hnsw ON note_chunks
     USING hnsw (embedding vector_cosine_ops);
+`
+
+const vectorMigrationSQL = `
+ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS heading_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS embedding_model TEXT NOT NULL DEFAULT '';
+ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS index_version INT NOT NULL DEFAULT 0;
+ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS tsv_ru tsvector GENERATED ALWAYS AS
+    (to_tsvector('russian', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED;
+ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS tsv_simple tsvector GENERATED ALWAYS AS
+    (to_tsvector('simple', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED;
+CREATE INDEX IF NOT EXISTS note_chunks_tsv_ru ON note_chunks USING GIN (tsv_ru);
+CREATE INDEX IF NOT EXISTS note_chunks_tsv_simple ON note_chunks USING GIN (tsv_simple);
 `
 
 // NoteRow mirrors a row in the notes table (without content/tsv for list operations).
@@ -98,7 +159,11 @@ type NoteRow struct {
 
 type NoteFull struct {
 	NoteRow
-	Content string
+	Content             string
+	Body                string
+	Metadata            NoteMetadata
+	ChunkIndexVersion   int
+	ChunkEmbeddingModel string
 }
 
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
@@ -129,12 +194,18 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, enableVector bool, em
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("ensure notes schema: %w", err)
 	}
+	if _, err := pool.Exec(ctx, notesMigrationSQL); err != nil {
+		return fmt.Errorf("migrate notes schema: %w", err)
+	}
 	if _, err := pool.Exec(ctx, migrateTSVDictSQL); err != nil {
 		return fmt.Errorf("migrate tsv dictionary: %w", err)
 	}
 	if enableVector {
 		if _, err := pool.Exec(ctx, fmt.Sprintf(vectorSchemaSQL, embedDim)); err != nil {
 			return fmt.Errorf("ensure vector schema: %w", err)
+		}
+		if _, err := pool.Exec(ctx, vectorMigrationSQL); err != nil {
+			return fmt.Errorf("migrate vector schema: %w", err)
 		}
 	}
 	logger.Info("database schema ensured")
@@ -150,21 +221,80 @@ func UpsertNote(ctx context.Context, pool *pgxpool.Pool, n NoteFull) (int64, boo
 	var id int64
 	var inserted bool
 	err := pool.QueryRow(ctx, `
-		INSERT INTO notes (relpath, name, mtime, size, content_hash, content, indexed_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		INSERT INTO notes (
+			relpath, name, mtime, size, content_hash, content, body,
+			note_date, title, tags, links, frontmatter,
+			chunk_index_version, chunk_embedding_model, indexed_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+		        COALESCE($10, '{}'::text[]), COALESCE($11, '{}'::text[]),
+		        $12::jsonb, 0, '', NOW())
 		ON CONFLICT (relpath) DO UPDATE SET
 			name = EXCLUDED.name,
 			mtime = EXCLUDED.mtime,
 			size = EXCLUDED.size,
 			content_hash = EXCLUDED.content_hash,
 			content = EXCLUDED.content,
+			body = EXCLUDED.body,
+			note_date = EXCLUDED.note_date,
+			title = EXCLUDED.title,
+			tags = EXCLUDED.tags,
+			links = EXCLUDED.links,
+			frontmatter = EXCLUDED.frontmatter,
+			chunk_index_version = 0,
+			chunk_embedding_model = '',
+			chunks_indexed_at = NULL,
 			indexed_at = NOW()
 		RETURNING id, (xmax = 0)
-	`, n.Relpath, n.Name, n.Mtime, n.Size, n.ContentHash, n.Content).Scan(&id, &inserted)
+	`, n.Relpath, n.Name, n.Mtime, n.Size, n.ContentHash, n.Content, n.Body,
+		n.Metadata.Date, n.Metadata.Title, n.Metadata.Tags, n.Metadata.Links,
+		string(n.Metadata.FrontmatterJSON)).Scan(&id, &inserted)
 	if err != nil {
 		return 0, false, fmt.Errorf("upsert note: %w", err)
 	}
 	return id, inserted, nil
+}
+
+// UpdateNoteParsed refreshes body/frontmatter fields for notes created before
+// structured metadata was introduced. It intentionally leaves index state
+// untouched; MarkNoteChunksCurrent commits that state only after all chunks
+// were embedded successfully.
+func UpdateNoteParsed(ctx context.Context, pool *pgxpool.Pool, noteID int64, doc ParsedDocument) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	_, err := pool.Exec(ctx, `
+		UPDATE notes SET
+			body = $2,
+			note_date = $3,
+			title = $4,
+			tags = COALESCE($5, '{}'::text[]),
+			links = COALESCE($6, '{}'::text[]),
+			frontmatter = $7::jsonb
+		WHERE id = $1
+	`, noteID, doc.Body, doc.Metadata.Date, doc.Metadata.Title,
+		doc.Metadata.Tags, doc.Metadata.Links, string(doc.Metadata.FrontmatterJSON))
+	if err != nil {
+		return fmt.Errorf("update parsed note: %w", err)
+	}
+	return nil
+}
+
+func MarkNoteChunksCurrent(ctx context.Context, pool *pgxpool.Pool, noteID int64, model string) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	_, err := pool.Exec(ctx, `
+		UPDATE notes SET
+			chunk_index_version = $2,
+			chunk_embedding_model = $3,
+			chunks_indexed_at = NOW()
+		WHERE id = $1
+	`, noteID, CurrentIndexVersion, model)
+	if err != nil {
+		return fmt.Errorf("mark note chunks current: %w", err)
+	}
+	return nil
 }
 
 // TouchNoteMeta updates only mtime/size for a note whose content hash matched.
@@ -270,11 +400,25 @@ func AllRelpaths(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 // SearchHit is the DB-level search result, projected from a notes row.
 type SearchHit struct {
 	NoteID    int64
+	ChunkID   int64
 	Relpath   string
 	Name      string
 	Snippet   string
 	Score     float64
 	ChunkKind string
+	Heading   string
+	Ord       int
+	Neighbor  bool
+	NoteDate  string
+	Title     string
+	Tags      []string
+	Links     []string
+}
+
+type SearchFilters struct {
+	DateFrom *time.Time
+	DateTo   *time.Time
+	Kinds    []string
 }
 
 // SearchByName returns notes whose name matches the query via pg_trgm similarity.
@@ -301,8 +445,16 @@ func SearchByName(ctx context.Context, pool *pgxpool.Pool, query string, limit i
 	return scanHits(rows)
 }
 
-// SearchByContent runs a websearch FTS query over name+content.
+// SearchByContent runs chunk-level FTS without optional filters. It is kept as
+// the simple API used by the interactive note finder.
 func SearchByContent(ctx context.Context, pool *pgxpool.Pool, query string, limit int) ([]SearchHit, error) {
+	return SearchChunksByContent(ctx, pool, query, limit, SearchFilters{})
+}
+
+// SearchChunksByContent combines Russian stemming with a simple dictionary for
+// names, English words and identifiers. ts_headline returns a passage around
+// the actual match instead of the beginning of the note.
+func SearchChunksByContent(ctx context.Context, pool *pgxpool.Pool, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -310,19 +462,51 @@ func SearchByContent(ctx context.Context, pool *pgxpool.Pool, query string, limi
 		limit = 10
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT id, relpath, name,
-		       LEFT(content, 200) AS snippet,
-		       ts_rank(tsv, websearch_to_tsquery($1, $2)) AS score
-		FROM notes
-		WHERE tsv @@ websearch_to_tsquery($1, $2)
-		ORDER BY score DESC
-		LIMIT $3
-	`, ftsDict, query, limit)
+		WITH q AS (
+			SELECT websearch_to_tsquery('russian', $1) AS ru,
+			       websearch_to_tsquery('simple', $1) AS simple
+		)
+		SELECT n.id, c.id, n.relpath, n.name,
+		       regexp_replace(
+		           CASE WHEN c.tsv_simple @@ q.simple
+		                THEN ts_headline('simple', c.text, q.simple,
+		                                 'MaxWords=60, MinWords=20, ShortWord=2')
+		                ELSE ts_headline('russian', c.text, q.ru,
+		                                 'MaxWords=60, MinWords=20, ShortWord=2')
+		           END,
+		           '<[^>]+>', '', 'g'
+		       ) AS snippet,
+		       ts_rank_cd(c.tsv_ru, q.ru) + 0.5 * ts_rank_cd(c.tsv_simple, q.simple) AS score,
+		       c.kind, c.heading_path, c.ord,
+		       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), ''),
+		       n.title, n.tags, n.links
+		FROM note_chunks c
+		JOIN notes n ON n.id = c.note_id
+		CROSS JOIN q
+		WHERE (c.tsv_ru @@ q.ru OR c.tsv_simple @@ q.simple)
+		  AND c.kind <> 'note'
+		  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
+		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
+		  AND ($4::text[] IS NULL OR c.kind = ANY($4::text[]))
+		ORDER BY score DESC, c.id
+		LIMIT $5
+	`, query, filters.DateFrom, filters.DateTo, nullableStrings(filters.Kinds), limit)
 	if err != nil {
 		return nil, fmt.Errorf("search by content: %w", err)
 	}
 	defer rows.Close()
-	return scanHits(rows)
+
+	var out []SearchHit
+	for rows.Next() {
+		var h SearchHit
+		if err := rows.Scan(&h.NoteID, &h.ChunkID, &h.Relpath, &h.Name, &h.Snippet,
+			&h.Score, &h.ChunkKind, &h.Heading, &h.Ord,
+			&h.NoteDate, &h.Title, &h.Tags, &h.Links); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 func scanHits(rows pgx.Rows) ([]SearchHit, error) {
@@ -343,9 +527,19 @@ func CountNotes(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	return n, err
 }
 
-// NotesMissingChunks returns (id, content) for notes that have no chunk rows yet.
-// Used to backfill embeddings after enabling vector search on an existing index.
-func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int) ([]NoteFull, error) {
+func CountNotesPendingIndex(ctx context.Context, pool *pgxpool.Pool, model string) (int64, error) {
+	var n int64
+	err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM notes
+		WHERE chunk_index_version <> $1 OR chunk_embedding_model <> $2
+	`, CurrentIndexVersion, model).Scan(&n)
+	return n, err
+}
+
+// NotesNeedingChunks returns notes whose committed index version/model is stale.
+// The note-level marker is updated only after a complete reindex, so interrupted
+// deployments resume safely even if some chunk rows were already written.
+func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, model string) ([]NoteFull, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -353,13 +547,14 @@ func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 		limit = 100
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content
+		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content,
+		       n.chunk_index_version, n.chunk_embedding_model
 		FROM notes n
-		WHERE NOT EXISTS (SELECT 1 FROM note_chunks c WHERE c.note_id = n.id)
-		  AND n.id > $1
+		WHERE n.id > $1
+		  AND (n.chunk_index_version <> $3 OR n.chunk_embedding_model <> $4)
 		ORDER BY n.id ASC
 		LIMIT $2
-	`, afterID, limit)
+	`, afterID, limit, CurrentIndexVersion, model)
 	if err != nil {
 		return nil, fmt.Errorf("notes missing chunks: %w", err)
 	}
@@ -367,7 +562,8 @@ func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 	var out []NoteFull
 	for rows.Next() {
 		var n NoteFull
-		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content); err != nil {
+		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content,
+			&n.ChunkIndexVersion, &n.ChunkEmbeddingModel); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -430,53 +626,48 @@ func ListChunkHashes(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]C
 // UpsertChunk inserts or updates a chunk row. Embeddings are written only when
 // content actually changes — callers should skip the embed call if the hash
 // matches an existing row.
-func UpsertChunk(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, ord int, text string, hash []byte, vec []float32) error {
+func UpsertChunk(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, ord int, text, heading string, hash []byte, vec []float32, model string) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	_, err := pool.Exec(ctx, `
-		INSERT INTO note_chunks (note_id, kind, ord, text, chunk_hash, embedding)
-		VALUES ($1, $2, $3, $4, $5, $6::vector)
+		INSERT INTO note_chunks (
+			note_id, kind, ord, text, heading_path, chunk_hash, embedding,
+			embedding_model, index_version
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9)
 		ON CONFLICT (note_id, kind, ord) DO UPDATE SET
 			text       = EXCLUDED.text,
+			heading_path = EXCLUDED.heading_path,
 			chunk_hash = EXCLUDED.chunk_hash,
-			embedding  = EXCLUDED.embedding
-	`, noteID, kind, ord, text, hash, vecLiteral(vec))
+			embedding  = EXCLUDED.embedding,
+			embedding_model = EXCLUDED.embedding_model,
+			index_version = EXCLUDED.index_version
+	`, noteID, kind, ord, text, heading, hash, vecLiteral(vec), model, CurrentIndexVersion)
 	if err != nil {
 		return fmt.Errorf("upsert chunk: %w", err)
 	}
 	return nil
 }
 
-// DeleteChunksOutsideOrd removes chunks for a note that fall outside the
-// provided per-kind keep-set. Used after re-chunking when the new chunk list is
-// shorter than the previous one.
-func DeleteChunksOutsideOrd(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, keepOrds []int) (int64, error) {
+func DeleteChunksByID(ctx context.Context, pool *pgxpool.Pool, ids []int64) (int64, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	if len(keepOrds) == 0 {
-		tag, err := pool.Exec(ctx,
-			`DELETE FROM note_chunks WHERE note_id = $1 AND kind = $2`,
-			noteID, kind)
-		if err != nil {
-			return 0, fmt.Errorf("delete chunks: %w", err)
-		}
-		return tag.RowsAffected(), nil
+	if len(ids) == 0 {
+		return 0, nil
 	}
-	tag, err := pool.Exec(ctx, `
-		DELETE FROM note_chunks
-		WHERE note_id = $1 AND kind = $2 AND ord <> ALL($3::int[])
-	`, noteID, kind, keepOrds)
+	tag, err := pool.Exec(ctx, `DELETE FROM note_chunks WHERE id = ANY($1::bigint[])`, ids)
 	if err != nil {
 		return 0, fmt.Errorf("delete stale chunks: %w", err)
 	}
 	return tag.RowsAffected(), nil
 }
 
-// SearchByVector runs an HNSW cosine-distance ANN search and joins to notes
-// for the result metadata. score is 1 - distance, so higher is closer.
-func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, kinds []string) ([]SearchHit, error) {
+// SearchByVector runs cosine search over filtered chunks. The materialized
+// candidate CTE deliberately uses an exact scan: this vault is small, and exact
+// ordering avoids HNSW under-returning after selective date/kind filters.
+func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters) ([]SearchHit, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -484,27 +675,28 @@ func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limi
 		limit = 8
 	}
 
-	// Snippet budget by kind: note-chunks carry the entire body, paragraph/task
-	// are already short. Without this, "note" chunks return useless 240-char
-	// heads and the LLM has no context to answer with.
 	query := `
-		SELECT n.id, n.relpath, n.name,
-		       CASE WHEN c.kind = 'note' THEN LEFT(c.text, 1500)
-		            ELSE LEFT(c.text, 400)
-		       END AS snippet,
-		       1 - (c.embedding <=> $1::vector) AS score,
-		       c.kind
-		FROM note_chunks c
-		JOIN notes n ON n.id = c.note_id
+		WITH candidates AS MATERIALIZED (
+			SELECT n.id AS note_id, c.id AS chunk_id, n.relpath, n.name,
+			       c.text, c.embedding, c.kind, c.heading_path, c.ord,
+			       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), '') AS note_date,
+			       n.title, n.tags, n.links
+			FROM note_chunks c
+			JOIN notes n ON n.id = c.note_id
+			WHERE c.kind <> 'note'
+			  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
+			  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
+			  AND ($4::text[] IS NULL OR c.kind = ANY($4::text[]))
+		)
+		SELECT note_id, chunk_id, relpath, name, text,
+		       1 - (embedding <=> $1::vector) AS score,
+		       kind, heading_path, ord, note_date, title, tags, links
+		FROM candidates
+		ORDER BY embedding <=> $1::vector ASC, chunk_id
+		LIMIT $5
 	`
-	args := []any{vecLiteral(vec)}
-	if len(kinds) > 0 {
-		query += ` WHERE c.kind = ANY($2::text[])`
-		args = append(args, kinds)
-	}
-	query += fmt.Sprintf(` ORDER BY c.embedding <=> $1::vector ASC LIMIT %d`, limit)
-
-	rows, err := pool.Query(ctx, query, args...)
+	rows, err := pool.Query(ctx, query, vecLiteral(vec), filters.DateFrom, filters.DateTo,
+		nullableStrings(filters.Kinds), limit)
 	if err != nil {
 		return nil, fmt.Errorf("ann search: %w", err)
 	}
@@ -513,10 +705,19 @@ func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limi
 	var out []SearchHit
 	for rows.Next() {
 		var h SearchHit
-		if err := rows.Scan(&h.NoteID, &h.Relpath, &h.Name, &h.Snippet, &h.Score, &h.ChunkKind); err != nil {
+		if err := rows.Scan(&h.NoteID, &h.ChunkID, &h.Relpath, &h.Name, &h.Snippet,
+			&h.Score, &h.ChunkKind, &h.Heading, &h.Ord,
+			&h.NoteDate, &h.Title, &h.Tags, &h.Links); err != nil {
 			return nil, err
 		}
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+func nullableStrings(values []string) any {
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }

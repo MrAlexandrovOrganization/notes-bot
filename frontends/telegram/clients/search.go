@@ -22,11 +22,25 @@ const searchCallTimeout = 60 * time.Second
 // SearchHit is the user-facing result of any search RPC.
 type SearchHit struct {
 	NoteID    int64
+	ChunkID   int64
 	Relpath   string
 	Name      string
 	Snippet   string
 	Score     float64
 	ChunkKind string
+	Heading   string
+	Ord       int
+	Neighbor  bool
+	NoteDate  string
+	Title     string
+	Tags      []string
+	Links     []string
+}
+
+type SearchOptions struct {
+	DateFrom string
+	DateTo   string
+	Kinds    []string
 }
 
 // SearchNote is the full content returned by GetNote.
@@ -70,11 +84,19 @@ func protoToHits(resp *pb.SearchResponse) []*SearchHit {
 	for i, h := range resp.Hits {
 		out[i] = &SearchHit{
 			NoteID:    h.NoteId,
+			ChunkID:   h.ChunkId,
 			Relpath:   h.Relpath,
 			Name:      h.Name,
 			Snippet:   h.Snippet,
 			Score:     h.Score,
 			ChunkKind: h.ChunkKind,
+			Heading:   h.HeadingPath,
+			Ord:       int(h.Ord),
+			Neighbor:  h.Neighbor,
+			NoteDate:  h.NoteDate,
+			Title:     h.Title,
+			Tags:      h.Tags,
+			Links:     h.Links,
 		}
 	}
 	return out
@@ -98,6 +120,20 @@ func (c *SearchClient) SearchByContent(ctx context.Context, query string, limit 
 
 func (c *SearchClient) SearchSemantic(ctx context.Context, query string, limit int) ([]*SearchHit, error) {
 	resp, err := c.stub.SearchSemantic(ctx, &pb.SearchRequest{Query: query, Limit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return protoToHits(resp), nil
+}
+
+func (c *SearchClient) SearchHybrid(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error) {
+	resp, err := c.stub.SearchHybrid(ctx, &pb.SearchRequest{
+		Query:    query,
+		Limit:    int32(limit),
+		DateFrom: options.DateFrom,
+		DateTo:   options.DateTo,
+		Kinds:    options.Kinds,
+	})
 	if err != nil {
 		return nil, err
 	}

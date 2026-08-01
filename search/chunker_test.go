@@ -25,15 +25,14 @@ with two lines.
 	if len(chunks) == 0 {
 		t.Fatalf("expected non-empty chunks")
 	}
-	if chunks[0].Kind != KindNote {
-		t.Fatalf("first chunk should be KindNote, got %s", chunks[0].Kind)
-	}
-	if strings.Contains(chunks[0].Text, "date:") || strings.Contains(chunks[0].Text, "Оценка:") {
-		t.Errorf("note chunk should not include frontmatter, got: %q", chunks[0].Text)
-	}
-
 	gotTasks, gotParas := 0, 0
-	for _, c := range chunks[1:] {
+	for _, c := range chunks {
+		if c.Kind == KindNote {
+			t.Fatalf("current chunker must not emit note chunks: %#v", c)
+		}
+		if strings.Contains(c.Text, "date:") || strings.Contains(c.Text, "Оценка:") {
+			t.Errorf("chunk should not include frontmatter, got: %q", c.Text)
+		}
 		switch c.Kind {
 		case KindTask:
 			gotTasks++
@@ -52,8 +51,8 @@ with two lines.
 func TestChunkContent_NoFrontmatter(t *testing.T) {
 	src := "Just some text\n\nAnother paragraph"
 	chunks := ChunkContent(src)
-	if len(chunks) == 0 || chunks[0].Kind != KindNote {
-		t.Fatalf("expected a note chunk, got %#v", chunks)
+	if len(chunks) != 2 || chunks[0].Kind != KindParagraph {
+		t.Fatalf("expected two paragraph chunks, got %#v", chunks)
 	}
 	kinds := make([]ChunkKind, 0, len(chunks))
 	for _, c := range chunks {
@@ -61,6 +60,36 @@ func TestChunkContent_NoFrontmatter(t *testing.T) {
 	}
 	if !slices.Contains(kinds, KindParagraph) {
 		t.Errorf("expected paragraph chunks, got kinds %v", kinds)
+	}
+}
+
+func TestChunkContent_DoesNotDuplicateTasksInParagraphs(t *testing.T) {
+	src := "Intro text\n- [ ] Unique task\nOutro text"
+	chunks := ChunkContent(src)
+	if len(chunks) != 3 {
+		t.Fatalf("want paragraph/task/paragraph, got %#v", chunks)
+	}
+	for _, chunk := range chunks {
+		if chunk.Kind == KindParagraph && strings.Contains(chunk.Text, "Unique task") {
+			t.Fatalf("task leaked into paragraph chunk: %#v", chunk)
+		}
+	}
+	if chunks[1].Kind != KindTask || chunks[1].Ord != 1 {
+		t.Fatalf("task should retain global source ord, got %#v", chunks[1])
+	}
+}
+
+func TestChunkContent_CarriesHeadingPath(t *testing.T) {
+	src := "# Project\n\nIntro\n\n## Decisions\n\nChosen option"
+	chunks := ChunkContent(src)
+	if len(chunks) != 2 {
+		t.Fatalf("want two chunks, got %#v", chunks)
+	}
+	if chunks[0].HeadingPath != "Project" {
+		t.Fatalf("unexpected first heading: %q", chunks[0].HeadingPath)
+	}
+	if chunks[1].HeadingPath != "Project / Decisions" {
+		t.Fatalf("unexpected nested heading: %q", chunks[1].HeadingPath)
 	}
 }
 

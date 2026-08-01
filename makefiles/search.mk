@@ -25,6 +25,9 @@ search-stats:  ## Single-row summary: notes, chunks, sizes, last sync.
 search-chunks:  ## Chunks by kind: counts, distinct notes, length stats.
 	@$(SEARCH_PSQL) "SELECT kind, count(*) AS chunks, count(DISTINCT note_id) AS distinct_notes, round(avg(length(text)))::int AS avg_chars, min(length(text)) AS min_chars, max(length(text)) AS max_chars, pg_size_pretty(sum(length(text))::bigint) AS total_text FROM note_chunks GROUP BY kind ORDER BY kind;"
 
+search-index-versions:  ## Notes grouped by committed index/model version (backfill progress).
+	@$(SEARCH_PSQL) "SELECT chunk_index_version, nullif(chunk_embedding_model, '') AS embedding_model, count(*) AS notes FROM notes GROUP BY 1, 2 ORDER BY 1, 2;"
+
 search-top-notes:  ## Top-10 largest notes by stored size.
 	@$(SEARCH_PSQL) "SELECT name, pg_size_pretty(size::bigint) AS bytes, length(content) AS chars FROM notes ORDER BY size DESC LIMIT 10;"
 
@@ -48,9 +51,9 @@ search-reindex:  ## Force a full Reindex over gRPC.
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 
-search-doctor: search-stats search-chunks search-logs  ## One-stop health overview.
+search-doctor: search-stats search-chunks search-index-versions search-logs  ## One-stop health overview.
 
 search-help:  ## Print available search-* targets.
 	@awk -F':.*##' '/^search-[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' makefiles/search.mk
 
-.PHONY: search-stats search-chunks search-top-notes search-logs search-logs-errors search-metrics search-reindex search-doctor search-help
+.PHONY: search-stats search-chunks search-index-versions search-top-notes search-logs search-logs-errors search-metrics search-reindex search-doctor search-help

@@ -22,3 +22,18 @@ func TestFTSDictConsistency(t *testing.T) {
 		t.Errorf("migrateTSVDictSQL does not migrate the tsv column to ftsDict %q; want substring %q", ftsDict, want)
 	}
 }
+
+func TestVersionedChunkSchemaContainsRollingMigrationColumns(t *testing.T) {
+	if CurrentIndexVersion <= 0 {
+		t.Fatal("CurrentIndexVersion must be positive")
+	}
+	for _, want := range []string{
+		"chunk_index_version", "chunk_embedding_model", "note_date",
+		"frontmatter JSONB", "heading_path", "embedding_model",
+		"index_version", "tsv_ru", "tsv_simple",
+	} {
+		if !strings.Contains(notesMigrationSQL+vectorMigrationSQL, want) {
+			t.Errorf("rolling migrations do not contain %q", want)
+		}
+	}
+}

@@ -39,7 +39,11 @@ func TestVerifySession_Expired(t *testing.T) {
 func TestVerifySession_TamperedSignature(t *testing.T) {
 	a := testApp(t)
 	value := a.signSession(time.Now().Add(time.Hour))
-	tampered := value[:len(value)-1] + "0"
+	replacement := "0"
+	if value[len(value)-1] == '0' {
+		replacement = "1"
+	}
+	tampered := value[:len(value)-1] + replacement
 	assert.False(t, a.verifySession(tampered))
 }
 

@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
-	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -17,12 +15,14 @@ import (
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
+	"notes-bot/internal/searchquery"
 	"notes-bot/internal/telemetry"
+	"notes-bot/internal/timeutil"
 )
 
 const (
 	askTopK              = 12
-	askContextCharBudget = 6000
+	askContextRuneBudget = 8000
 	askAnswerNumPredict  = 768
 )
 
@@ -63,7 +63,12 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		return
 	}
 
-	hits, err := a.hybridSearch(ctx, q, askTopK)
+	dateRange := searchquery.ExtractDateRange(q,
+		timeutil.LogicalToday(a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour))
+	hits, err := a.Search.SearchHybrid(ctx, q, askTopK, clients.SearchOptions{
+		DateFrom: dateRange.From,
+		DateTo:   dateRange.To,
+	})
 	if err != nil {
 		st, _ := status.FromError(err)
 		switch st.Code() {
@@ -117,16 +122,16 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 	log.Info("ask answered", zap.Int("hits", len(hits)))
 }
 
-// buildAskContext joins hits into a budget-respecting context block and a
-// deduplicated list of source names. Chunks with identical text are skipped
-// (semantic search returns note + paragraph[] for the same note, often with
-// overlapping content) so the LLM gets diverse signal instead of repeats.
+// buildAskContext joins exact source chunks and structured metadata into a
+// rune-budgeted context block. Neighbor windows may overlap, so chunk ids and
+// fallback text keys are deduplicated before they reach the LLM.
 func buildAskContext(hits []*clients.SearchHit) (string, []string) {
 	var b strings.Builder
 	sources := make([]string, 0, len(hits))
 	seenName := make(map[string]struct{}, len(hits))
+	seenChunk := make(map[int64]struct{}, len(hits))
 	seenText := make(map[string]struct{}, len(hits))
-	budget := askContextCharBudget
+	budget := askContextRuneBudget
 
 	for _, h := range hits {
 		if h == nil {
@@ -136,91 +141,56 @@ func buildAskContext(hits []*clients.SearchHit) (string, []string) {
 		if snip == "" {
 			continue
 		}
+		if h.ChunkID != 0 {
+			if _, ok := seenChunk[h.ChunkID]; ok {
+				continue
+			}
+			seenChunk[h.ChunkID] = struct{}{}
+		}
 		key := h.Name + "|" + snip
 		if _, ok := seenText[key]; ok {
 			continue
 		}
 		seenText[key] = struct{}{}
 
-		entry := fmt.Sprintf("— [%s] %s\n", h.Name, snip)
-		if len(entry) > budget {
-			break
+		label := h.NoteDate
+		if label == "" {
+			label = h.Name
 		}
-		b.WriteString(entry)
+		if h.Heading != "" {
+			label += " · " + h.Heading
+		}
+		var metadata strings.Builder
+		_, noteSeen := seenName[h.Name]
+		if !noteSeen {
+			if h.Title != "" {
+				fmt.Fprintf(&metadata, "Заголовок: %s\n", h.Title)
+			}
+			if len(h.Tags) > 0 {
+				fmt.Fprintf(&metadata, "Теги: %s\n", strings.Join(h.Tags, ", "))
+			}
+			if len(h.Links) > 0 {
+				fmt.Fprintf(&metadata, "Ссылки: %s\n", strings.Join(h.Links, ", "))
+			}
+		}
+		entry := []rune(fmt.Sprintf("— [%s]\n%s%s\n", label, metadata.String(), snip))
+		if len(entry) > budget {
+			if budget < 80 {
+				continue
+			}
+			entry = append(entry[:budget-1], '…')
+		}
+		b.WriteString(string(entry))
 		budget -= len(entry)
-		if _, ok := seenName[h.Name]; !ok {
+		if !noteSeen {
 			seenName[h.Name] = struct{}{}
 			sources = append(sources, h.Name)
 		}
-	}
-	return b.String(), sources
-}
-
-// hybridSearch runs semantic and full-text search in parallel and merges results
-// with Reciprocal Rank Fusion. If semantic search is unavailable it falls back
-// to FTS only (and returns the semantic error so the caller can surface it).
-func (a *App) hybridSearch(ctx context.Context, query string, k int) ([]*clients.SearchHit, error) {
-	fetch := k * 2
-
-	var (
-		semHits []*clients.SearchHit
-		ftsHits []*clients.SearchHit
-		semErr  error
-		ftsErr  error
-		wg      sync.WaitGroup
-	)
-
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		semHits, semErr = a.Search.SearchSemantic(ctx, query, fetch)
-	}()
-	go func() {
-		defer wg.Done()
-		ftsHits, ftsErr = a.Search.SearchByContent(ctx, query, fetch)
-	}()
-	wg.Wait()
-
-	if semErr != nil {
-		return nil, semErr
-	}
-	// FTS errors are non-fatal — semantic results alone are still useful.
-	_ = ftsErr
-
-	return rrfMerge(semHits, ftsHits, k), nil
-}
-
-// rrfMerge combines two ranked lists using Reciprocal Rank Fusion (k=60).
-// Hits from both lists are scored, deduplicated by NoteID, and trimmed to limit.
-func rrfMerge(a, b []*clients.SearchHit, limit int) []*clients.SearchHit {
-	const rrfK = 60.0
-	scores := make(map[int64]float64)
-	best := make(map[int64]*clients.SearchHit)
-
-	rank := func(hits []*clients.SearchHit) {
-		for i, h := range hits {
-			if h == nil {
-				continue
-			}
-			scores[h.NoteID] += 1.0 / (rrfK + float64(i+1))
-			if _, seen := best[h.NoteID]; !seen {
-				best[h.NoteID] = h
-			}
+		if budget <= 0 {
+			break
 		}
 	}
-	rank(a)
-	rank(b)
-
-	merged := make([]*clients.SearchHit, 0, len(best))
-	for id, h := range best {
-		h.Score = scores[id]
-		merged = append(merged, h)
-	}
-	sort.Slice(merged, func(i, j int) bool { return merged[i].Score > merged[j].Score })
-	if len(merged) > limit {
-		merged = merged[:limit]
-	}
-	return merged
+	return b.String(), sources
 }
 
 func renderAskAnswer(answer string, sources []string) tgfmt.HTML {

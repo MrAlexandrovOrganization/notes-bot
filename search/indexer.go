@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,16 +35,28 @@ type Indexer struct {
 	pool     *pgxpool.Pool
 	metrics  *searchMetrics
 	embedder *Embedder
+	syncMu   sync.Mutex
 }
 
 func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder) *Indexer {
 	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder}
 }
 
-// SyncOnce walks the vault, reconciles the notes table, and (when enabled) the
-// chunks/embeddings. Safe to call concurrently — Postgres upserts are atomic
-// per row — but the caller is expected to serialize ticks.
+// SyncOnce reconciles changed files and resumes any stale/missing chunk index.
 func (ix *Indexer) SyncOnce(ctx context.Context) (SyncStats, error) {
+	return ix.syncOnce(ctx, false)
+}
+
+// ForceReindex reparses and re-embeds every note even if the source file hash
+// is unchanged. Calls are serialized with scheduled syncs.
+func (ix *Indexer) ForceReindex(ctx context.Context) (SyncStats, error) {
+	return ix.syncOnce(ctx, true)
+}
+
+func (ix *Indexer) syncOnce(ctx context.Context, force bool) (SyncStats, error) {
+	ix.syncMu.Lock()
+	defer ix.syncMu.Unlock()
+
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -80,7 +93,7 @@ func (ix *Indexer) SyncOnce(ctx context.Context) (SyncStats, error) {
 		seenSet[rel] = struct{}{}
 		stats.Seen++
 
-		if err := ix.syncFile(ctx, path, rel, &stats); err != nil {
+		if err := ix.syncFile(ctx, path, rel, force, &stats); err != nil {
 			log.Warn("sync file", zap.String("relpath", rel), zap.Error(err))
 			stats.Errors++
 		}
@@ -132,7 +145,7 @@ func (ix *Indexer) SyncOnce(ctx context.Context) (SyncStats, error) {
 	return stats, nil
 }
 
-func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats *SyncStats) error {
+func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, force bool, stats *SyncStats) error {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("stat: %w", err)
@@ -142,7 +155,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 	if err != nil {
 		return err
 	}
-	if existing != nil &&
+	if !force && existing != nil &&
 		existing.Mtime.Unix() == info.ModTime().Unix() &&
 		existing.Size == info.Size() {
 		// File unchanged — skip read.
@@ -155,7 +168,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 	}
 	hash := sha256Hash(data)
 
-	if existing != nil && bytesEqual(existing.ContentHash, hash) {
+	if !force && existing != nil && bytesEqual(existing.ContentHash, hash) {
 		// Same content, only metadata drifted.
 		if err := TouchNoteMeta(ctx, ix.pool, relpath, info.ModTime(), info.Size()); err != nil {
 			return err
@@ -165,6 +178,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 	}
 
 	name := strings.TrimSuffix(filepath.Base(relpath), filepath.Ext(relpath))
+	doc := ParseDocument(string(data), name)
 	full := NoteFull{
 		NoteRow: NoteRow{
 			Relpath:     relpath,
@@ -173,7 +187,9 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 			Size:        info.Size(),
 			ContentHash: hash,
 		},
-		Content: string(data),
+		Content:  string(data),
+		Body:     doc.Body,
+		Metadata: doc.Metadata,
 	}
 	noteID, inserted, err := UpsertNote(ctx, ix.pool, full)
 	if err != nil {
@@ -186,7 +202,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 	}
 
 	if ix.cfg.EnableEmbeddings && ix.embedder != nil {
-		embedded, err := ix.reindexChunks(ctx, noteID, string(data))
+		embedded, err := ix.reindexChunks(ctx, noteID, name, doc, force)
 		if err != nil {
 			return fmt.Errorf("reindex chunks: %w", err)
 		}
@@ -198,46 +214,43 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, stats
 // reindexChunks chunks the note, computes per-chunk hashes, embeds only
 // new/changed chunks, and drops any stale ones. Returns how many chunks were
 // embedded in this pass.
-func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content string) (int, error) {
-	chunks := ChunkContent(content)
+func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName string, doc ParsedDocument, force bool) (int, error) {
+	chunks := ChunkContent(doc.Body)
 
 	existing, err := ListChunkHashes(ctx, ix.pool, noteID)
 	if err != nil {
 		return 0, err
 	}
-	existingByKey := make(map[string][]byte, len(existing))
+	existingByKey := make(map[string]ChunkRow, len(existing))
 	for _, c := range existing {
-		existingByKey[chunkKey(c.Kind, c.Ord)] = c.ChunkHash
+		existingByKey[chunkKey(c.Kind, c.Ord)] = c
 	}
 
-	// Group chunks by kind so we can drop stale ords per kind separately.
-	keepOrds := map[string][]int{}
+	keepKeys := make(map[string]struct{}, len(chunks))
 	for _, c := range chunks {
-		keepOrds[string(c.Kind)] = append(keepOrds[string(c.Kind)], c.Ord)
+		keepKeys[chunkKey(string(c.Kind), c.Ord)] = struct{}{}
 	}
-	for _, kind := range []string{string(KindNote), string(KindParagraph), string(KindTask)} {
-		if _, err := DeleteChunksOutsideOrd(ctx, ix.pool, noteID, kind, keepOrds[kind]); err != nil {
-			return 0, err
+	staleIDs := make([]int64, 0)
+	for key, row := range existingByKey {
+		if _, keep := keepKeys[key]; !keep {
+			staleIDs = append(staleIDs, row.ID)
 		}
 	}
 
 	// Identify chunks that need embedding (new or changed hash).
 	type pending struct {
-		idx  int
-		hash []byte
+		idx   int
+		hash  []byte
+		input string
 	}
 	var todo []pending
-	hashes := make([][]byte, len(chunks))
 	for i, c := range chunks {
-		h := sha256Hash([]byte(c.Text))
-		hashes[i] = h
-		if prev, ok := existingByKey[chunkKey(string(c.Kind), c.Ord)]; ok && bytesEqual(prev, h) {
+		input := embeddingInput(noteName, doc.Metadata, c)
+		h := sha256Hash([]byte(input))
+		if prev, ok := existingByKey[chunkKey(string(c.Kind), c.Ord)]; !force && ok && bytesEqual(prev.ChunkHash, h) {
 			continue
 		}
-		todo = append(todo, pending{idx: i, hash: h})
-	}
-	if len(todo) == 0 {
-		return 0, nil
+		todo = append(todo, pending{idx: i, hash: h, input: input})
 	}
 
 	// Keep both the number of inputs and their total size bounded. Ollama's CPU
@@ -251,7 +264,7 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content stri
 		end := start
 		batchRunes := 0
 		for end < len(todo) && end-start < maxBatchInputs {
-			n := len([]rune(chunks[todo[end].idx].Text))
+			n := len([]rune(todo[end].input))
 			if end > start && batchRunes+n > maxBatchRunes {
 				break
 			}
@@ -261,7 +274,7 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content stri
 		batch := todo[start:end]
 		inputs := make([]string, len(batch))
 		for i, p := range batch {
-			inputs[i] = chunks[p.idx].Text
+			inputs[i] = p.input
 		}
 		vecs, err := ix.embedder.Embed(ctx, inputs, ix.metrics)
 		if err != nil {
@@ -269,11 +282,17 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content stri
 		}
 		for i, p := range batch {
 			c := chunks[p.idx]
-			if err := UpsertChunk(ctx, ix.pool, noteID, string(c.Kind), c.Ord, c.Text, p.hash, vecs[i]); err != nil {
+			if err := UpsertChunk(ctx, ix.pool, noteID, string(c.Kind), c.Ord, c.Text, c.HeadingPath, p.hash, vecs[i], ix.cfg.EmbedModel); err != nil {
 				return 0, err
 			}
 		}
 		start = end
+	}
+	if _, err := DeleteChunksByID(ctx, ix.pool, staleIDs); err != nil {
+		return 0, err
+	}
+	if err := MarkNoteChunksCurrent(ctx, ix.pool, noteID, ix.cfg.EmbedModel); err != nil {
+		return 0, err
 	}
 	return len(todo), nil
 }
@@ -308,7 +327,7 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 			page = min(page, remaining)
 		}
 
-		notes, err := NotesMissingChunks(ctx, ix.pool, afterID, page)
+		notes, err := NotesNeedingChunks(ctx, ix.pool, afterID, page, ix.cfg.EmbedModel)
 		if err != nil {
 			return embedded, err
 		}
@@ -318,7 +337,11 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 
 		for _, n := range notes {
 			afterID = n.ID
-			emb, err := ix.reindexChunks(ctx, n.ID, n.Content)
+			doc := ParseDocument(n.Content, n.Name)
+			if err := UpdateNoteParsed(ctx, ix.pool, n.ID, doc); err != nil {
+				return embedded, err
+			}
+			emb, err := ix.reindexChunks(ctx, n.ID, n.Name, doc, true)
 			if err != nil {
 				return embedded, err
 			}

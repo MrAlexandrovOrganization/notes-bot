@@ -10,6 +10,7 @@ service SearchService {
   rpc SearchByName    (SearchRequest) returns (SearchResponse);
   rpc SearchByContent (SearchRequest) returns (SearchResponse);
   rpc SearchSemantic  (SearchRequest) returns (SearchResponse);
+  rpc SearchHybrid    (SearchRequest) returns (SearchResponse);
   rpc GetNote         (GetNoteRequest) returns (Note);
   rpc Reindex         (ReindexRequest) returns (ReindexResponse);
 }
@@ -17,10 +18,10 @@ service SearchService {
 message SearchRequest {
   string query = 1;
   int32  limit = 2;
-  // Optional date filters (DD-Mmm-YYYY format if note has a date frontmatter); reserved for semantic search.
+  // Optional inclusive date filters (YYYY-MM-DD or DD-Mmm-YYYY).
   string date_from = 3;
   string date_to   = 4;
-  // Optional chunk kinds filter for semantic search: "note" | "paragraph" | "task".
+  // Optional chunk kinds filter: "paragraph" | "task".
   repeated string kinds = 5;
 }
 
@@ -31,6 +32,14 @@ message Hit {
   string snippet    = 4;
   double score      = 5;
   string chunk_kind = 6;
+  int64  chunk_id = 7;
+  string heading_path = 8;
+  int32  ord = 9;
+  bool   neighbor = 10;
+  string note_date = 11;
+  string title = 12;
+  repeated string tags = 13;
+  repeated string links = 14;
 }
 
 message SearchResponse {
@@ -61,4 +70,6 @@ message ReindexResponse {
   int32 updated  = 2;
   int32 deleted  = 3;
   int32 embedded = 4;
+  int32 errors   = 5;
+  int64 pending  = 6;
 }

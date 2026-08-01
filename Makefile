@@ -26,6 +26,7 @@ templ:
 
 # All Go unit test packages (no integration)
 GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
+		       ./internal/searchquery/... \
                ./frontends/telegram/tghandlers/... \
                ./frontends/telegram/tgkeyboards/... \
                ./frontends/telegram/tgstates/... \
@@ -34,8 +35,8 @@ GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
 # All packages to instrument for coverage
 TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
 WEB_COVERPKGS = notes-bot/frontends/web/webapp
-GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
-GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
+GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,notes-bot/internal/searchquery,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
+GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,notes-bot/internal/searchquery,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)

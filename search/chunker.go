@@ -12,24 +12,29 @@ const maxChunkRunes = 1500
 type ChunkKind string
 
 const (
+	// KindNote is retained for rolling-schema compatibility with old rows. The
+	// current chunker never emits it.
 	KindNote      ChunkKind = "note"
 	KindParagraph ChunkKind = "paragraph"
 	KindTask      ChunkKind = "task"
 )
 
 type Chunk struct {
-	Kind ChunkKind
-	Ord  int
-	Text string
+	Kind        ChunkKind
+	Ord         int
+	Text        string
+	HeadingPath string
 }
 
 // utf8BOM is the byte order mark sometimes prepended to UTF-8 files; we trim it
 // before any structural parsing so frontmatter detection works.
 const utf8BOM = "\ufeff"
 
-// ChunkContent splits raw markdown into semantic chunks: one "note" chunk for
-// the whole body (frontmatter stripped), one "task" chunk per task line, and one
-// "paragraph" chunk per blank-line-separated paragraph in the body.
+// ChunkContent splits raw markdown into non-overlapping semantic chunks. Task
+// lines become task chunks and are removed from paragraph chunks, so the same
+// text never competes with itself under several kinds. Markdown headings are
+// carried as metadata and ord is global within a note, which makes adjacent
+// chunks addressable regardless of their kind.
 //
 // Returns nil if the body is empty after stripping. Order within each kind
 // starts at 0 and matches reading order.
@@ -41,28 +46,69 @@ func ChunkContent(content string) []Chunk {
 	}
 
 	chunks := make([]Chunk, 0, 8)
-	for ord, part := range splitLongText(body, maxChunkRunes) {
-		chunks = append(chunks, Chunk{Kind: KindNote, Ord: ord, Text: part})
+	headings := make([]string, 0, 6)
+	var paragraph strings.Builder
+
+	headingPath := func() string { return strings.Join(headings, " / ") }
+	appendChunk := func(kind ChunkKind, text string) {
+		for _, part := range splitLongText(text, maxChunkRunes) {
+			chunks = append(chunks, Chunk{
+				Kind:        kind,
+				Ord:         len(chunks),
+				Text:        part,
+				HeadingPath: headingPath(),
+			})
+		}
+	}
+	flushParagraph := func() {
+		text := strings.TrimSpace(paragraph.String())
+		paragraph.Reset()
+		if text == "" || text == "---" {
+			return
+		}
+		appendChunk(KindParagraph, text)
 	}
 
-	taskOrd := 0
 	for line := range strings.Lines(body) {
-		t := strings.TrimSpace(line)
-		if isTaskLine(t) {
-			chunks = append(chunks, Chunk{Kind: KindTask, Ord: taskOrd, Text: t})
-			taskOrd++
+		line = strings.TrimRight(line, "\r\n")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			flushParagraph()
+			continue
 		}
-	}
-
-	paraOrd := 0
-	for _, para := range splitParagraphs(body) {
-		for _, part := range splitLongText(para, maxChunkRunes) {
-			chunks = append(chunks, Chunk{Kind: KindParagraph, Ord: paraOrd, Text: part})
-			paraOrd++
+		if level, title, ok := markdownHeading(trimmed); ok {
+			flushParagraph()
+			if len(headings) >= level {
+				headings = headings[:level-1]
+			}
+			for len(headings) < level-1 {
+				headings = append(headings, "")
+			}
+			headings = append(headings, title)
+			continue
 		}
+		if isTaskLine(trimmed) {
+			flushParagraph()
+			appendChunk(KindTask, trimmed)
+			continue
+		}
+		paragraph.WriteString(line)
+		paragraph.WriteByte('\n')
 	}
+	flushParagraph()
 
 	return chunks
+}
+
+func markdownHeading(line string) (level int, title string, ok bool) {
+	for level < len(line) && level < 6 && line[level] == '#' {
+		level++
+	}
+	if level == 0 || level >= len(line) || line[level] != ' ' {
+		return 0, "", false
+	}
+	title = strings.TrimSpace(strings.TrimRight(line[level+1:], "#"))
+	return level, title, title != ""
 }
 
 // splitLongText splits at whitespace when possible and falls back to a hard
@@ -102,21 +148,11 @@ func splitLongText(text string, maxRunes int) []string {
 // The block ends at the next line starting with `---`. Returns the content unchanged
 // if no frontmatter is present.
 func stripFrontmatter(content string) string {
-	c := strings.TrimPrefix(content, utf8BOM)
-	if !strings.HasPrefix(c, "---") {
+	_, body, ok := splitFrontmatter(content)
+	if !ok {
 		return content
 	}
-	rest := c[3:]
-	if !strings.HasPrefix(rest, "\n") && !strings.HasPrefix(rest, "\r\n") {
-		return content
-	}
-	idx := strings.Index(rest, "\n---")
-	if idx < 0 {
-		return content
-	}
-	after := rest[idx+len("\n---"):]
-	after = strings.TrimLeft(after, "\r\n")
-	return after
+	return body
 }
 
 func isTaskLine(s string) bool {
@@ -127,32 +163,4 @@ func isTaskLine(s string) bool {
 		return false
 	}
 	return s[4] == ']'
-}
-
-// splitParagraphs returns body split on blank lines. Empty paragraphs and
-// pure-frontmatter-separator lines (`---`) are skipped.
-func splitParagraphs(body string) []string {
-	var paras []string
-	var cur strings.Builder
-
-	flush := func() {
-		s := strings.TrimSpace(cur.String())
-		cur.Reset()
-		if s == "" || s == "---" {
-			return
-		}
-		paras = append(paras, s)
-	}
-
-	for line := range strings.Lines(body) {
-		stripped := strings.TrimRight(line, "\r\n")
-		if strings.TrimSpace(stripped) == "" {
-			flush()
-			continue
-		}
-		cur.WriteString(stripped)
-		cur.WriteByte('\n')
-	}
-	flush()
-	return paras
 }

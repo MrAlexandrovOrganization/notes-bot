@@ -134,6 +134,9 @@ func (f *fakeSearch) SearchByContent(ctx context.Context, query string, limit in
 func (f *fakeSearch) SearchSemantic(ctx context.Context, query string, limit int) ([]*clients.SearchHit, error) {
 	return f.semantic, f.err
 }
+func (f *fakeSearch) SearchHybrid(ctx context.Context, query string, limit int, options clients.SearchOptions) ([]*clients.SearchHit, error) {
+	return f.semantic, f.err
+}
 func (f *fakeSearch) GetNoteByID(ctx context.Context, id int64) (*clients.SearchNote, error) {
 	return f.note, f.err
 }

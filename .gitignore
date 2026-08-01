@@ -57,7 +57,6 @@ Thumbs.db
 # Compiled binaries (prevent accidental commits)
 /core
 /notifications
-/search
 /search-bin
 /telegram
 /web

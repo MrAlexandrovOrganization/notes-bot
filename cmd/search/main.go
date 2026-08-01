@@ -76,6 +76,20 @@ func main() {
 	if err != nil {
 		logger.Warn("failed to register notes gauge", zap.Error(err))
 	}
+	_, err = meter.Int64ObservableGauge("search.notes.pending_index",
+		metric.WithDescription("Notes waiting for the current chunk/embedding index"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			count, err := search.CountNotesPendingIndex(ctx, pool, cfg.EmbedModel)
+			if err != nil {
+				return err
+			}
+			o.Observe(count)
+			return nil
+		}),
+	)
+	if err != nil {
+		logger.Warn("failed to register pending index gauge", zap.Error(err))
+	}
 
 	var embedder *search.Embedder
 	if cfg.EnableEmbeddings {
