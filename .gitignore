@@ -49,6 +49,10 @@ Thumbs.db
 # Go
 *_grpc.pb.go
 *.pb.go
+*_templ.go
+
+# Web frontend static assets built at Docker-build time
+/frontends/web/webapp/static/tailwind.css
 
 # Compiled binaries (prevent accidental commits)
 /core
@@ -56,6 +60,7 @@ Thumbs.db
 /search
 /search-bin
 /telegram
+/web
 *.exe
 
 # Third-party vendored projects

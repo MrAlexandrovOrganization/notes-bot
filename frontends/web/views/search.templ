@@ -1,0 +1,92 @@
+package views
+
+import "strconv"
+
+type SearchHitData struct {
+	NoteID  int64
+	Relpath string
+	Name    string
+	Snippet string
+}
+
+type SearchData struct {
+	Query string
+	Hits  []SearchHitData
+}
+
+templ Search(d SearchData) {
+	@Page("Поиск", "search") {
+		<div class="space-y-4">
+			<form method="get" action="/search" class="flex gap-2">
+				<input
+					type="text"
+					name="q"
+					value={ d.Query }
+					placeholder="Имя заметки или фраза"
+					required
+					autofocus
+					class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+				/>
+				<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+					Искать
+				</button>
+			</form>
+
+			if d.Query != "" {
+				<div class="space-y-2">
+					for _, hit := range d.Hits {
+						@searchHitRow(hit)
+					}
+					if len(d.Hits) == 0 {
+						<p class="text-sm text-slate-400">Ничего не нашлось по запросу «{ d.Query }»</p>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+templ searchHitRow(hit SearchHitData) {
+	<a
+		href={ templ.URL("/search/note/" + strconv.FormatInt(hit.NoteID, 10)) }
+		class="block rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-400"
+	>
+		<div class="font-medium">{ hit.Name }</div>
+		<div class="text-xs text-slate-500">{ hit.Relpath }</div>
+		if hit.Snippet != "" {
+			<div class="mt-1 text-sm text-slate-600">{ hit.Snippet }</div>
+		}
+	</a>
+}
+
+type SearchNoteData struct {
+	ID      int64
+	Name    string
+	Relpath string
+	Content string
+}
+
+templ SearchNote(d SearchNoteData) {
+	@Page(d.Name, "search") {
+		<div class="space-y-4">
+			<div>
+				<h1 class="text-xl font-semibold">{ d.Name }</h1>
+				<p class="text-xs text-slate-500">{ d.Relpath }</p>
+			</div>
+			<pre class="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">{ d.Content }</pre>
+			<form method="post" action={ templ.URL("/search/note/" + strconv.FormatInt(d.ID, 10) + "/append") } class="flex gap-2">
+				<input type="hidden" name="relpath" value={ d.Relpath }/>
+				<input
+					type="text"
+					name="text"
+					placeholder="Добавить запись в эту заметку"
+					required
+					class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+				/>
+				<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+					Добавить
+				</button>
+			</form>
+		</div>
+	}
+}

@@ -17,17 +17,25 @@ install:
 	go install github.com/bufbuild/buf/cmd/buf@v1.67.0
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+	go install github.com/a-h/templ/cmd/templ@v0.3.1020
+
+# Regenerate *_templ.go from frontends/web/views/*.templ (gitignored, like the
+# proto stubs — run this after checkout or after editing a .templ file).
+templ:
+	templ generate ./frontends/web/views
 
 # All Go unit test packages (no integration)
 GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
                ./frontends/telegram/tghandlers/... \
                ./frontends/telegram/tgkeyboards/... \
-               ./frontends/telegram/tgstates/...
+               ./frontends/telegram/tgstates/... \
+               ./frontends/web/...
 
 # All packages to instrument for coverage
 TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
-GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS)
-GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS)
+WEB_COVERPKGS = notes-bot/frontends/web/webapp
+GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
+GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)
@@ -82,14 +90,17 @@ build-telegram:
 build-search:
 	$(DOCKER_COMPOSE) build search
 
+build-web:
+	$(DOCKER_COMPOSE) build web
+
 test-search:
 	go test ./search/... -v
 
 format:
-	gofmt -w ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./cmd/
+	gofmt -w ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./frontends/web/ ./cmd/
 
 lint:
-	@diff=$$(gofmt -l ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./cmd/); \
+	@diff=$$(gofmt -l ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./frontends/web/ ./cmd/); \
 	if [ -n "$$diff" ]; then \
 		echo "gofmt found unformatted files:"; \
 		echo "$$diff"; \
@@ -166,4 +177,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format lint print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister
+.PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format lint print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

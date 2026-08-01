@@ -1,0 +1,104 @@
+package views
+
+import "net/url"
+
+type BrowseEntry struct {
+	Name    string
+	Relpath string
+	IsDir   bool
+}
+
+type BrowseData struct {
+	Path      string
+	ParentURL string
+	ShowUp    bool
+	Entries   []BrowseEntry
+}
+
+templ Browse(d BrowseData) {
+	@Page("Обзор", "browse") {
+		<div class="rounded-lg border border-slate-200 bg-white p-4">
+			<div class="mb-3 flex items-center justify-between">
+				<h1 class="text-sm font-medium text-slate-500">
+					if d.Path == "" {
+						Корень хранилища
+					} else {
+						{ d.Path }
+					}
+				</h1>
+				if d.ShowUp {
+					<a href={ templ.URL(folderURL(d.ParentURL)) } class="text-sm text-slate-500 hover:underline">⬆ Наверх</a>
+				}
+			</div>
+			<ul class="space-y-1">
+				for _, e := range d.Entries {
+					@browseEntryRow(e)
+				}
+				if len(d.Entries) == 0 {
+					<li class="text-sm text-slate-400">Папка пуста</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
+templ browseEntryRow(e BrowseEntry) {
+	if e.IsDir {
+		<li>
+			<a href={ templ.URL(folderURL(e.Relpath)) } class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+				<span>📁</span>
+				<span>{ e.Name }</span>
+			</a>
+		</li>
+	} else {
+		<li>
+			<a href={ templ.URL(fileURL(e.Relpath)) } class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+				<span>📄</span>
+				<span>{ e.Name }</span>
+			</a>
+		</li>
+	}
+}
+
+func folderURL(relpath string) string {
+	return "/browse?path=" + url.QueryEscape(relpath)
+}
+
+func fileURL(relpath string) string {
+	return "/browse/file?path=" + url.QueryEscape(relpath)
+}
+
+type BrowseFileData struct {
+	Name      string
+	Relpath   string
+	Content   string
+	FolderURL string
+}
+
+templ BrowseFile(d BrowseFileData) {
+	@Page(d.Name, "browse") {
+		<div class="space-y-4">
+			<div class="flex items-center justify-between">
+				<div>
+					<h1 class="text-xl font-semibold">{ d.Name }</h1>
+					<p class="text-xs text-slate-500">{ d.Relpath }</p>
+				</div>
+				<a href={ templ.URL(folderURL(d.FolderURL)) } class="text-sm text-slate-500 hover:underline">⬆ К папке</a>
+			</div>
+			<pre class="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">{ d.Content }</pre>
+			<form method="post" action="/browse/file/append" class="flex gap-2">
+				<input type="hidden" name="relpath" value={ d.Relpath }/>
+				<input
+					type="text"
+					name="text"
+					placeholder="Добавить запись в эту заметку"
+					required
+					class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+				/>
+				<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+					Добавить
+				</button>
+			</form>
+		</div>
+	}
+}

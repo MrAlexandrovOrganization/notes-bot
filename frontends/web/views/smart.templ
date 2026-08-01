@@ -1,0 +1,104 @@
+package views
+
+import "strconv"
+
+type SmartData struct {
+	RawText    string
+	Intent     string
+	TaskTitle  string
+	Confidence float64
+	Reminder   *ReminderFormData
+	Error      string
+}
+
+templ Smart(d SmartData) {
+	@Page("Быстрый ввод", "smart") {
+		<div class="space-y-4">
+			<form method="post" action="/smart" class="flex gap-2">
+				<textarea
+					name="text"
+					rows="2"
+					placeholder="Купил молоко / Позвонить маме / Завтра в 9 утра планёрка"
+					required
+					autofocus
+					class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+				>{ d.RawText }</textarea>
+				<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+					Обработать
+				</button>
+			</form>
+
+			@ErrorBanner(d.Error)
+
+			if d.Intent != "" {
+				@smartPreview(d)
+			}
+		</div>
+	}
+}
+
+templ smartPreview(d SmartData) {
+	<div class="rounded-lg border border-slate-200 bg-white p-4">
+		switch d.Intent {
+			case "note":
+				<p class="mb-3 text-sm text-slate-700">📝 Записать в заметку сегодняшнего дня:</p>
+				<blockquote class="mb-3 rounded bg-slate-50 p-2 text-sm italic text-slate-600">{ d.RawText }</blockquote>
+				<form method="post" action="/smart/confirm">
+					<input type="hidden" name="intent" value="note"/>
+					<input type="hidden" name="raw_text" value={ d.RawText }/>
+					@smartConfirmButtons()
+				</form>
+			case "task":
+				<p class="mb-3 text-sm text-slate-700">✅ Добавить задачу на сегодня:</p>
+				<blockquote class="mb-3 rounded bg-slate-50 p-2 text-sm italic text-slate-600">{ taskTitleOr(d) }</blockquote>
+				<form method="post" action="/smart/confirm">
+					<input type="hidden" name="intent" value="task"/>
+					<input type="hidden" name="raw_text" value={ d.RawText }/>
+					<input type="hidden" name="task_title" value={ taskTitleOr(d) }/>
+					@smartConfirmButtons()
+				</form>
+			case "reminder":
+				<p class="mb-3 text-sm text-slate-700">⏰ Создать напоминание:</p>
+				if d.Reminder != nil {
+					@reminderCreateForm(*d.Reminder, "/smart/confirm") {
+						<input type="hidden" name="intent" value="reminder"/>
+						<input type="hidden" name="raw_text" value={ d.RawText }/>
+					}
+				} else {
+					<p class="text-sm text-slate-500">Не удалось распознать детали. Заполните напоминание вручную на странице «Напоминания».</p>
+				}
+			default:
+				<p class="mb-3 text-sm text-slate-700">🤔 Не поняла, что сделать (уверенность { confidencePercent(d.Confidence) }%). Выберите вручную:</p>
+				<div class="flex flex-wrap gap-2">
+					@smartPickForm(d.RawText, "note", "Записать в заметку")
+					@smartPickForm(d.RawText, "task", "Добавить задачу")
+				</div>
+		}
+	</div>
+}
+
+templ smartConfirmButtons() {
+	<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+		Подтвердить
+	</button>
+}
+
+templ smartPickForm(rawText, intent, label string) {
+	<form method="post" action="/smart/confirm">
+		<input type="hidden" name="intent" value={ intent }/>
+		<input type="hidden" name="raw_text" value={ rawText }/>
+		<input type="hidden" name="task_title" value={ rawText }/>
+		<button type="submit" class="rounded bg-slate-100 px-3 py-1.5 text-sm hover:bg-slate-200">{ label }</button>
+	</form>
+}
+
+func taskTitleOr(d SmartData) string {
+	if d.TaskTitle != "" {
+		return d.TaskTitle
+	}
+	return d.RawText
+}
+
+func confidencePercent(c float64) string {
+	return strconv.Itoa(int(c * 100))
+}

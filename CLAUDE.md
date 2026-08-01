@@ -1,6 +1,6 @@
 # Notes Bot — Context for AI Assistants
 
-A personal Telegram bot for managing daily Obsidian-style markdown notes, tasks, ratings, reminders, voice-to-text transcription, semantic search, and natural-language intent classification. Uses a local LLM (Ollama) for NL reminder parsing and smart routing.
+A personal Telegram bot (plus a server-rendered web frontend) for managing daily Obsidian-style markdown notes, tasks, ratings, reminders, voice-to-text transcription, semantic search, and natural-language intent classification. Uses a local LLM (Ollama) for NL reminder parsing and smart routing.
 
 ## Quick Reference
 
@@ -18,18 +18,21 @@ make build-core       # Rebuild core service image
 make build-notifications # Rebuild notifications image
 make build-search     # Rebuild search image
 make build-telegram   # Rebuild telegram image
+make build-web        # Rebuild web frontend image
+make templ            # Regenerate frontends/web/views/*_templ.go from *.templ sources
 ```
 
 ## Architecture
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]         :50051
+[Web Frontend] ──gRPC──┘
                ──gRPC──► [Notifications Service] :50052
                ──gRPC──► [Search Service]        :50054
-               ──gRPC──► [Whisper Service]        :50053  (external: backends/transcriber)
+               ──gRPC──► [Whisper Service]        :50053  (external: backends/transcriber, telegram only)
                ──HTTP──► [Ollama LLM]             :11434  (external: backends/ollama)
-               ──HTTP──► [Location Service]       :8080   (external: backends/location)
-               ──────────[Redis]                  :6379   (external: infra/redis, user state)
+               ──HTTP──► [Location Service]       :8080   (external: backends/location, telegram only)
+               ──────────[Redis]                  :6379   (external: infra/redis, telegram user state)
                                  │
                           [PostgreSQL :5432]  (reminders)
                           [PostgreSQL :5432]  (search, pgvector)
@@ -38,9 +41,11 @@ make build-telegram   # Rebuild telegram image
 [Search Service]        ──indexing──► PostgreSQL pgvector + FTS
 ```
 
+The web frontend is a second, independent client of the same `core`/`notifications`/`search`/Ollama backends — full feature parity with the Telegram bot except voice transcription and location sharing (both device-dependent, not applicable to a browser form). It does not touch Kafka, Redis, Whisper, or Location.
+
 ### Service topology
 
-This repo (`notes-bot`) runs **4 Go services** in Docker. All infrastructure (Kafka, Redis, Jaeger, Prometheus, Grafana, Whisper, Ollama, Location) is **external** — consumed via Docker networks declared in `docker-compose.yml` as `external: true`. Sources of truth:
+This repo (`notes-bot`) runs **5 Go services** in Docker. All infrastructure (Kafka, Redis, Jaeger, Prometheus, Grafana, Whisper, Ollama, Location) is **external** — consumed via Docker networks declared in `docker-compose.yml` as `external: true`. Sources of truth:
 
 | External dependency | Source repo | Docker network |
 |---------------------|-------------|-----------------|
@@ -59,10 +64,11 @@ This repo (`notes-bot`) runs **4 Go services** in Docker. All infrastructure (Ka
 | notifications | `cmd/notifications/main.go` | 50052 | 9101 | Reminders with DB persistence, publishes to Kafka |
 | search | `cmd/search/main.go` | 50054 | 9103 | Full-text + semantic search (pgvector, Ollama embeddings) |
 | telegram | `cmd/telegram/main.go` | — | 9102 | User-facing Telegram bot, Kafka consumer, LLM smart router |
+| web | `cmd/web/main.go` | — | 9105 | Server-rendered web frontend (templ + htmx + Tailwind), password-gated |
 | postgres | docker image | 5432 | — | Reminders storage (notifications) |
 | postgres-search | `pgvector/pgvector:pg16` | 5432 | — | Search storage with pgvector extension |
 
-Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_probe` binary. Telegram uses HTTP `/metrics` endpoint wget check. All containers run as non-root user `app` (UID 10001).
+Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_probe` binary. Telegram and web use HTTP wget checks (`/metrics`, `/healthz` respectively). All containers run as non-root user `app` (UID 10001).
 
 ## Key Files
 
@@ -135,6 +141,26 @@ Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_p
 - `frontends/telegram/bot/kafka_consumer.go` — `RunKafkaConsumer()` goroutine, consumer group, retry loop
 - `frontends/telegram/bot/kafka_consumer_test.go` — tests for `ReminderEvent` JSON round-trip
 - `frontends/telegram/bot/metrics.go` — Prometheus metrics: `UpdatesTotal`, `KafkaMessagesConsumed`, `ReminderDeliveryErrors`, `HandlerDuration`, `SmartIntentTotal`, `SmartIntentConfirmed`, `SmartIntentRejected`
+
+### Web Frontend (`frontends/web/`)
+Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwind for styling) — same feature set as the Telegram bot minus voice transcription and location sharing. Reuses `frontends/telegram/clients` directly (same Go module) for `CoreClient`/`NotificationsClient`/`SearchClient`/`LLMClient` — no separate client layer.
+- `cmd/web/main.go` — entry point, wires clients + `webapp.App`, starts `http.Server`
+- `frontends/web/config/config.go` — `Load()`; requires `WEB_PASSWORD` + `WEB_SESSION_SECRET`
+- `frontends/web/webapp/app.go` — `App` struct (clients + config + logger); `singleUserID = 0` used for all Notifications RPCs (single-user tool, no per-Telegram-user concept)
+- `frontends/web/webapp/router.go` — `NewRouter()` builds the route table (Go 1.26 method+pattern `http.ServeMux`); `//go:embed static` serves `htmx.min.js` + built `tailwind.css`
+- `frontends/web/webapp/auth.go` — stateless HMAC-signed session cookie (no Redis/DB) checked against `WEB_PASSWORD`; `requireAuth` middleware, sliding 30-day TTL
+- `frontends/web/webapp/render.go` — `(*App).render()` writes a `templ.Component` to the response
+- `frontends/web/webapp/day.go` — day view (note/rating/tasks, loaded concurrently via `errgroup`, mirrors Telegram's note-view pattern); task add/toggle, rating update, append-to-note
+- `frontends/web/webapp/calendar.go` — month calendar grid (`buildCalendarWeeks`, Monday-start, mirrors `tgkeyboards/calendar.go`'s convention)
+- `frontends/web/webapp/reminders.go` — list/create/delete/postpone + NL create; `formToScheduleParams()` validates form fields into `*pb.ScheduleParams` (mirrors `tgstates.ReminderDraft.ToScheduleParams`); `parseDuration()` copied from `reminder_postpone.go` (unexported there)
+- `frontends/web/webapp/search.go` — name search w/ content fallback (mirrors `find.go`), open note, append-to-note-by-path
+- `frontends/web/webapp/ask.go` — RAG Q&A: `hybridSearch()` (semantic + FTS, RRF-merged) + `LLM.Ask()`, mirrors `ask.go`
+- `frontends/web/webapp/browse.go` — directory browser; unlike Telegram's success-based type inference, uses `DirEntry.IsDir` directly
+- `frontends/web/webapp/smart.go` — LLM intent classification → confirm form (hidden fields) → dispatch to note/task/reminder
+- `frontends/web/webapp/fakes_test.go` — fake `CoreService`/`NotificationsService`/`SearchService`/`LLMService` implementations for handler tests
+- `frontends/web/views/*.templ` — templ components; compiled to `*_templ.go` via `templ generate` (gitignored, like `*.pb.go` — regenerate with `make templ`)
+- `frontends/web/webapp/static/` — `htmx.min.js` (vendored) + `input.css` (Tailwind source, checked in) + `tailwind.css` (built at Docker-image-build time via a Node-based `@tailwindcss/cli` stage, gitignored)
+- `frontends/web/Dockerfile` — 4 stages: `gobuilder` (proto+templ codegen, same as telegram's `buf generate`) → `twbuilder` (`node:20-alpine`, builds `tailwind.css` from the generated views — the standalone Bun-based Tailwind CLI is unreliable under some container runtimes, hence Node) → `finalbuilder` (copies `tailwind.css` back, runs `go build`) → `alpine:3.20` runtime
 
 ### Internal Packages (`internal/`)
 - `internal/applog/applog.go` — `New()` creates zap logger; `With(ctx, l)` enriches with OTel trace/span IDs
@@ -237,6 +263,8 @@ DB_PASSWORD=<strong_password>
 SEARCH_DB_NAME=search
 SEARCH_DB_USER=search
 SEARCH_DB_PASSWORD=<search_db_password>
+WEB_PASSWORD=<web_frontend_password>       # single shared password, same trust model as ROOT_ID
+WEB_SESSION_SECRET=<random_signing_secret> # e.g. `openssl rand -hex 32`; never reuse WEB_PASSWORD here
 ```
 
 ### Optional (defaults shown)
@@ -262,6 +290,7 @@ SEARCH_ENABLE_EMBEDDINGS=false
 SEARCH_INDEX_INTERVAL=5m
 OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317  # unset = tracing disabled
 WEBHOOK_URL=                 # empty = polling mode; set URL for webhook mode
+WEB_LISTEN_ADDR=:8090        # web frontend listen address
 ```
 
 ## Conventions and Patterns
@@ -334,11 +363,11 @@ make cover                 # Combined unit + integration coverage
 make cover-html            # Coverage HTML report (opens in browser)
 ```
 
-Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, `./search/...`, `./frontends/telegram/tghandlers/...`, `./frontends/telegram/tgkeyboards/...`, `./frontends/telegram/tgstates/...`, `./frontends/telegram/clients/...`, `./frontends/telegram/bot/...`
+Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, `./search/...`, `./frontends/telegram/tghandlers/...`, `./frontends/telegram/tgkeyboards/...`, `./frontends/telegram/tgstates/...`, `./frontends/telegram/clients/...`, `./frontends/telegram/bot/...`, `./frontends/web/...`
 
 Integration tests: `integration/core_test.go` — 22 tests (require running core service).
 
-CI (`.github/workflows/ci-cd.yml`): runs `make lint` + `make test` (with `-race`) on every push/PR to main.
+CI (`.github/workflows/ci-cd.yml`): runs `buf generate` + `make templ` (regenerates `frontends/web/views/*_templ.go`) before `make lint` + `make test` on every push/PR to main.
 
 ## Notes Volume Structure (expected)
 
@@ -353,7 +382,7 @@ $NOTES_DIR/
 
 ## Docker
 
-- All Dockerfiles use multi-stage builds: `golang:1.26-alpine` builder → `alpine:3.20` runtime
+- All Dockerfiles use multi-stage builds: `golang:1.26-alpine` builder → `alpine:3.20` runtime (`frontends/web/Dockerfile` adds a `node:20-alpine` stage to build Tailwind CSS — see Web Frontend section above)
 - Binaries built with `CGO_ENABLED=0 -ldflags="-s -w"` (static, stripped)
 - Containers run as non-root user `app` (UID 10001)
 - `grpc_health_probe` downloaded at build time (v0.4.28)

@@ -243,6 +243,49 @@ services:
       file: docker-compose.base.yml
       service: base
 
+  web:
+    container_name: notes-bot-web
+    build:
+      context: .
+      dockerfile: frontends/web/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - CORE_GRPC_HOST=core
+      - CORE_GRPC_PORT=50051
+      - NOTIFICATIONS_GRPC_HOST=notifications
+      - NOTIFICATIONS_GRPC_PORT=50052
+      - SEARCH_GRPC_HOST=search
+      - SEARCH_GRPC_PORT=50054
+      - LLM_HOST=ollama
+      - LLM_PORT=11434
+      - LLM_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - WEB_LISTEN_ADDR=:8090
+      - METRICS_PORT=9105
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+    networks:
+      - default
+      - caddy-net
+      - ollama-net     # shared Ollama LLM service
+      - monitoring-net
+    depends_on:
+      core:
+        condition: service_healthy
+      search:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    extends:
+      file: docker-compose.base.yml
+      service: base
+
 volumes:
   postgres_data:
   postgres_search_data:

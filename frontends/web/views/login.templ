@@ -1,0 +1,31 @@
+package views
+
+templ Login(errMessage string) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Вход — Заметки</title>
+			<link rel="stylesheet" href="/static/tailwind.css"/>
+		</head>
+		<body class="flex min-h-screen items-center justify-center bg-slate-50">
+			<form method="post" action="/login" class="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+				<h1 class="mb-4 text-lg font-semibold">Заметки</h1>
+				@ErrorBanner(errMessage)
+				<label class="mb-1 block text-sm font-medium text-slate-700" for="password">Пароль</label>
+				<input
+					id="password"
+					name="password"
+					type="password"
+					autofocus
+					required
+					class="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+				/>
+				<button type="submit" class="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
+					Войти
+				</button>
+			</form>
+		</body>
+	</html>
+}

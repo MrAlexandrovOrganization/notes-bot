@@ -27,6 +27,9 @@ jobs:
       - name: Generate proto stubs
         run: buf generate
 
+      - name: Generate templ views
+        run: make templ
+
       - name: Lint
         run: make lint
 

@@ -1,0 +1,217 @@
+package views
+
+import "strconv"
+
+type ReminderItem struct {
+	ID           int64
+	Title        string
+	ScheduleType string
+	NextFireAt   string
+}
+
+type ReminderFormData struct {
+	Title        string
+	ScheduleType string
+	Hour         int
+	Minute       int
+	Days         []int
+	DayOfMonth   int
+	Month        int
+	Day          int
+	Date         string
+	IntervalDays int
+	CreateTask   bool
+}
+
+type RemindersData struct {
+	Reminders []ReminderItem
+	FormError string
+	Form      ReminderFormData
+}
+
+templ Reminders(d RemindersData) {
+	@Page("Напоминания", "reminders") {
+		<div class="space-y-6">
+			<section class="rounded-lg border border-slate-200 bg-white p-4">
+				<h2 class="mb-2 text-sm font-medium text-slate-500">Список</h2>
+				<ul class="space-y-2">
+					for _, item := range d.Reminders {
+						@reminderRow(item)
+					}
+					if len(d.Reminders) == 0 {
+						<li class="text-sm text-slate-400">Напоминаний пока нет</li>
+					}
+				</ul>
+			</section>
+
+			<section class="rounded-lg border border-slate-200 bg-white p-4">
+				<h2 class="mb-2 text-sm font-medium text-slate-500">Создать из текста</h2>
+				<form method="post" action="/reminders/nl" class="flex gap-2">
+					<input
+						type="text"
+						name="text"
+						placeholder="Например: каждый понедельник в 9 позвонить маме"
+						required
+						class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+					/>
+					<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+						Разобрать
+					</button>
+				</form>
+			</section>
+
+			<section class="rounded-lg border border-slate-200 bg-white p-4">
+				<h2 class="mb-2 text-sm font-medium text-slate-500">Новое напоминание</h2>
+				@ErrorBanner(d.FormError)
+				@reminderCreateForm(d.Form, "/reminders") {
+				}
+			</section>
+		</div>
+	}
+}
+
+templ reminderRow(item ReminderItem) {
+	<li class="flex items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-sm">
+		<div>
+			<div class="font-medium">{ item.Title }</div>
+			<div class="text-xs text-slate-500">{ item.ScheduleType } · след.: { item.NextFireAt }</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/postpone") } class="flex items-center gap-1">
+				<input type="text" name="duration" placeholder="30m" class="w-16 rounded border border-slate-300 px-1.5 py-1 text-xs"/>
+				<button type="submit" class="rounded bg-slate-100 px-2 py-1 text-xs hover:bg-slate-200">Перенести</button>
+			</form>
+			<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/delete") }>
+				<button type="submit" class="rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100">Удалить</button>
+			</form>
+		</div>
+	</li>
+}
+
+templ reminderCreateForm(f ReminderFormData, action string) {
+	<form method="post" action={ templ.URL(action) } class="space-y-3">
+		{ children... }
+		<div>
+			<label class="mb-1 block text-xs font-medium text-slate-500">Название</label>
+			<input type="text" name="title" value={ f.Title } class="w-full rounded border border-slate-300 px-2 py-1 text-sm"/>
+		</div>
+
+		<div>
+			<label class="mb-1 block text-xs font-medium text-slate-500">Тип расписания</label>
+			<select name="schedule_type" id="schedule_type" onchange="reminderScheduleTypeChanged(this.value)" class="w-full rounded border border-slate-300 px-2 py-1 text-sm">
+				@scheduleOption("daily", f.ScheduleType, "Каждый день")
+				@scheduleOption("weekly", f.ScheduleType, "По дням недели")
+				@scheduleOption("monthly", f.ScheduleType, "Каждый месяц")
+				@scheduleOption("yearly", f.ScheduleType, "Каждый год")
+				@scheduleOption("once", f.ScheduleType, "Один раз")
+				@scheduleOption("custom_days", f.ScheduleType, "Каждые N дней")
+			</select>
+		</div>
+
+		<div class="flex gap-2">
+			<div>
+				<label class="mb-1 block text-xs font-medium text-slate-500">Час</label>
+				<input type="number" name="hour" min="0" max="23" value={ intValue(f.Hour) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			</div>
+			<div>
+				<label class="mb-1 block text-xs font-medium text-slate-500">Минута</label>
+				<input type="number" name="minute" min="0" max="59" value={ intValue(f.Minute) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			</div>
+		</div>
+
+		<div data-schedule-field="weekly" class="rounded border border-slate-100 p-2">
+			<label class="mb-1 block text-xs font-medium text-slate-500">Дни недели</label>
+			<div class="flex flex-wrap gap-2 text-xs">
+				@weekdayCheckbox(0, "Пн", f.Days)
+				@weekdayCheckbox(1, "Вт", f.Days)
+				@weekdayCheckbox(2, "Ср", f.Days)
+				@weekdayCheckbox(3, "Чт", f.Days)
+				@weekdayCheckbox(4, "Пт", f.Days)
+				@weekdayCheckbox(5, "Сб", f.Days)
+				@weekdayCheckbox(6, "Вс", f.Days)
+			</div>
+		</div>
+
+		<div data-schedule-field="monthly" class="rounded border border-slate-100 p-2">
+			<label class="mb-1 block text-xs font-medium text-slate-500">Число месяца (1-31)</label>
+			<input type="number" name="day_of_month" min="1" max="31" value={ intValue(f.DayOfMonth) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+		</div>
+
+		<div data-schedule-field="yearly" class="flex gap-2 rounded border border-slate-100 p-2">
+			<div>
+				<label class="mb-1 block text-xs font-medium text-slate-500">Месяц (1-12)</label>
+				<input type="number" name="month" min="1" max="12" value={ intValue(f.Month) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			</div>
+			<div>
+				<label class="mb-1 block text-xs font-medium text-slate-500">День (1-31)</label>
+				<input type="number" name="day" min="1" max="31" value={ intValue(f.Day) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			</div>
+		</div>
+
+		<div data-schedule-field="once" class="rounded border border-slate-100 p-2">
+			<label class="mb-1 block text-xs font-medium text-slate-500">Дата</label>
+			<input type="date" name="date" value={ f.Date } class="rounded border border-slate-300 px-2 py-1 text-sm"/>
+		</div>
+
+		<div data-schedule-field="custom_days" class="rounded border border-slate-100 p-2">
+			<label class="mb-1 block text-xs font-medium text-slate-500">Интервал в днях</label>
+			<input type="number" name="interval_days" min="1" value={ intValue(f.IntervalDays) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+		</div>
+
+		<label class="flex items-center gap-2 text-sm">
+			if f.CreateTask {
+				<input type="checkbox" name="create_task" checked?={ true }/>
+			} else {
+				<input type="checkbox" name="create_task"/>
+			}
+			Создавать задачу в заметке при срабатывании
+		</label>
+
+		<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+			Создать
+		</button>
+	</form>
+	<script>
+		function reminderScheduleTypeChanged(value) {
+			document.querySelectorAll('[data-schedule-field]').forEach(function (el) {
+				el.style.display = el.getAttribute('data-schedule-field') === value ? '' : 'none';
+			});
+		}
+		reminderScheduleTypeChanged(document.getElementById('schedule_type').value);
+	</script>
+}
+
+templ scheduleOption(value, selected, label string) {
+	if value == selected {
+		<option value={ value } selected?={ true }>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}
+
+templ weekdayCheckbox(day int, label string, selectedDays []int) {
+	<label class="flex items-center gap-1">
+		if containsInt(selectedDays, day) {
+			<input type="checkbox" name="days" value={ strconv.Itoa(day) } checked?={ true }/>
+		} else {
+			<input type="checkbox" name="days" value={ strconv.Itoa(day) }/>
+		}
+		{ label }
+	</label>
+}
+
+func containsInt(xs []int, v int) bool {
+	for _, x := range xs {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+func intValue(n int) string {
+	if n < 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
