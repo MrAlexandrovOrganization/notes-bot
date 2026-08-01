@@ -128,7 +128,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128m
+          memory: 512m
           cpus: "0.5"
 
   search:
