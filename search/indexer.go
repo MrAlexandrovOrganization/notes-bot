@@ -240,10 +240,24 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content stri
 		return 0, nil
 	}
 
-	// Batch embed in chunks to keep request sizes reasonable.
-	const batchSize = 32
-	for start := 0; start < len(todo); start += batchSize {
-		end := min(start+batchSize, len(todo))
+	// Keep both the number of inputs and their total size bounded. Ollama's CPU
+	// backend processes batch members sequentially, so a large count can exceed
+	// the HTTP timeout even when every individual input fits the model context.
+	const (
+		maxBatchInputs = 8
+		maxBatchRunes  = 4000
+	)
+	for start := 0; start < len(todo); {
+		end := start
+		batchRunes := 0
+		for end < len(todo) && end-start < maxBatchInputs {
+			n := len([]rune(chunks[todo[end].idx].Text))
+			if end > start && batchRunes+n > maxBatchRunes {
+				break
+			}
+			batchRunes += n
+			end++
+		}
 		batch := todo[start:end]
 		inputs := make([]string, len(batch))
 		for i, p := range batch {
@@ -259,6 +273,7 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, content stri
 				return 0, err
 			}
 		}
+		start = end
 	}
 	return len(todo), nil
 }
@@ -278,6 +293,7 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 	limit := ix.cfg.BackfillBatchPerPass
 	processed := 0
 	embedded := 0
+	var afterID int64
 
 	for {
 		if ctx.Err() != nil {
@@ -292,7 +308,7 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 			page = min(page, remaining)
 		}
 
-		notes, err := NotesMissingChunks(ctx, ix.pool, page)
+		notes, err := NotesMissingChunks(ctx, ix.pool, afterID, page)
 		if err != nil {
 			return embedded, err
 		}
@@ -301,6 +317,7 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 		}
 
 		for _, n := range notes {
+			afterID = n.ID
 			emb, err := ix.reindexChunks(ctx, n.ID, n.Content)
 			if err != nil {
 				return embedded, err

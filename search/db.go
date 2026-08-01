@@ -345,7 +345,7 @@ func CountNotes(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 
 // NotesMissingChunks returns (id, content) for notes that have no chunk rows yet.
 // Used to backfill embeddings after enabling vector search on an existing index.
-func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, limit int) ([]NoteFull, error) {
+func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int) ([]NoteFull, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -356,9 +356,10 @@ func NotesMissingChunks(ctx context.Context, pool *pgxpool.Pool, limit int) ([]N
 		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content
 		FROM notes n
 		WHERE NOT EXISTS (SELECT 1 FROM note_chunks c WHERE c.note_id = n.id)
+		  AND n.id > $1
 		ORDER BY n.id ASC
-		LIMIT $1
-	`, limit)
+		LIMIT $2
+	`, afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("notes missing chunks: %w", err)
 	}

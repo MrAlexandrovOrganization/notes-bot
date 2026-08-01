@@ -92,6 +92,29 @@ Paragraph X.`
 	}
 }
 
+func TestChunkContent_SplitsLargeInputs(t *testing.T) {
+	src := strings.Repeat("длинный-текст ", 1000)
+	chunks := ChunkContent(src)
+	if len(chunks) < 2 {
+		t.Fatalf("expected large content to be split, got %d chunk(s)", len(chunks))
+	}
+	for _, chunk := range chunks {
+		if got := len([]rune(chunk.Text)); got > maxChunkRunes {
+			t.Errorf("%s/%d has %d runes, limit is %d", chunk.Kind, chunk.Ord, got, maxChunkRunes)
+		}
+	}
+}
+
+func TestSplitLongText_NoWhitespace(t *testing.T) {
+	parts := splitLongText(strings.Repeat("я", maxChunkRunes+1), maxChunkRunes)
+	if len(parts) != 2 {
+		t.Fatalf("want 2 parts, got %d", len(parts))
+	}
+	if len([]rune(parts[0])) != maxChunkRunes || len([]rune(parts[1])) != 1 {
+		t.Fatalf("unexpected part sizes: %d, %d", len([]rune(parts[0])), len([]rune(parts[1])))
+	}
+}
+
 func TestStripFrontmatter_CRLF(t *testing.T) {
 	src := "---\r\nfoo: 1\r\n---\r\nbody"
 	got := stripFrontmatter(src)

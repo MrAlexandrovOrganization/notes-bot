@@ -4,6 +4,11 @@ import (
 	"strings"
 )
 
+// Keep every embedding input comfortably below Ollama's context and physical
+// batch limits. The limit is rune based so UTF-8 notes are never split in the
+// middle of a character.
+const maxChunkRunes = 1500
+
 type ChunkKind string
 
 const (
@@ -36,7 +41,9 @@ func ChunkContent(content string) []Chunk {
 	}
 
 	chunks := make([]Chunk, 0, 8)
-	chunks = append(chunks, Chunk{Kind: KindNote, Ord: 0, Text: body})
+	for ord, part := range splitLongText(body, maxChunkRunes) {
+		chunks = append(chunks, Chunk{Kind: KindNote, Ord: ord, Text: part})
+	}
 
 	taskOrd := 0
 	for line := range strings.Lines(body) {
@@ -49,11 +56,46 @@ func ChunkContent(content string) []Chunk {
 
 	paraOrd := 0
 	for _, para := range splitParagraphs(body) {
-		chunks = append(chunks, Chunk{Kind: KindParagraph, Ord: paraOrd, Text: para})
-		paraOrd++
+		for _, part := range splitLongText(para, maxChunkRunes) {
+			chunks = append(chunks, Chunk{Kind: KindParagraph, Ord: paraOrd, Text: part})
+			paraOrd++
+		}
 	}
 
 	return chunks
+}
+
+// splitLongText splits at whitespace when possible and falls back to a hard
+// rune boundary for generated/minified content without whitespace.
+func splitLongText(text string, maxRunes int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" || maxRunes <= 0 {
+		return nil
+	}
+
+	runes := []rune(text)
+	parts := make([]string, 0, (len(runes)+maxRunes-1)/maxRunes)
+	for len(runes) > maxRunes {
+		cut := maxRunes
+		for i := maxRunes; i > maxRunes/2; i-- {
+			if strings.ContainsRune(" \t\r\n", runes[i-1]) {
+				cut = i
+				break
+			}
+		}
+		part := strings.TrimSpace(string(runes[:cut]))
+		if part != "" {
+			parts = append(parts, part)
+		}
+		runes = runes[cut:]
+		for len(runes) > 0 && strings.ContainsRune(" \t\r\n", runes[0]) {
+			runes = runes[1:]
+		}
+	}
+	if part := strings.TrimSpace(string(runes)); part != "" {
+		parts = append(parts, part)
+	}
+	return parts
 }
 
 // stripFrontmatter removes a YAML frontmatter block if the content starts with `---`.
