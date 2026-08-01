@@ -84,12 +84,19 @@ func (r *realCalendarStore) GetExistingDates(ctx context.Context) ([]string, err
 
 type realNoteStore struct{}
 
+func dailyNotePath(ctx context.Context, date string) (string, error) {
+	return resolveVaultPath(GetConfig(ctx).DailyNotesDir, date+".md")
+}
+
 func (r *realNoteStore) ReadNote(ctx context.Context, date string) (string, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	logger.Debug("ReadNote")
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return "", err
+	}
 	content, err := os.ReadFile(filePath)
 	if os.IsNotExist(err) {
 		return "", nil
@@ -105,7 +112,10 @@ func (r *realNoteStore) EnsureNote(ctx context.Context, date string) error {
 	defer span.End()
 
 	logger.Debug("EnsureNote")
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return r.createFromTemplate(ctx, filePath, date)
 	}
@@ -117,7 +127,10 @@ func (r *realNoteStore) AppendToNote(ctx context.Context, date, text string) err
 	defer span.End()
 
 	logger.Debug("AppendToNote")
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		if err := r.createFromTemplate(ctx, filePath, date); err != nil {
 			return err
@@ -162,9 +175,40 @@ func resolveVaultPath(notesDir, relpath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("abs vault: %w", err)
 	}
+	realVault, err := filepath.EvalSymlinks(absVault)
+	if err != nil {
+		return "", fmt.Errorf("resolve vault: %w", err)
+	}
 	full := filepath.Join(absVault, cleaned)
 	if !strings.HasPrefix(full, absVault+string(filepath.Separator)) && full != absVault {
 		return "", fmt.Errorf("relpath escapes vault")
+	}
+	// Resolve every existing ancestor to catch symlinks while still allowing a
+	// not-yet-existing leaf (EnsureNote creates new daily notes).
+	existing := full
+	var suffix []string
+	for {
+		if _, statErr := os.Lstat(existing); statErr == nil {
+			break
+		} else if !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("stat path: %w", statErr)
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return "", fmt.Errorf("cannot find existing path ancestor")
+		}
+		suffix = append(suffix, filepath.Base(existing))
+		existing = parent
+	}
+	realFull, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	for i := len(suffix) - 1; i >= 0; i-- {
+		realFull = filepath.Join(realFull, suffix[i])
+	}
+	if !strings.HasPrefix(realFull, realVault+string(filepath.Separator)) && realFull != realVault {
+		return "", fmt.Errorf("relpath escapes vault through symlink")
 	}
 	return full, nil
 }
@@ -252,7 +296,10 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		zap.L().Error("file not found", zap.String("path", filePath))
 		return err
@@ -289,7 +336,10 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	defer span.End()
 
 	logger.Debug("ToggleTask")
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -306,7 +356,10 @@ func (r *realTaskStore) AddTask(ctx context.Context, date, text string) error {
 	defer span.End()
 
 	logger.Debug("AddTask")
-	filePath := filepath.Join(GetConfig(ctx).DailyNotesDir, date+".md")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err

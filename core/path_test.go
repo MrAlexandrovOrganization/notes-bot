@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -38,5 +39,34 @@ func TestResolveVaultPath(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestResolveVaultPathRejectsEscapingSymlink(t *testing.T) {
+	vault := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(outside, "secret.md")
+	if err := os.WriteFile(target, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(vault, "escape.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := resolveVaultPath(vault, "escape.md"); err == nil {
+		t.Fatalf("want escaping symlink error, got %q", got)
+	}
+}
+
+func TestValidateDate(t *testing.T) {
+	for _, date := range []string{"../Templates/Daily", "01-Mar-2026/../../escape", "/etc/passwd", "2026-03-01", "1-Mar-2026"} {
+		t.Run(date, func(t *testing.T) {
+			if err := validateDate(date); err == nil {
+				t.Fatalf("want invalid date error for %q", date)
+			}
+		})
+	}
+	if err := validateDate("01-Mar-2026"); err != nil {
+		t.Fatalf("valid date rejected: %v", err)
 	}
 }

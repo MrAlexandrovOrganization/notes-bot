@@ -32,6 +32,7 @@ type Config struct {
 	// WebhookURL must be an HTTPS URL reachable by Telegram (e.g. https://bot.example.com/webhook).
 	WebhookURL        string
 	WebhookListenAddr string
+	WebhookSecret     string
 }
 
 func Load() (*Config, error) {
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 		LocationPort:          envStr("LOCATION_PORT", "8080"),
 		WebhookURL:            envStr("WEBHOOK_URL", ""),
 		WebhookListenAddr:     envStr("WEBHOOK_LISTEN_ADDR", ":8080"),
+		WebhookSecret:         envStr("TELEGRAM_WEBHOOK_SECRET", ""),
 	}, nil
 }
 
@@ -83,6 +85,17 @@ func (c *Config) Validate() error {
 	}
 	if c.DayStartHour < 0 || c.DayStartHour > 23 {
 		return fmt.Errorf("DAY_START_HOUR must be between 0 and 23, got %d", c.DayStartHour)
+	}
+	if c.WebhookURL != "" && c.WebhookSecret == "" {
+		return fmt.Errorf("TELEGRAM_WEBHOOK_SECRET must be set when WEBHOOK_URL is configured")
+	}
+	if len(c.WebhookSecret) > 256 {
+		return fmt.Errorf("TELEGRAM_WEBHOOK_SECRET must not exceed 256 characters")
+	}
+	for _, r := range c.WebhookSecret {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
+			return fmt.Errorf("TELEGRAM_WEBHOOK_SECRET may contain only A-Z, a-z, 0-9, _ and -")
+		}
 	}
 	return nil
 }

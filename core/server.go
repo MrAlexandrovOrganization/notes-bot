@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -97,6 +98,9 @@ func (s *NotesServer) GetExistingDates(ctx context.Context, req *emptypb.Empty) 
 
 func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "EnsureNote", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -112,6 +116,9 @@ func (s *NotesServer) EnsureNote(ctx context.Context, req *pb.DateRequest) (resp
 
 func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *pb.NoteResponse, err error) {
 	defer s.recordRPC(ctx, "GetNote", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -131,6 +138,9 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *p
 
 func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (resp *pb.RatingResponse, err error) {
 	defer s.recordRPC(ctx, "GetRating", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -148,6 +158,9 @@ func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (resp 
 
 func (s *NotesServer) UpdateRating(ctx context.Context, req *pb.UpdateRatingRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "UpdateRating", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -172,6 +185,14 @@ func toISODate(date string) string {
 		return date
 	}
 	return t.Format("2006-01-02")
+}
+
+func validateDate(date string) error {
+	parsed, err := time.Parse("02-Jan-2006", date)
+	if err != nil || parsed.Format("02-Jan-2006") != date {
+		return fmt.Errorf("date must have canonical DD-Mmm-YYYY format")
+	}
+	return nil
 }
 
 // LoadHistoricalRatings scans all existing notes and records their ratings as metrics.
@@ -208,6 +229,9 @@ func (s *NotesServer) LoadHistoricalRatings(ctx context.Context) {
 
 func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *pb.TasksResponse, err error) {
 	defer s.recordRPC(ctx, "GetTasks", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -231,6 +255,9 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *
 
 func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "ToggleTask", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx,
 		attribute.String("note.date", req.Date),
@@ -245,6 +272,9 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 
 func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "AddTask", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
@@ -257,6 +287,9 @@ func (s *NotesServer) AddTask(ctx context.Context, req *pb.AddTaskRequest) (resp
 
 func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "AppendToNote", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
