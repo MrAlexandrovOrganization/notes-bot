@@ -251,6 +251,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "127.0.0.1:8090:8090"
     environment:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
