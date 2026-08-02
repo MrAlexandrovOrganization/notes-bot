@@ -23,6 +23,7 @@ type searchMetrics struct {
 	embedDuration     metric.Float64Histogram
 	indexNotes        metric.Int64Counter
 	indexChunks       metric.Int64Counter
+	indexProfiles     metric.Int64Counter
 	indexNoteDuration metric.Float64Histogram
 	searchRequests    metric.Int64Counter
 	searchDuration    metric.Float64Histogram
@@ -30,6 +31,11 @@ type searchMetrics struct {
 	hybridCandidates  metric.Int64Histogram
 	syncDuration      metric.Float64Histogram
 	rpcRequests       metric.Int64Counter
+	agentRequests     metric.Int64Counter
+	agentDuration     metric.Float64Histogram
+	agentSteps        metric.Int64Histogram
+	agentEvidence     metric.Int64Histogram
+	agentExhaustive   metric.Int64Histogram
 }
 
 func newSearchMetrics() *searchMetrics {
@@ -60,6 +66,8 @@ func newSearchMetrics() *searchMetrics {
 		metric.WithDescription("Notes processed by the chunk index by source and status"))
 	indexChunks, _ := meter.Int64Counter("search.index.chunks.embedded",
 		metric.WithDescription("Chunks successfully embedded by index source"))
+	indexProfiles, _ := meter.Int64Counter("search.index.profiles.indexed",
+		metric.WithDescription("Compact note profiles successfully extracted and embedded"))
 	indexNoteDuration, _ := meter.Float64Histogram("search.index.note.duration",
 		metric.WithDescription("End-to-end duration of indexing one note by source and status"),
 		metric.WithUnit("s"))
@@ -77,6 +85,16 @@ func newSearchMetrics() *searchMetrics {
 		metric.WithUnit("s"))
 	rpcRequests, _ := meter.Int64Counter("search.rpc.requests",
 		metric.WithDescription("Total gRPC requests by method and status"))
+	agentRequests, _ := meter.Int64Counter("search.agent.requests",
+		metric.WithDescription("Notes agent requests by status and budget outcome"))
+	agentDuration, _ := meter.Float64Histogram("search.agent.duration",
+		metric.WithDescription("End-to-end notes agent duration"), metric.WithUnit("s"))
+	agentSteps, _ := meter.Int64Histogram("search.agent.steps",
+		metric.WithDescription("Retrieval/review rounds used by the notes agent"))
+	agentEvidence, _ := meter.Int64Histogram("search.agent.evidence_chunks",
+		metric.WithDescription("Distinct raw chunks supplied to final synthesis"))
+	agentExhaustive, _ := meter.Int64Histogram("search.agent.exhaustive_matches",
+		metric.WithDescription("Coverage of exhaustive FTS tool calls by dimension"))
 
 	return &searchMetrics{
 		indexFilesSeen:    indexFilesSeen,
@@ -91,6 +109,7 @@ func newSearchMetrics() *searchMetrics {
 		embedDuration:     embedDuration,
 		indexNotes:        indexNotes,
 		indexChunks:       indexChunks,
+		indexProfiles:     indexProfiles,
 		indexNoteDuration: indexNoteDuration,
 		searchRequests:    searchRequests,
 		searchDuration:    searchDuration,
@@ -98,6 +117,37 @@ func newSearchMetrics() *searchMetrics {
 		hybridCandidates:  hybridCandidates,
 		syncDuration:      syncDuration,
 		rpcRequests:       rpcRequests,
+		agentRequests:     agentRequests,
+		agentDuration:     agentDuration,
+		agentSteps:        agentSteps,
+		agentEvidence:     agentEvidence,
+		agentExhaustive:   agentExhaustive,
+	}
+}
+
+func (m *searchMetrics) recordAgentExhaustive(ctx context.Context, chunks, notes, dates int) {
+	if m == nil {
+		return
+	}
+	for dimension, value := range map[string]int{"chunks": chunks, "notes": notes, "dates": dates} {
+		m.agentExhaustive.Record(ctx, int64(value),
+			metric.WithAttributes(attribute.String("dimension", dimension)))
+	}
+}
+
+func (m *searchMetrics) recordAgent(ctx context.Context, took time.Duration, steps, evidence int, exhausted bool, err error) {
+	if m == nil {
+		return
+	}
+	attrs := metric.WithAttributes(
+		attribute.String("status", metricStatus(err)),
+		attribute.Bool("budget_exhausted", exhausted),
+	)
+	m.agentRequests.Add(ctx, 1, attrs)
+	m.agentDuration.Record(ctx, took.Seconds(), attrs)
+	if err == nil {
+		m.agentSteps.Record(ctx, int64(steps))
+		m.agentEvidence.Record(ctx, int64(evidence))
 	}
 }
 
@@ -159,6 +209,7 @@ func (m *searchMetrics) recordSync(ctx context.Context, s SyncStats, took time.D
 	m.indexFilesTouched.Add(ctx, int64(s.Touched))
 	m.indexFilesDeleted.Add(ctx, int64(s.Deleted))
 	m.indexErrors.Add(ctx, int64(s.Errors))
+	m.indexProfiles.Add(ctx, int64(s.Profiled))
 	m.syncDuration.Record(ctx, took.Seconds())
 }
 

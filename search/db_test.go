@@ -1,6 +1,7 @@
 package search
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,13 @@ func TestFTSDictConsistency(t *testing.T) {
 	}
 }
 
+func TestVectorSchemaFormatsBothEmbeddingDimensions(t *testing.T) {
+	formatted := fmt.Sprintf(vectorSchemaSQL, 1024, 1024)
+	if strings.Contains(formatted, "%!") || strings.Count(formatted, "vector(1024)") != 2 {
+		t.Fatalf("vector schema dimensions were not formatted correctly")
+	}
+}
+
 func TestVersionedChunkSchemaContainsRollingMigrationColumns(t *testing.T) {
 	if CurrentIndexVersion <= 0 {
 		t.Fatal("CurrentIndexVersion must be positive")
@@ -31,8 +39,9 @@ func TestVersionedChunkSchemaContainsRollingMigrationColumns(t *testing.T) {
 		"chunk_index_version", "chunk_embedding_model", "note_date",
 		"frontmatter JSONB", "heading_path", "embedding_model",
 		"index_version", "tsv_ru", "tsv_simple",
+		"note_profiles", "profile_version", "profile_model", "profile_text",
 	} {
-		if !strings.Contains(notesMigrationSQL+vectorMigrationSQL, want) {
+		if !strings.Contains(notesMigrationSQL+vectorMigrationSQL+vectorSchemaSQL, want) {
 			t.Errorf("rolling migrations do not contain %q", want)
 		}
 	}

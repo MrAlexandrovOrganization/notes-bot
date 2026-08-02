@@ -2,7 +2,9 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,10 +24,11 @@ type SearchServer struct {
 	indexer  *Indexer
 	metrics  *searchMetrics
 	embedder *Embedder
+	agent    *NotesAgent
 }
 
-func NewSearchServer(pool *pgxpool.Pool, cfg *Config, indexer *Indexer, metrics *searchMetrics, embedder *Embedder) *SearchServer {
-	return &SearchServer{pool: pool, cfg: cfg, indexer: indexer, metrics: metrics, embedder: embedder}
+func NewSearchServer(pool *pgxpool.Pool, cfg *Config, indexer *Indexer, metrics *searchMetrics, embedder *Embedder, agent *NotesAgent) *SearchServer {
+	return &SearchServer{pool: pool, cfg: cfg, indexer: indexer, metrics: metrics, embedder: embedder, agent: agent}
 }
 
 func hitsToProto(hits []SearchHit, kind string) []*pb.Hit {
@@ -148,43 +151,126 @@ func (s *SearchServer) SearchHybrid(ctx context.Context, req *pb.SearchRequest) 
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	vec, err := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
-	if err != nil {
-		log.Error("embed hybrid query", zap.Error(err))
-		return nil, status.Error(codes.Unavailable, err.Error())
-	}
 	limit := normalizedLimit(int(req.Limit), 12, 50)
+	expanded, err := s.hybrid(ctx, req.Query, limit, filters)
+	if err != nil {
+		log.Error("hybrid search", zap.Error(err))
+		if errors.Is(err, ErrEmbedderUnavailable) {
+			return nil, status.Error(codes.Unavailable, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.SearchResponse{Hits: hitsToProto(expanded, "")}, nil
+}
+
+func (s *SearchServer) hybrid(ctx context.Context, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
+	vec, err := s.embedder.EmbedOne(ctx, query, s.metrics)
+	if err != nil {
+		return nil, err
+	}
 	fetch := min(max(limit*4, 40), 200)
 	dense, err := SearchByVector(ctx, s.pool, vec, fetch, filters)
 	if err != nil {
-		log.Error("hybrid vector search", zap.Error(err))
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
 	s.metrics.recordHybridCandidates(ctx, "dense", len(dense))
-	lexical, lexicalErr := SearchChunksByContent(ctx, s.pool, req.Query, fetch, filters)
+	lexical, lexicalErr := SearchChunksByContent(ctx, s.pool, query, fetch, filters)
 	if lexicalErr != nil {
-		log.Warn("hybrid lexical search", zap.Error(lexicalErr))
+		applog.With(ctx, logger).Warn("hybrid lexical search", zap.Error(lexicalErr))
 	}
 	s.metrics.recordHybridCandidates(ctx, "lexical", len(lexical))
 	maxPerNote := 2
-	if filters.DateFrom != nil && filters.DateTo != nil && filters.DateFrom.Equal(*filters.DateTo) {
-		// A single-day question commonly targets one daily note; diversity must
-		// not hide the rest of that note from broad prompts such as "what did I do".
+	if len(filters.NoteIDs) > 0 || (filters.DateFrom != nil && filters.DateTo != nil && filters.DateFrom.Equal(*filters.DateTo)) {
 		maxPerNote = limit
 	}
 	selected := FuseByChunkID(dense, lexical, limit, maxPerNote)
 	s.metrics.recordHybridCandidates(ctx, "fused", len(selected))
 	expanded, err := ExpandChunkNeighbors(ctx, s.pool, selected, 1)
 	if err != nil {
-		log.Error("expand hybrid context", zap.Error(err))
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
 	s.metrics.recordHybridCandidates(ctx, "with_neighbors", len(expanded))
-	return &pb.SearchResponse{Hits: hitsToProto(expanded, "")}, nil
+	return expanded, nil
+}
+
+func (s *SearchServer) SearchProfiles(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
+	defer s.metrics.recordRPC(ctx, "SearchProfiles", &err)
+	defer s.metrics.recordSearch(ctx, "profiles", time.Now(), responseHitCount(&resp), &err)
+	if !s.cfg.EnableProfiles || s.embedder == nil {
+		return nil, status.Error(codes.Unimplemented, "note profiles disabled")
+	}
+	if req.Query == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+	filters, err := searchFiltersFromRequest(req)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	vec, err := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, err.Error())
+	}
+	limit := normalizedLimit(int(req.Limit), 20, 100)
+	fetch := min(max(limit*3, 40), 200)
+	dense, err := SearchProfilesByVector(ctx, s.pool, vec, fetch, filters)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	lexical, lexicalErr := SearchProfilesByContent(ctx, s.pool, req.Query, fetch, filters)
+	if lexicalErr != nil {
+		applog.With(ctx, logger).Warn("profile lexical search", zap.Error(lexicalErr))
+	}
+	hits := FuseByNoteID(dense, lexical, limit)
+	return &pb.SearchResponse{Hits: hitsToProto(hits, "profile")}, nil
+}
+
+func (s *SearchServer) AskNotes(ctx context.Context, req *pb.AskRequest) (resp *pb.AskResponse, err error) {
+	defer s.metrics.recordRPC(ctx, "AskNotes", &err)
+	started := time.Now()
+	defer func() {
+		evidenceCount := 0
+		steps := 0
+		exhausted := false
+		if resp != nil {
+			evidenceCount = len(resp.Evidence)
+			steps = int(resp.Steps)
+			exhausted = resp.BudgetExhausted
+		}
+		s.metrics.recordAgent(ctx, time.Since(started), steps, evidenceCount, exhausted, err)
+	}()
+	if s.agent == nil || !s.cfg.EnableProfiles {
+		return nil, status.Error(codes.Unimplemented, "notes agent disabled")
+	}
+	question := strings.TrimSpace(req.Question)
+	if question == "" {
+		return nil, status.Error(codes.InvalidArgument, "question is required")
+	}
+	filters, filterErr := searchFiltersFromRequest(&pb.SearchRequest{
+		DateFrom: req.DateFrom,
+		DateTo:   req.DateTo,
+	})
+	if filterErr != nil {
+		return nil, status.Error(codes.InvalidArgument, filterErr.Error())
+	}
+	answer, askErr := s.agent.Ask(ctx, question, req.CurrentDatetime, filters)
+	if askErr != nil {
+		if errors.Is(askErr, ErrEmbedderUnavailable) || errors.Is(askErr, ErrChatUnavailable) {
+			return nil, status.Error(codes.Unavailable, askErr.Error())
+		}
+		applog.With(ctx, logger).Error("notes agent", zap.Error(askErr))
+		return nil, status.Error(codes.Internal, askErr.Error())
+	}
+	return &pb.AskResponse{
+		Answer:          answer.Answer,
+		Evidence:        hitsToProto(answer.Evidence, ""),
+		Searches:        answer.Searches,
+		Steps:           int32(answer.Steps),
+		BudgetExhausted: answer.BudgetExhausted,
+	}, nil
 }
 
 func searchFiltersFromRequest(req *pb.SearchRequest) (SearchFilters, error) {
-	filters := SearchFilters{Kinds: req.Kinds}
+	filters := SearchFilters{Kinds: req.Kinds, NoteIDs: req.NoteIds}
 	for _, kind := range filters.Kinds {
 		if kind != string(KindParagraph) && kind != string(KindTask) {
 			return SearchFilters{}, fmt.Errorf("unsupported chunk kind %q", kind)
@@ -269,13 +355,22 @@ func (s *SearchServer) Reindex(ctx context.Context, req *pb.ReindexRequest) (res
 	if countErr != nil {
 		return nil, status.Error(codes.Internal, countErr.Error())
 	}
+	var profilesPending int64
+	if s.cfg.EnableProfiles {
+		profilesPending, countErr = CountNotesPendingProfiles(ctx, s.pool, s.cfg.ProfileModel, s.cfg.EmbedModel)
+		if countErr != nil {
+			return nil, status.Error(codes.Internal, countErr.Error())
+		}
+	}
 	return &pb.ReindexResponse{
-		Added:    int32(stats.Added),
-		Updated:  int32(stats.Updated),
-		Deleted:  int32(stats.Deleted),
-		Embedded: int32(stats.Embedded),
-		Errors:   int32(stats.Errors),
-		Pending:  pending,
+		Added:           int32(stats.Added),
+		Updated:         int32(stats.Updated),
+		Deleted:         int32(stats.Deleted),
+		Embedded:        int32(stats.Embedded),
+		Errors:          int32(stats.Errors),
+		Pending:         pending,
+		Profiled:        int32(stats.Profiled),
+		ProfilesPending: profilesPending,
 	}, nil
 }
 

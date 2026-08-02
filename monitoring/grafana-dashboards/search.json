@@ -133,6 +133,11 @@
           "expr": "sum by (source) (rate(search_index_chunks_embedded_total[$__rate_interval])) * 60",
           "legendFormat": "{{source}} chunks/min",
           "refId": "B"
+        },
+        {
+          "expr": "sum(rate(search_index_profiles_indexed_total[$__rate_interval])) * 60",
+          "legendFormat": "profiles/min",
+          "refId": "C"
         }
       ],
       "title": "Index throughput",
@@ -285,6 +290,75 @@
       ],
       "title": "Average search result count",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "max": 100, "min": 0, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 37 },
+      "id": 13,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "100 * (sum(search_notes_total) - sum(search_profiles_pending)) / clamp_min(sum(search_notes_total), 1)",
+          "legendFormat": "profiles",
+          "refId": "A"
+        }
+      ],
+      "title": "Profile backfill progress",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 37 },
+      "id": 14,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, status) (rate(search_agent_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Agent latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 37 },
+      "id": 15,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(search_agent_steps_sum[$__rate_interval])) / clamp_min(sum(rate(search_agent_steps_count[$__rate_interval])), 0.000001)",
+          "legendFormat": "avg steps",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(search_agent_evidence_chunks_sum[$__rate_interval])) / clamp_min(sum(rate(search_agent_evidence_chunks_count[$__rate_interval])), 0.000001)",
+          "legendFormat": "avg evidence chunks",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (dimension) (rate(search_agent_exhaustive_matches_sum[$__rate_interval])) / clamp_min(sum by (dimension) (rate(search_agent_exhaustive_matches_count[$__rate_interval])), 0.000001)",
+          "legendFormat": "exhaustive {{dimension}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Agent breadth",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
@@ -296,6 +370,6 @@
   "timezone": "browser",
   "title": "Notes Bot / Search",
   "uid": "notes-bot-search",
-  "version": 1,
+  "version": 2,
   "weekStart": "monday"
 }

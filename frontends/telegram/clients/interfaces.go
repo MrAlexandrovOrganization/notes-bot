@@ -30,6 +30,8 @@ type SearchService interface {
 	SearchByContent(ctx context.Context, query string, limit int) ([]*SearchHit, error)
 	SearchSemantic(ctx context.Context, query string, limit int) ([]*SearchHit, error)
 	SearchHybrid(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error)
+	SearchProfiles(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error)
+	AskNotes(ctx context.Context, question, currentDateTime string, options SearchOptions) (*AskNotesResult, error)
 	GetNoteByID(ctx context.Context, id int64) (*SearchNote, error)
 }
 

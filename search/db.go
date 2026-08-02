@@ -133,6 +133,28 @@ CREATE TABLE IF NOT EXISTS note_chunks (
 
 CREATE INDEX IF NOT EXISTS note_chunks_hnsw ON note_chunks
     USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS note_profiles (
+    note_id          BIGINT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+    source_hash      BYTEA NOT NULL,
+    profile_version  INT NOT NULL,
+    profile_model    TEXT NOT NULL,
+    embedding_model  TEXT NOT NULL,
+    brief            TEXT NOT NULL DEFAULT '',
+    facets           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    profile_text     TEXT NOT NULL,
+    embedding        vector(%d) NOT NULL,
+    tsv_ru tsvector GENERATED ALWAYS AS
+           (to_tsvector('russian', coalesce(profile_text, ''))) STORED,
+    tsv_simple tsvector GENERATED ALWAYS AS
+           (to_tsvector('simple', coalesce(profile_text, ''))) STORED,
+    indexed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS note_profiles_hnsw ON note_profiles
+    USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS note_profiles_tsv_ru ON note_profiles USING GIN (tsv_ru);
+CREATE INDEX IF NOT EXISTS note_profiles_tsv_simple ON note_profiles USING GIN (tsv_simple);
 `
 
 const vectorMigrationSQL = `
@@ -201,7 +223,7 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, enableVector bool, em
 		return fmt.Errorf("migrate tsv dictionary: %w", err)
 	}
 	if enableVector {
-		if _, err := pool.Exec(ctx, fmt.Sprintf(vectorSchemaSQL, embedDim)); err != nil {
+		if _, err := pool.Exec(ctx, fmt.Sprintf(vectorSchemaSQL, embedDim, embedDim)); err != nil {
 			return fmt.Errorf("ensure vector schema: %w", err)
 		}
 		if _, err := pool.Exec(ctx, vectorMigrationSQL); err != nil {
@@ -408,6 +430,7 @@ type SearchFilters struct {
 	DateFrom *time.Time
 	DateTo   *time.Time
 	Kinds    []string
+	NoteIDs  []int64
 }
 
 // SearchByName returns notes whose name matches the query via pg_trgm similarity.
@@ -477,9 +500,10 @@ func SearchChunksByContent(ctx context.Context, pool *pgxpool.Pool, query string
 		  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
 		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
 		  AND ($4::text[] IS NULL OR c.kind = ANY($4::text[]))
+		  AND ($5::bigint[] IS NULL OR n.id = ANY($5::bigint[]))
 		ORDER BY score DESC, c.id
-		LIMIT $5
-	`, query, filters.DateFrom, filters.DateTo, nullableStrings(filters.Kinds), limit)
+		LIMIT $6
+	`, query, filters.DateFrom, filters.DateTo, nullableStrings(filters.Kinds), nullableInt64s(filters.NoteIDs), limit)
 	if err != nil {
 		return nil, fmt.Errorf("search by content: %w", err)
 	}
@@ -525,6 +549,29 @@ func CountNotesPendingIndex(ctx context.Context, pool *pgxpool.Pool, model strin
 	return n, err
 }
 
+func CountNotesPendingProfiles(ctx context.Context, pool *pgxpool.Pool, profileModel, embeddingModel string) (int64, error) {
+	var n int64
+	err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM notes n
+		LEFT JOIN note_profiles p ON p.note_id = n.id
+		WHERE p.note_id IS NULL
+		   OR p.source_hash <> n.content_hash
+		   OR p.profile_version <> $1
+		   OR p.profile_model <> $2
+		   OR p.embedding_model <> $3
+	`, CurrentProfileVersion, profileModel, embeddingModel).Scan(&n)
+	return n, err
+}
+
+func InvalidateNoteProfiles(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `UPDATE note_profiles SET profile_version = 0`)
+	if err != nil {
+		return fmt.Errorf("invalidate note profiles: %w", err)
+	}
+	return nil
+}
+
 // IndexMetricsSnapshot is read in one SQL statement so all gauges exported in
 // a Prometheus scrape describe the same database state.
 type IndexMetricsSnapshot struct {
@@ -533,9 +580,12 @@ type IndexMetricsSnapshot struct {
 	TotalChunks       int64
 	CurrentChunks     int64
 	LatestIndexedUnix int64
+	TotalProfiles     int64
+	PendingProfiles   int64
+	LatestProfileUnix int64
 }
 
-func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model string) (IndexMetricsSnapshot, error) {
+func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model, profileModel string) (IndexMetricsSnapshot, error) {
 	var snapshot IndexMetricsSnapshot
 	err := pool.QueryRow(ctx, `
 		SELECT
@@ -547,13 +597,22 @@ func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model str
 			 WHERE index_version = $1 AND embedding_model = $2),
 			COALESCE((SELECT EXTRACT(EPOCH FROM MAX(chunks_indexed_at))::bigint
 			          FROM notes
-			          WHERE chunk_index_version = $1 AND chunk_embedding_model = $2), 0)
-	`, CurrentIndexVersion, model).Scan(
+			          WHERE chunk_index_version = $1 AND chunk_embedding_model = $2), 0),
+			(SELECT COUNT(*) FROM note_profiles),
+			(SELECT COUNT(*) FROM notes n LEFT JOIN note_profiles p ON p.note_id = n.id
+			 WHERE p.note_id IS NULL OR p.source_hash <> n.content_hash
+			    OR p.profile_version <> $3 OR p.profile_model <> $4 OR p.embedding_model <> $2),
+			COALESCE((SELECT EXTRACT(EPOCH FROM MAX(indexed_at))::bigint FROM note_profiles
+			          WHERE profile_version = $3 AND profile_model = $4 AND embedding_model = $2), 0)
+	`, CurrentIndexVersion, model, CurrentProfileVersion, profileModel).Scan(
 		&snapshot.TotalNotes,
 		&snapshot.PendingNotes,
 		&snapshot.TotalChunks,
 		&snapshot.CurrentChunks,
 		&snapshot.LatestIndexedUnix,
+		&snapshot.TotalProfiles,
+		&snapshot.PendingProfiles,
+		&snapshot.LatestProfileUnix,
 	)
 	if err != nil {
 		return IndexMetricsSnapshot{}, fmt.Errorf("read index metrics snapshot: %w", err)
@@ -594,6 +653,68 @@ func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 		out = append(out, n)
 	}
 	return out, rows.Err()
+}
+
+// NotesNeedingProfiles pages over stale routing cards. source_hash makes the
+// process resumable and automatically invalidates a card when its note changes.
+func NotesNeedingProfiles(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, profileModel, embeddingModel string) ([]NoteFull, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content
+		FROM notes n
+		LEFT JOIN note_profiles p ON p.note_id = n.id
+		WHERE n.id > $1
+		  AND (p.note_id IS NULL
+		       OR p.source_hash <> n.content_hash
+		       OR p.profile_version <> $3
+		       OR p.profile_model <> $4
+		       OR p.embedding_model <> $5)
+		ORDER BY n.id
+		LIMIT $2
+	`, afterID, limit, CurrentProfileVersion, profileModel, embeddingModel)
+	if err != nil {
+		return nil, fmt.Errorf("notes missing profiles: %w", err)
+	}
+	defer rows.Close()
+	var out []NoteFull
+	for rows.Next() {
+		var n NoteFull
+		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func UpsertNoteProfile(ctx context.Context, pool *pgxpool.Pool, note NoteFull, profile NoteProfile, profileText string, facets []byte, vec []float32, profileModel, embeddingModel string) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+	_, err := pool.Exec(ctx, `
+		INSERT INTO note_profiles (
+			note_id, source_hash, profile_version, profile_model, embedding_model,
+			brief, facets, profile_text, embedding, indexed_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::vector, NOW())
+		ON CONFLICT (note_id) DO UPDATE SET
+			source_hash = EXCLUDED.source_hash,
+			profile_version = EXCLUDED.profile_version,
+			profile_model = EXCLUDED.profile_model,
+			embedding_model = EXCLUDED.embedding_model,
+			brief = EXCLUDED.brief,
+			facets = EXCLUDED.facets,
+			profile_text = EXCLUDED.profile_text,
+			embedding = EXCLUDED.embedding,
+			indexed_at = NOW()
+	`, note.ID, note.ContentHash, CurrentProfileVersion, profileModel, embeddingModel,
+		profile.Brief, string(facets), profileText, vecLiteral(vec))
+	if err != nil {
+		return fmt.Errorf("upsert note profile: %w", err)
+	}
+	return nil
 }
 
 // ChunkRow is a row in note_chunks (without embedding or text — those are
@@ -712,16 +833,17 @@ func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limi
 			  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
 			  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
 			  AND ($4::text[] IS NULL OR c.kind = ANY($4::text[]))
+			  AND ($5::bigint[] IS NULL OR n.id = ANY($5::bigint[]))
 		)
 		SELECT note_id, chunk_id, relpath, name, text,
 		       1 - (embedding <=> $1::vector) AS score,
 		       kind, heading_path, ord, note_date, title, tags, links
 		FROM candidates
 		ORDER BY embedding <=> $1::vector ASC, chunk_id
-		LIMIT $5
+		LIMIT $6
 	`
 	rows, err := pool.Query(ctx, query, vecLiteral(vec), filters.DateFrom, filters.DateTo,
-		nullableStrings(filters.Kinds), limit)
+		nullableStrings(filters.Kinds), nullableInt64s(filters.NoteIDs), limit)
 	if err != nil {
 		return nil, fmt.Errorf("ann search: %w", err)
 	}
@@ -745,4 +867,82 @@ func nullableStrings(values []string) any {
 		return nil
 	}
 	return values
+}
+
+func nullableInt64s(values []int64) any {
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
+// SearchProfilesByVector searches compact cards. Hits route the agent to note
+// ids and must not be presented as source evidence.
+func SearchProfilesByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters) ([]SearchHit, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT n.id, 0::bigint, n.relpath, n.name, p.profile_text,
+		       1 - (p.embedding <=> $1::vector), 'profile', ''::text, 0,
+		       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), ''),
+		       n.title, n.tags, n.links
+		FROM note_profiles p
+		JOIN notes n ON n.id = p.note_id
+		WHERE ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
+		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
+		  AND ($4::bigint[] IS NULL OR n.id = ANY($4::bigint[]))
+		ORDER BY p.embedding <=> $1::vector, n.id
+		LIMIT $5
+	`, vecLiteral(vec), filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs), limit)
+	if err != nil {
+		return nil, fmt.Errorf("search profiles by vector: %w", err)
+	}
+	defer rows.Close()
+	return scanStructuredHits(rows)
+}
+
+func SearchProfilesByContent(ctx context.Context, pool *pgxpool.Pool, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := pool.Query(ctx, `
+		WITH q AS (
+			SELECT websearch_to_tsquery('russian', $1) ru,
+			       websearch_to_tsquery('simple', $1) simple
+		)
+		SELECT n.id, 0::bigint, n.relpath, n.name, p.profile_text,
+		       ts_rank_cd(p.tsv_ru, q.ru) + .5 * ts_rank_cd(p.tsv_simple, q.simple),
+		       'profile', ''::text, 0,
+		       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), ''),
+		       n.title, n.tags, n.links
+		FROM note_profiles p
+		JOIN notes n ON n.id = p.note_id
+		CROSS JOIN q
+		WHERE (p.tsv_ru @@ q.ru OR p.tsv_simple @@ q.simple)
+		  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
+		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
+		  AND ($4::bigint[] IS NULL OR n.id = ANY($4::bigint[]))
+		ORDER BY 6 DESC, n.id
+		LIMIT $5
+	`, query, filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs), limit)
+	if err != nil {
+		return nil, fmt.Errorf("search profiles by content: %w", err)
+	}
+	defer rows.Close()
+	return scanStructuredHits(rows)
+}
+
+func scanStructuredHits(rows pgx.Rows) ([]SearchHit, error) {
+	var out []SearchHit
+	for rows.Next() {
+		var h SearchHit
+		if err := rows.Scan(&h.NoteID, &h.ChunkID, &h.Relpath, &h.Name, &h.Snippet,
+			&h.Score, &h.ChunkKind, &h.Heading, &h.Ord,
+			&h.NoteDate, &h.Title, &h.Tags, &h.Links); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }

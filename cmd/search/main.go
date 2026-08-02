@@ -68,11 +68,19 @@ func main() {
 	}
 
 	var embedder *search.Embedder
+	var profileExtractor *search.ProfileExtractor
+	var agent *search.NotesAgent
 	if cfg.EnableEmbeddings {
 		embedder = search.NewEmbedder(cfg.LLMHost, cfg.LLMPort, cfg.EmbedModel, cfg.EmbedDim)
 	}
+	if cfg.EnableProfiles {
+		profileChat := search.NewChatClient(cfg.LLMHost, cfg.LLMPort, cfg.ProfileModel)
+		profileExtractor = search.NewProfileExtractor(profileChat, cfg.ProfileModel)
+		agentChat := search.NewChatClient(cfg.LLMHost, cfg.LLMPort, cfg.AgentModel)
+		agent = search.NewNotesAgent(pool, embedder, agentChat, metrics, cfg.AgentMaxSteps)
+	}
 
-	indexer := search.NewIndexer(cfg, pool, metrics, embedder)
+	indexer := search.NewIndexer(cfg, pool, metrics, embedder, profileExtractor)
 	scheduler := search.NewScheduler(indexer, cfg)
 	go scheduler.Run(ctx)
 
@@ -82,7 +90,7 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer()
-	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder))
+	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder, agent))
 	grpcutil.RegisterHealth(grpcServer)
 
 	go func() {
@@ -153,13 +161,34 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 	if err != nil {
 		return err
 	}
+	profilesTotal, err := meter.Int64ObservableGauge("search.profiles.total",
+		metric.WithDescription("Total compact note profiles currently stored"))
+	if err != nil {
+		return err
+	}
+	profilesPending, err := meter.Int64ObservableGauge("search.profiles.pending",
+		metric.WithDescription("Notes waiting for the configured profile version/models"))
+	if err != nil {
+		return err
+	}
+	profileProgress, err := meter.Float64ObservableGauge("search.profiles.progress",
+		metric.WithDescription("Fraction of notes with a current compact profile"), metric.WithUnit("1"))
+	if err != nil {
+		return err
+	}
+	latestProfile, err := meter.Int64ObservableGauge("search.profiles.latest_timestamp",
+		metric.WithDescription("Unix timestamp of the latest current profile"), metric.WithUnit("s"))
+	if err != nil {
+		return err
+	}
 
 	instruments := []metric.Observable{
 		notesTotal, pendingNotes, currentNotes, progress,
 		chunksTotal, chunksCurrent, chunksStale, latestIndexed,
+		profilesTotal, profilesPending, profileProgress, latestProfile,
 	}
 	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
-		snapshot, queryErr := search.ReadIndexMetricsSnapshot(ctx, pool, cfg.EmbedModel)
+		snapshot, queryErr := search.ReadIndexMetricsSnapshot(ctx, pool, cfg.EmbedModel, cfg.ProfileModel)
 		if queryErr != nil {
 			return queryErr
 		}
@@ -185,6 +214,20 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 		observer.ObserveInt64(chunksCurrent, snapshot.CurrentChunks, attrs)
 		observer.ObserveInt64(chunksStale, staleChunks, attrs)
 		observer.ObserveInt64(latestIndexed, snapshot.LatestIndexedUnix, attrs)
+		profileAttrs := metric.WithAttributes(
+			attribute.Int("profile_version", search.CurrentProfileVersion),
+			attribute.String("profile_model", cfg.ProfileModel),
+			attribute.String("embedding_model", cfg.EmbedModel),
+		)
+		profileProgressValue := 1.0
+		if snapshot.TotalNotes > 0 {
+			profileProgressValue = float64(snapshot.TotalNotes-snapshot.PendingProfiles) / float64(snapshot.TotalNotes)
+			profileProgressValue = max(0, min(1, profileProgressValue))
+		}
+		observer.ObserveInt64(profilesTotal, snapshot.TotalProfiles, profileAttrs)
+		observer.ObserveInt64(profilesPending, snapshot.PendingProfiles, profileAttrs)
+		observer.ObserveFloat64(profileProgress, profileProgressValue, profileAttrs)
+		observer.ObserveInt64(latestProfile, snapshot.LatestProfileUnix, profileAttrs)
 		return nil
 	}, instruments...)
 	return err

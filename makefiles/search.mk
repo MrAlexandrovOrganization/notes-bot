@@ -28,13 +28,16 @@ search-chunks:  ## Chunks by kind: counts, distinct notes, length stats.
 search-index-versions:  ## Notes grouped by committed index/model version (backfill progress).
 	@$(SEARCH_PSQL) "SELECT chunk_index_version, nullif(chunk_embedding_model, '') AS embedding_model, count(*) AS notes FROM notes GROUP BY 1, 2 ORDER BY 1, 2;"
 
+search-profiles:  ## Profile-card versions/models and pending source changes.
+	@$(SEARCH_PSQL) "SELECT profile_version, profile_model, embedding_model, count(*) AS profiles, min(indexed_at) AS first_indexed, max(indexed_at) AS last_indexed FROM note_profiles GROUP BY 1,2,3 ORDER BY 1,2,3; SELECT count(*) AS pending_profiles FROM notes n LEFT JOIN note_profiles p ON p.note_id=n.id WHERE p.note_id IS NULL OR p.source_hash <> n.content_hash OR p.profile_version <> 1;"
+
 search-top-notes:  ## Top-10 largest notes by stored size.
 	@$(SEARCH_PSQL) "SELECT name, pg_size_pretty(size::bigint) AS bytes, length(content) AS chars FROM notes ORDER BY size DESC LIMIT 10;"
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 
 search-logs:  ## Recent sync results + errors from the search container.
-	@docker logs --tail 300 $(SEARCH_CONTAINER) 2>&1 | grep -E 'sync done|backfill progress|backfill pass done|"level":"error"' | tail -20
+	@docker logs --tail 300 $(SEARCH_CONTAINER) 2>&1 | grep -E 'sync done|backfill progress|backfill pass done|profile backfill pass done|"level":"error"' | tail -20
 
 search-logs-errors:  ## Just errors from the search container.
 	@docker logs --tail 500 $(SEARCH_CONTAINER) 2>&1 | grep -i 'error' | tail -20
@@ -51,9 +54,9 @@ search-reindex:  ## Force a full Reindex over gRPC.
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 
-search-doctor: search-stats search-chunks search-index-versions search-logs  ## One-stop health overview.
+search-doctor: search-stats search-chunks search-index-versions search-profiles search-logs  ## One-stop health overview.
 
 search-help:  ## Print available search-* targets.
 	@awk -F':.*##' '/^search-[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' makefiles/search.mk
 
-.PHONY: search-stats search-chunks search-index-versions search-top-notes search-logs search-logs-errors search-metrics search-reindex search-doctor search-help
+.PHONY: search-stats search-chunks search-index-versions search-profiles search-top-notes search-logs search-logs-errors search-metrics search-reindex search-doctor search-help

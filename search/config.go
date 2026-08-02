@@ -23,6 +23,7 @@ type Config struct {
 	LLMHost    string
 	LLMPort    string
 	EmbedModel string
+	AgentModel string
 
 	IndexInterval time.Duration
 
@@ -38,9 +39,26 @@ type Config struct {
 	// BackfillBatchPerPass caps how many embedding-less notes the indexer
 	// processes per tick. 0 = no cap (drain the queue in one pass).
 	BackfillBatchPerPass int
+
+	// EnableProfiles builds a compact, structured routing card for every note.
+	// Cards are never treated as source evidence: the agent uses them to select
+	// notes and then drills down to the original chunks.
+	EnableProfiles bool
+
+	// ProfileModel is the Ollama chat model used for structured extraction.
+	ProfileModel string
+
+	// ProfileBackfillBatchPerPass caps LLM profile extraction work per sync.
+	// 0 drains the backlog; keep this small on CPU-only Ollama installations.
+	ProfileBackfillBatchPerPass int
+
+	// AgentMaxSteps limits review/retrieval iterations for one question.
+	AgentMaxSteps int
 }
 
 const defaultBackfillBatchPerPass = 50
+const defaultProfileBackfillBatchPerPass = 10
+const defaultAgentMaxSteps = 3
 
 func getEnvStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -111,10 +129,17 @@ func LoadConfig() *Config {
 		LLMHost:              getEnvStr("LLM_HOST", "ollama"),
 		LLMPort:              getEnvStr("LLM_PORT", "11434"),
 		EmbedModel:           getEnvStr("EMBED_MODEL", "bge-m3:567m"),
+		AgentModel:           getEnvStr("AGENT_MODEL", "qwen2.5:7b"),
 		IndexInterval:        getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
 		EmbedDim:             getEnvInt("EMBED_DIM", 1024),
 		EnableEmbeddings:     getEnvBool("ENABLE_EMBEDDINGS", false),
 		BackfillBatchPerPass: getEnvInt("BACKFILL_BATCH_PER_PASS", defaultBackfillBatchPerPass),
+		EnableProfiles:       getEnvBool("ENABLE_PROFILES", false),
+		ProfileModel:         getEnvStr("PROFILE_MODEL", "qwen3.5:2b"),
+		ProfileBackfillBatchPerPass: getEnvInt(
+			"PROFILE_BACKFILL_BATCH_PER_PASS", defaultProfileBackfillBatchPerPass,
+		),
+		AgentMaxSteps: getEnvInt("AGENT_MAX_STEPS", defaultAgentMaxSteps),
 	}
 }
 
@@ -140,6 +165,18 @@ func (c *Config) Validate() error {
 	}
 	if c.BackfillBatchPerPass < 0 {
 		return fmt.Errorf("BACKFILL_BATCH_PER_PASS must be non-negative, got %d", c.BackfillBatchPerPass)
+	}
+	if c.ProfileBackfillBatchPerPass < 0 {
+		return fmt.Errorf("PROFILE_BACKFILL_BATCH_PER_PASS must be non-negative, got %d", c.ProfileBackfillBatchPerPass)
+	}
+	if c.EnableProfiles && !c.EnableEmbeddings {
+		return fmt.Errorf("ENABLE_PROFILES requires ENABLE_EMBEDDINGS")
+	}
+	if c.EnableProfiles && c.ProfileModel == "" {
+		return fmt.Errorf("PROFILE_MODEL is required when profiles are enabled")
+	}
+	if c.AgentMaxSteps < 1 || c.AgentMaxSteps > 5 {
+		return fmt.Errorf("AGENT_MAX_STEPS must be between 1 and 5, got %d", c.AgentMaxSteps)
 	}
 	return nil
 }

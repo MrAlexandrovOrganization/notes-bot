@@ -68,6 +68,54 @@ func FuseByChunkID(dense, lexical []SearchHit, limit, maxPerNote int) []SearchHi
 	return out
 }
 
+// FuseByNoteID is the profile-index counterpart of FuseByChunkID. Profile
+// rows have no source chunk id because they are routing documents, not evidence.
+func FuseByNoteID(dense, lexical []SearchHit, limit int) []SearchHit {
+	if limit <= 0 {
+		limit = 20
+	}
+	const rrfK = 60.0
+	type candidate struct {
+		hit   SearchHit
+		score float64
+	}
+	candidates := make(map[int64]candidate, len(dense)+len(lexical))
+	add := func(hits []SearchHit) {
+		for rank, hit := range hits {
+			if hit.NoteID == 0 {
+				continue
+			}
+			c := candidates[hit.NoteID]
+			if c.hit.NoteID == 0 {
+				c.hit = hit
+			}
+			c.score += 1 / (rrfK + float64(rank+1))
+			candidates[hit.NoteID] = c
+		}
+	}
+	add(dense)
+	add(lexical)
+	ranked := make([]candidate, 0, len(candidates))
+	for _, c := range candidates {
+		c.hit.Score = c.score
+		ranked = append(ranked, c)
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].score == ranked[j].score {
+			return ranked[i].hit.NoteID < ranked[j].hit.NoteID
+		}
+		return ranked[i].score > ranked[j].score
+	})
+	out := make([]SearchHit, 0, min(limit, len(ranked)))
+	for _, c := range ranked {
+		out = append(out, c.hit)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
+}
+
 // ExpandChunkNeighbors returns exact source text for each selected chunk and
 // its adjacent chunks. Results are emitted in source order per retrieval hit;
 // overlapping windows are globally deduplicated by chunk id.

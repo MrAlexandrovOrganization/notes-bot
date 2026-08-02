@@ -84,7 +84,7 @@ func main() {
 		Addr:         cfg.WebListenAddr,
 		Handler:      app.NewRouter(),
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 5 * time.Minute,
 	}
 
 	go func() {

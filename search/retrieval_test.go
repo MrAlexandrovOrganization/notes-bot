@@ -34,3 +34,12 @@ func TestFuseByChunkIDDeduplicatesAndAppliesDiversity(t *testing.T) {
 		t.Fatalf("chunk present in both rankings should win, got %#v", got)
 	}
 }
+
+func TestFuseByNoteIDDeduplicatesProfiles(t *testing.T) {
+	dense := []SearchHit{{NoteID: 1}, {NoteID: 2}}
+	lexical := []SearchHit{{NoteID: 2}, {NoteID: 3}}
+	got := FuseByNoteID(dense, lexical, 3)
+	if len(got) != 3 || got[0].NoteID != 2 {
+		t.Fatalf("profile RRF did not reward overlap: %#v", got)
+	}
+}

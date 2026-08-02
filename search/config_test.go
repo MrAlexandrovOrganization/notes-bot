@@ -29,3 +29,14 @@ func TestConfigValidateRejectsNegativeBackfillLimit(t *testing.T) {
 		t.Fatalf("Validate() error = %v, want BACKFILL_BATCH_PER_PASS error", err)
 	}
 }
+
+func TestConfigValidateRequiresEmbeddingsForProfiles(t *testing.T) {
+	cfg := &Config{
+		DBPassword: "secret", NotesDir: "/notes", IndexInterval: time.Minute,
+		EmbedDim: 1024, EnableProfiles: true, ProfileModel: "small", AgentMaxSteps: 3,
+	}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "ENABLE_PROFILES requires") {
+		t.Fatalf("Validate() error = %v, want profile dependency error", err)
+	}
+}

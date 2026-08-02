@@ -11,6 +11,8 @@ service SearchService {
   rpc SearchByContent (SearchRequest) returns (SearchResponse);
   rpc SearchSemantic  (SearchRequest) returns (SearchResponse);
   rpc SearchHybrid    (SearchRequest) returns (SearchResponse);
+  rpc SearchProfiles  (SearchRequest) returns (SearchResponse);
+  rpc AskNotes        (AskRequest) returns (AskResponse);
   rpc GetNote         (GetNoteRequest) returns (Note);
   rpc Reindex         (ReindexRequest) returns (ReindexResponse);
 }
@@ -23,6 +25,8 @@ message SearchRequest {
   string date_to   = 4;
   // Optional chunk kinds filter: "paragraph" | "task".
   repeated string kinds = 5;
+  // Optional note scope used for card -> source drill-down.
+  repeated int64 note_ids = 6;
 }
 
 message Hit {
@@ -44,6 +48,23 @@ message Hit {
 
 message SearchResponse {
   repeated Hit hits = 1;
+}
+
+message AskRequest {
+  string question = 1;
+  // Current local date/time supplied by the frontend (YYYY-MM-DD HH:MM).
+  string current_datetime = 2;
+  string date_from = 3;
+  string date_to = 4;
+}
+
+message AskResponse {
+  string answer = 1;
+  // Raw chunks used by the final synthesis. Profiles are never returned here.
+  repeated Hit evidence = 2;
+  repeated string searches = 3;
+  int32 steps = 4;
+  bool budget_exhausted = 5;
 }
 
 message GetNoteRequest {
@@ -72,4 +93,6 @@ message ReindexResponse {
   int32 embedded = 4;
   int32 errors   = 5;
   int64 pending  = 6;
+  int32 profiled = 7;
+  int64 profiles_pending = 8;
 }

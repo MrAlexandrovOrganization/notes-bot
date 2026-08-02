@@ -17,7 +17,7 @@ import (
 
 // searchCallTimeout is generous because SearchSemantic may trigger Ollama to
 // load the embedding model from disk on cold start (5-15s for bge-m3:567m).
-const searchCallTimeout = 60 * time.Second
+const searchCallTimeout = 5 * time.Minute
 
 // SearchHit is the user-facing result of any search RPC.
 type SearchHit struct {
@@ -41,6 +41,15 @@ type SearchOptions struct {
 	DateFrom string
 	DateTo   string
 	Kinds    []string
+	NoteIDs  []int64
+}
+
+type AskNotesResult struct {
+	Answer          string
+	Evidence        []*SearchHit
+	Searches        []string
+	Steps           int
+	BudgetExhausted bool
 }
 
 // SearchNote is the full content returned by GetNote.
@@ -133,11 +142,40 @@ func (c *SearchClient) SearchHybrid(ctx context.Context, query string, limit int
 		DateFrom: options.DateFrom,
 		DateTo:   options.DateTo,
 		Kinds:    options.Kinds,
+		NoteIds:  options.NoteIDs,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return protoToHits(resp), nil
+}
+
+func (c *SearchClient) SearchProfiles(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error) {
+	resp, err := c.stub.SearchProfiles(ctx, &pb.SearchRequest{
+		Query: query, Limit: int32(limit), DateFrom: options.DateFrom, DateTo: options.DateTo,
+		Kinds: options.Kinds, NoteIds: options.NoteIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return protoToHits(resp), nil
+}
+
+func (c *SearchClient) AskNotes(ctx context.Context, question, currentDateTime string, options SearchOptions) (*AskNotesResult, error) {
+	resp, err := c.stub.AskNotes(ctx, &pb.AskRequest{
+		Question: question, CurrentDatetime: currentDateTime,
+		DateFrom: options.DateFrom, DateTo: options.DateTo,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &AskNotesResult{
+		Answer:          resp.Answer,
+		Evidence:        protoToHits(&pb.SearchResponse{Hits: resp.Evidence}),
+		Searches:        resp.Searches,
+		Steps:           int(resp.Steps),
+		BudgetExhausted: resp.BudgetExhausted,
+	}, nil
 }
 
 func (c *SearchClient) GetNoteByID(ctx context.Context, id int64) (*SearchNote, error) {

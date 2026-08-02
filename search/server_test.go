@@ -11,6 +11,7 @@ func TestSearchFiltersFromRequest(t *testing.T) {
 		DateFrom: "31-Jul-2026",
 		DateTo:   "2026-08-01",
 		Kinds:    []string{"paragraph", "task"},
+		NoteIds:  []int64{10, 20},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -20,6 +21,9 @@ func TestSearchFiltersFromRequest(t *testing.T) {
 	}
 	if filters.DateTo == nil || filters.DateTo.Format("2006-01-02") != "2026-08-01" {
 		t.Fatalf("unexpected date_to: %v", filters.DateTo)
+	}
+	if len(filters.NoteIDs) != 2 || filters.NoteIDs[1] != 20 {
+		t.Fatalf("note scope was lost: %#v", filters.NoteIDs)
 	}
 }
 

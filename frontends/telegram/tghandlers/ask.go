@@ -2,7 +2,6 @@ package tghandlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -20,24 +19,7 @@ import (
 	"notes-bot/internal/timeutil"
 )
 
-const (
-	askTopK              = 12
-	askContextRuneBudget = 8000
-	askAnswerNumPredict  = 768
-)
-
-// askSystemPromptTemplate is a fmt.Sprintf template; insert currentDate before use.
-const askSystemPromptTemplate = `Ты помощник по личной базе заметок. Сегодня: %s.
-
-Имя каждой заметки — это дата в формате DD-MMM-YYYY (например, "09-Nov-2025"). Используй эти даты при ответах на временны́е вопросы ("вчера", "на прошлой неделе", "в октябре"). Если в вопросе есть относительная дата — вычисли, к какой заметке она относится.
-
-Правила ответа:
-- Отвечай строго по содержимому фрагментов. Собирай ответ из нескольких фрагментов, если нужно.
-- Упоминай конкретные даты: не "недавно", а "09-Nov-2025".
-- Если в заметке упоминается человек или событие — процитируй точную фразу из заметки.
-- Отвечай по-русски, кратко и структурно (если уместно — списком).
-- Если фрагменты не содержат ответа на вопрос — скажи "В заметках про это не нашёл".
-- Не дублируй список источников — интерфейс добавит сам.`
+const askContextRuneBudget = 8000
 
 // HandleMenuAsk opens the semantic Q&A prompt.
 func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
@@ -65,7 +47,8 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 
 	dateRange := searchquery.ExtractDateRange(q,
 		timeutil.LogicalToday(a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour))
-	hits, err := a.Search.SearchHybrid(ctx, q, askTopK, clients.SearchOptions{
+	currentDateTime, _, _, _ := a.llmDateContext()
+	result, err := a.Search.AskNotes(ctx, q, currentDateTime, clients.SearchOptions{
 		DateFrom: dateRange.From,
 		DateTo:   dateRange.To,
 	})
@@ -74,14 +57,14 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		switch st.Code() {
 		case codes.Unimplemented:
 			sendText(ctx, tgBot, chatID,
-				tgfmt.Escape("⚙️ Семантический поиск выключен. Включите SEARCH_ENABLE_EMBEDDINGS=true и перезапустите search."),
+				tgfmt.Escape("⚙️ Агентный поиск выключен. Включите SEARCH_ENABLE_EMBEDDINGS и SEARCH_ENABLE_PROFILES."),
 				nil, true)
 		case codes.Unavailable:
 			sendText(ctx, tgBot, chatID,
-				tgfmt.Escape("⏳ Эмбеддер недоступен. Проверьте Ollama и модель."),
+				tgfmt.Escape("⏳ Поисковая модель недоступна. Проверьте Ollama и модели."),
 				nil, true)
 		default:
-			log.Error("hybrid search", zap.Error(err))
+			log.Error("agent search", zap.Error(err))
 			sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Не удалось выполнить поиск."), nil, true)
 		}
 		return
@@ -89,37 +72,16 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 
-	if len(hits) == 0 {
-		kb := a.getMainMenuKeyboard(ctx)
-		sendText(ctx, tgBot, chatID,
-			tgfmt.Escape("Ничего не нашёл по этому вопросу."),
-			&kb, true)
-		return
-	}
-
-	currentDateTime, _, _, _ := a.llmDateContext()
-	systemPrompt := fmt.Sprintf(askSystemPromptTemplate, currentDateTime)
-
-	contextBlock, sources := buildAskContext(hits)
-	answer, err := a.LLM.Ask(ctx, systemPrompt,
-		fmt.Sprintf("Вопрос: %s\n\nКонтекст из заметок:\n%s", q, contextBlock),
-		askAnswerNumPredict)
-	if err != nil {
-		if errors.Is(err, clients.ErrLLMUnavailable) {
-			sendText(ctx, tgBot, chatID,
-				tgfmt.Escape("⏳ LLM недоступен. Проверьте Ollama."),
-				nil, true)
-			return
-		}
-		log.Error("LLM ask", zap.Error(err))
-		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ LLM не ответил."), nil, true)
-		return
-	}
-
-	body := renderAskAnswer(answer, sources)
+	_, sources := buildAskContext(result.Evidence)
+	body := renderAskAnswer(result.Answer, sources)
 	kb := a.getMainMenuKeyboard(ctx)
 	sendText(ctx, tgBot, chatID, body, &kb, true)
-	log.Info("ask answered", zap.Int("hits", len(hits)))
+	log.Info("ask answered",
+		zap.Int("evidence", len(result.Evidence)),
+		zap.Int("searches", len(result.Searches)),
+		zap.Int("steps", result.Steps),
+		zap.Bool("budget_exhausted", result.BudgetExhausted),
+	)
 }
 
 // buildAskContext joins exact source chunks and structured metadata into a

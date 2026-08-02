@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,6 +30,7 @@ type SyncStats struct {
 	Touched  int // hash unchanged, metadata refreshed only
 	Deleted  int
 	Embedded int
+	Profiled int
 	Errors   int
 }
 
@@ -37,11 +39,12 @@ type Indexer struct {
 	pool     *pgxpool.Pool
 	metrics  *searchMetrics
 	embedder *Embedder
+	profiles *ProfileExtractor
 	syncMu   sync.Mutex
 }
 
-func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder) *Indexer {
-	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder}
+func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder, profiles *ProfileExtractor) *Indexer {
+	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder, profiles: profiles}
 }
 
 // SyncOnce reconciles changed files and resumes any stale/missing chunk index.
@@ -68,6 +71,7 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 			attribute.Int("search.sync.files.touched", stats.Touched),
 			attribute.Int("search.sync.files.deleted", stats.Deleted),
 			attribute.Int("search.sync.chunks.embedded", stats.Embedded),
+			attribute.Int("search.sync.notes.profiled", stats.Profiled),
 			attribute.Int("search.sync.errors", stats.Errors),
 		)
 		if retErr != nil {
@@ -81,6 +85,11 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 
 	log := applog.With(ctx, logger)
 	start := time.Now()
+	if force && ix.cfg.EnableProfiles {
+		if err := InvalidateNoteProfiles(ctx, ix.pool); err != nil {
+			return stats, err
+		}
+	}
 
 	known, err := AllNoteMeta(ctx, ix.pool)
 	if err != nil {
@@ -133,7 +142,6 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 			stats.Embedded += n
 		}
 	}
-
 	deletedRelpaths := make([]string, 0, len(known))
 	for rel := range known {
 		deletedRelpaths = append(deletedRelpaths, rel)
@@ -147,6 +155,15 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		}
 		stats.Deleted++
 	}
+	if ix.cfg.EnableProfiles && ix.profiles != nil && ix.embedder != nil {
+		profiled, itemErrors, err := ix.backfillProfiles(ctx)
+		stats.Profiled += profiled
+		stats.Errors += itemErrors
+		if err != nil {
+			log.Warn("backfill profiles", zap.Error(err))
+			stats.Errors++
+		}
+	}
 
 	if ix.metrics != nil {
 		ix.metrics.recordSync(ctx, stats, time.Since(start))
@@ -158,6 +175,7 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		zap.Int("touched", stats.Touched),
 		zap.Int("deleted", stats.Deleted),
 		zap.Int("embedded", stats.Embedded),
+		zap.Int("profiled", stats.Profiled),
 		zap.Int("errors", stats.Errors),
 		zap.Duration("took", time.Since(start)),
 	)
@@ -387,6 +405,70 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 		)
 	}
 	return embedded, nil
+}
+
+func (ix *Indexer) backfillProfiles(ctx context.Context) (profiled, itemErrors int, retErr error) {
+	log := applog.With(ctx, logger)
+	limit := ix.cfg.ProfileBackfillBatchPerPass
+	processed := 0
+	var afterID int64
+
+	for {
+		if ctx.Err() != nil {
+			return profiled, itemErrors, ctx.Err()
+		}
+		page := backfillPageSize
+		if limit > 0 {
+			remaining := limit - processed
+			if remaining <= 0 {
+				break
+			}
+			page = min(page, remaining)
+		}
+		notes, err := NotesNeedingProfiles(ctx, ix.pool, afterID, page, ix.cfg.ProfileModel, ix.cfg.EmbedModel)
+		if err != nil {
+			return profiled, itemErrors, err
+		}
+		if len(notes) == 0 {
+			break
+		}
+		for _, note := range notes {
+			afterID = note.ID
+			processed++
+			doc := ParseDocument(note.Content, note.Name)
+			note.Body = doc.Body
+			note.Metadata = doc.Metadata
+			profile, profileText, facets, err := ix.profiles.Extract(ctx, note)
+			if err != nil {
+				if errors.Is(err, ErrChatUnavailable) {
+					return profiled, itemErrors, err
+				}
+				itemErrors++
+				log.Warn("extract note profile", zap.Int64("note_id", note.ID), zap.String("relpath", note.Relpath), zap.Error(err))
+				continue
+			}
+			vec, err := ix.embedder.EmbedOne(ctx, profileText, ix.metrics)
+			if err != nil {
+				itemErrors++
+				log.Warn("embed note profile", zap.Int64("note_id", note.ID), zap.Error(err))
+				continue
+			}
+			if err := UpsertNoteProfile(ctx, ix.pool, note, profile, profileText, facets, vec, ix.cfg.ProfileModel, ix.cfg.EmbedModel); err != nil {
+				itemErrors++
+				log.Warn("save note profile", zap.Int64("note_id", note.ID), zap.Error(err))
+				continue
+			}
+			profiled++
+		}
+	}
+	if processed > 0 {
+		log.Info("profile backfill pass done",
+			zap.Int("notes_processed", processed),
+			zap.Int("profiles_indexed", profiled),
+			zap.Int("errors", itemErrors),
+		)
+	}
+	return profiled, itemErrors, nil
 }
 
 func sha256Hash(data []byte) []byte {
