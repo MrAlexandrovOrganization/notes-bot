@@ -66,7 +66,7 @@ This repo (`notes-bot`) runs **5 Go services** in Docker. All infrastructure (Ka
 | telegram | `cmd/telegram/main.go` | — | 9102 | User-facing Telegram bot, Kafka consumer, LLM smart router |
 | web | `cmd/web/main.go` | — | 9105 | Server-rendered web frontend (templ + htmx + Tailwind), password-gated |
 | postgres | docker image | 5432 | — | Reminders storage (notifications) |
-| postgres-search | `pgvector/pgvector:pg16` | 5432 | — | Search storage with pgvector extension |
+| postgres-search | `pgvector/pgvector:0.8.5-pg16` | 5432 | — | Search storage with pgvector extension |
 
 Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_probe` binary. Telegram and web use HTTP wget checks (`/metrics`, `/healthz` respectively). All containers run as non-root user `app` (UID 10001).
 
