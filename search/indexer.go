@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	"notes-bot/internal/applog"
@@ -53,18 +55,37 @@ func (ix *Indexer) ForceReindex(ctx context.Context) (SyncStats, error) {
 	return ix.syncOnce(ctx, true)
 }
 
-func (ix *Indexer) syncOnce(ctx context.Context, force bool) (SyncStats, error) {
+func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, retErr error) {
 	ix.syncMu.Lock()
 	defer ix.syncMu.Unlock()
 
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
+	ctx, span := telemetry.StartSpan(ctx, attribute.Bool("search.sync.force", force))
+	defer func() {
+		span.SetAttributes(
+			attribute.Int("search.sync.files.seen", stats.Seen),
+			attribute.Int("search.sync.files.added", stats.Added),
+			attribute.Int("search.sync.files.updated", stats.Updated),
+			attribute.Int("search.sync.files.touched", stats.Touched),
+			attribute.Int("search.sync.files.deleted", stats.Deleted),
+			attribute.Int("search.sync.chunks.embedded", stats.Embedded),
+			attribute.Int("search.sync.errors", stats.Errors),
+		)
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		} else if stats.Errors > 0 {
+			span.SetStatus(codes.Error, "sync completed with item errors")
+		}
+		span.End()
+	}()
 
 	log := applog.With(ctx, logger)
 	start := time.Now()
 
-	var stats SyncStats
-	seenSet := make(map[string]struct{}, 1024)
+	known, err := AllNoteMeta(ctx, ix.pool)
+	if err != nil {
+		return stats, fmt.Errorf("load note metadata: %w", err)
+	}
 
 	walkErr := filepath.WalkDir(ix.cfg.NotesDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -90,10 +111,11 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (SyncStats, error) 
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		seenSet[rel] = struct{}{}
 		stats.Seen++
 
-		if err := ix.syncFile(ctx, path, rel, force, &stats); err != nil {
+		existing := known[rel]
+		delete(known, rel)
+		if err := ix.syncFile(ctx, path, rel, existing, force, &stats); err != nil {
 			log.Warn("sync file", zap.String("relpath", rel), zap.Error(err))
 			stats.Errors++
 		}
@@ -112,21 +134,18 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (SyncStats, error) 
 		}
 	}
 
-	known, err := AllRelpaths(ctx, ix.pool)
-	if err != nil {
-		log.Error("list known relpaths", zap.Error(err))
-	} else {
-		for _, rel := range known {
-			if _, ok := seenSet[rel]; ok {
-				continue
-			}
-			if err := DeleteNote(ctx, ix.pool, rel); err != nil {
-				log.Warn("delete note", zap.String("relpath", rel), zap.Error(err))
-				stats.Errors++
-				continue
-			}
-			stats.Deleted++
+	deletedRelpaths := make([]string, 0, len(known))
+	for rel := range known {
+		deletedRelpaths = append(deletedRelpaths, rel)
+	}
+	slices.Sort(deletedRelpaths)
+	for _, rel := range deletedRelpaths {
+		if err := DeleteNote(ctx, ix.pool, rel); err != nil {
+			log.Warn("delete note", zap.String("relpath", rel), zap.Error(err))
+			stats.Errors++
+			continue
 		}
+		stats.Deleted++
 	}
 
 	if ix.metrics != nil {
@@ -145,16 +164,12 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (SyncStats, error) 
 	return stats, nil
 }
 
-func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, force bool, stats *SyncStats) error {
+func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, existing *NoteRow, force bool, stats *SyncStats) error {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("stat: %w", err)
 	}
 
-	existing, err := GetNoteMeta(ctx, ix.pool, relpath)
-	if err != nil {
-		return err
-	}
 	if !force && existing != nil &&
 		existing.Mtime.Unix() == info.ModTime().Unix() &&
 		existing.Size == info.Size() {
@@ -312,8 +327,8 @@ func chunkKey(kind string, ord int) string {
 }
 
 // backfillChunks finds notes without chunk rows and embeds them. The DB query
-// is paged so a single pass with cfg.BackfillBatchPerPass=0 drains the entire
-// backlog without loading everything into memory at once.
+// is paged. A positive BackfillBatchPerPass bounds work per pass; explicitly
+// setting it to 0 drains the entire backlog without loading it all at once.
 const backfillPageSize = 200
 
 func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {

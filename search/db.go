@@ -312,22 +312,31 @@ func TouchNoteMeta(ctx context.Context, pool *pgxpool.Pool, relpath string, mtim
 	return nil
 }
 
-func GetNoteMeta(ctx context.Context, pool *pgxpool.Pool, relpath string) (*NoteRow, error) {
+// AllNoteMeta loads the lightweight metadata needed by a sync pass in one
+// query. The returned map is keyed by vault-relative path.
+func AllNoteMeta(ctx context.Context, pool *pgxpool.Pool) (map[string]*NoteRow, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	row := pool.QueryRow(ctx,
-		`SELECT id, relpath, name, mtime, size, content_hash FROM notes WHERE relpath = $1`,
-		relpath)
-	var n NoteRow
-	err := row.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash)
-	if err == pgx.ErrNoRows {
-		return nil, nil
-	}
+	rows, err := pool.Query(ctx,
+		`SELECT id, relpath, name, mtime, size, content_hash FROM notes`)
 	if err != nil {
-		return nil, fmt.Errorf("get note meta: %w", err)
+		return nil, fmt.Errorf("list note metadata: %w", err)
 	}
-	return &n, nil
+	defer rows.Close()
+
+	out := make(map[string]*NoteRow)
+	for rows.Next() {
+		n := new(NoteRow)
+		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash); err != nil {
+			return nil, fmt.Errorf("scan note metadata: %w", err)
+		}
+		out[n.Relpath] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate note metadata: %w", err)
+	}
+	return out, nil
 }
 
 func GetNoteByID(ctx context.Context, pool *pgxpool.Pool, id int64) (*NoteFull, error) {
@@ -375,26 +384,6 @@ func DeleteNote(ctx context.Context, pool *pgxpool.Pool, relpath string) error {
 		return fmt.Errorf("delete note: %w", err)
 	}
 	return nil
-}
-
-func AllRelpaths(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
-	rows, err := pool.Query(ctx, `SELECT relpath FROM notes`)
-	if err != nil {
-		return nil, fmt.Errorf("list relpaths: %w", err)
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
 }
 
 // SearchHit is the DB-level search result, projected from a notes row.

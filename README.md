@@ -90,6 +90,7 @@ PGADMIN_EMAIL=admin@example.com
 PGADMIN_PASSWORD=change_this_password
 GRAFANA_PASSWORD=change_this_password
 OLLAMA_MODEL=qwen2.5:1.5b   # Модель для разбора напоминаний на естественном языке
+SEARCH_BACKFILL_BATCH_PER_PASS=50  # 0 = весь backlog за один проход
 ```
 
 ### 3. Запустите через Docker

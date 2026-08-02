@@ -40,6 +40,8 @@ type Config struct {
 	BackfillBatchPerPass int
 }
 
+const defaultBackfillBatchPerPass = 50
+
 func getEnvStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -112,7 +114,7 @@ func LoadConfig() *Config {
 		IndexInterval:        getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
 		EmbedDim:             getEnvInt("EMBED_DIM", 1024),
 		EnableEmbeddings:     getEnvBool("ENABLE_EMBEDDINGS", false),
-		BackfillBatchPerPass: getEnvInt("BACKFILL_BATCH_PER_PASS", 0),
+		BackfillBatchPerPass: getEnvInt("BACKFILL_BATCH_PER_PASS", defaultBackfillBatchPerPass),
 	}
 }
 
@@ -135,6 +137,9 @@ func (c *Config) Validate() error {
 	}
 	if c.EmbedDim <= 0 {
 		return fmt.Errorf("EMBED_DIM must be positive, got %d", c.EmbedDim)
+	}
+	if c.BackfillBatchPerPass < 0 {
+		return fmt.Errorf("BACKFILL_BATCH_PER_PASS must be non-negative, got %d", c.BackfillBatchPerPass)
 	}
 	return nil
 }

@@ -289,6 +289,7 @@ SEARCH_EMBED_MODEL=bge-m3:567m
 SEARCH_EMBED_DIM=1024
 SEARCH_ENABLE_EMBEDDINGS=false
 SEARCH_INDEX_INTERVAL=5m
+SEARCH_BACKFILL_BATCH_PER_PASS=50  # 0 = process the entire backlog in one pass
 OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317  # unset = tracing disabled
 WEBHOOK_URL=                 # empty = polling mode; set URL for webhook mode
 WEB_LISTEN_ADDR=:8090        # web frontend listen address
