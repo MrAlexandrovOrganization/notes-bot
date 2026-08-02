@@ -73,7 +73,7 @@ func NewLLMClient(host, port, model string) *LLMClient {
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
 		model:   model,
 		http: &http.Client{
-			Timeout:   3 * time.Minute,
+			Timeout:   10 * time.Minute,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
