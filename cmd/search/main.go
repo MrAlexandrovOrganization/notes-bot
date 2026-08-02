@@ -8,7 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -61,34 +63,8 @@ func main() {
 
 	metrics := search.NewMetrics()
 
-	meter := otel.GetMeterProvider().Meter("search")
-	_, err = meter.Int64ObservableGauge("search.notes.total",
-		metric.WithDescription("Total notes indexed"),
-		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
-			count, err := search.CountNotes(ctx, pool)
-			if err != nil {
-				return err
-			}
-			o.Observe(count)
-			return nil
-		}),
-	)
-	if err != nil {
-		logger.Warn("failed to register notes gauge", zap.Error(err))
-	}
-	_, err = meter.Int64ObservableGauge("search.notes.pending_index",
-		metric.WithDescription("Notes waiting for the current chunk/embedding index"),
-		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
-			count, err := search.CountNotesPendingIndex(ctx, pool, cfg.EmbedModel)
-			if err != nil {
-				return err
-			}
-			o.Observe(count)
-			return nil
-		}),
-	)
-	if err != nil {
-		logger.Warn("failed to register pending index gauge", zap.Error(err))
+	if err := registerIndexGauges(pool, cfg); err != nil {
+		logger.Warn("failed to register index gauges", zap.Error(err))
 	}
 
 	var embedder *search.Embedder
@@ -120,4 +96,96 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")
 	grpcServer.GracefulStop()
+}
+
+func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
+	meter := otel.GetMeterProvider().Meter("search")
+	notesTotal, err := meter.Int64ObservableGauge("search.notes.total",
+		metric.WithDescription("Total notes known to the search index"))
+	if err != nil {
+		return err
+	}
+	if !cfg.EnableEmbeddings {
+		_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+			count, queryErr := search.CountNotes(ctx, pool)
+			if queryErr == nil {
+				observer.ObserveInt64(notesTotal, count)
+			}
+			return queryErr
+		}, notesTotal)
+		return err
+	}
+
+	pendingNotes, err := meter.Int64ObservableGauge("search.notes.pending_index",
+		metric.WithDescription("Notes waiting for the configured index version and embedding model"))
+	if err != nil {
+		return err
+	}
+	currentNotes, err := meter.Int64ObservableGauge("search.notes.current_index",
+		metric.WithDescription("Notes committed to the configured index version and embedding model"))
+	if err != nil {
+		return err
+	}
+	progress, err := meter.Float64ObservableGauge("search.index.progress",
+		metric.WithDescription("Fraction of notes committed to the configured index, from 0 to 1"),
+		metric.WithUnit("1"))
+	if err != nil {
+		return err
+	}
+	chunksTotal, err := meter.Int64ObservableGauge("search.chunks.total",
+		metric.WithDescription("Total chunk rows, including stale versions during a rolling reindex"))
+	if err != nil {
+		return err
+	}
+	chunksCurrent, err := meter.Int64ObservableGauge("search.chunks.current_index",
+		metric.WithDescription("Chunk rows written with the configured index version and embedding model"))
+	if err != nil {
+		return err
+	}
+	chunksStale, err := meter.Int64ObservableGauge("search.chunks.stale_index",
+		metric.WithDescription("Chunk rows not written with the configured index version and embedding model"))
+	if err != nil {
+		return err
+	}
+	latestIndexed, err := meter.Int64ObservableGauge("search.index.latest_note_timestamp",
+		metric.WithDescription("Unix timestamp of the last note committed to the configured index"),
+		metric.WithUnit("s"))
+	if err != nil {
+		return err
+	}
+
+	instruments := []metric.Observable{
+		notesTotal, pendingNotes, currentNotes, progress,
+		chunksTotal, chunksCurrent, chunksStale, latestIndexed,
+	}
+	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		snapshot, queryErr := search.ReadIndexMetricsSnapshot(ctx, pool, cfg.EmbedModel)
+		if queryErr != nil {
+			return queryErr
+		}
+		attrs := metric.WithAttributes(
+			attribute.Int("index_version", search.CurrentIndexVersion),
+			attribute.String("embedding_model", cfg.EmbedModel),
+		)
+		current := snapshot.TotalNotes - snapshot.PendingNotes
+		staleChunks := snapshot.TotalChunks - snapshot.CurrentChunks
+		if staleChunks < 0 {
+			staleChunks = 0
+		}
+		progressValue := 1.0
+		if snapshot.TotalNotes > 0 {
+			progressValue = float64(current) / float64(snapshot.TotalNotes)
+		}
+
+		observer.ObserveInt64(notesTotal, snapshot.TotalNotes)
+		observer.ObserveInt64(pendingNotes, snapshot.PendingNotes, attrs)
+		observer.ObserveInt64(currentNotes, current, attrs)
+		observer.ObserveFloat64(progress, progressValue, attrs)
+		observer.ObserveInt64(chunksTotal, snapshot.TotalChunks)
+		observer.ObserveInt64(chunksCurrent, snapshot.CurrentChunks, attrs)
+		observer.ObserveInt64(chunksStale, staleChunks, attrs)
+		observer.ObserveInt64(latestIndexed, snapshot.LatestIndexedUnix, attrs)
+		return nil
+	}, instruments...)
+	return err
 }

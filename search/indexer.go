@@ -202,7 +202,11 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, force
 	}
 
 	if ix.cfg.EnableEmbeddings && ix.embedder != nil {
-		embedded, err := ix.reindexChunks(ctx, noteID, name, doc, force)
+		source := "sync"
+		if force {
+			source = "force"
+		}
+		embedded, err := ix.reindexChunks(ctx, noteID, name, doc, force, source)
 		if err != nil {
 			return fmt.Errorf("reindex chunks: %w", err)
 		}
@@ -214,7 +218,12 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, force
 // reindexChunks chunks the note, computes per-chunk hashes, embeds only
 // new/changed chunks, and drops any stale ones. Returns how many chunks were
 // embedded in this pass.
-func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName string, doc ParsedDocument, force bool) (int, error) {
+func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName string, doc ParsedDocument, force bool, source string) (embedded int, err error) {
+	started := time.Now()
+	defer func() {
+		ix.metrics.recordIndexNote(ctx, source, embedded, time.Since(started), err)
+	}()
+
 	chunks := ChunkContent(doc.Body)
 
 	existing, err := ListChunkHashes(ctx, ix.pool, noteID)
@@ -283,18 +292,19 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName str
 		for i, p := range batch {
 			c := chunks[p.idx]
 			if err := UpsertChunk(ctx, ix.pool, noteID, string(c.Kind), c.Ord, c.Text, c.HeadingPath, p.hash, vecs[i], ix.cfg.EmbedModel); err != nil {
-				return 0, err
+				return embedded, err
 			}
 		}
+		embedded += len(batch)
 		start = end
 	}
 	if _, err := DeleteChunksByID(ctx, ix.pool, staleIDs); err != nil {
-		return 0, err
+		return embedded, err
 	}
 	if err := MarkNoteChunksCurrent(ctx, ix.pool, noteID, ix.cfg.EmbedModel); err != nil {
-		return 0, err
+		return embedded, err
 	}
-	return len(todo), nil
+	return embedded, nil
 }
 
 func chunkKey(kind string, ord int) string {
@@ -341,7 +351,7 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 			if err := UpdateNoteParsed(ctx, ix.pool, n.ID, doc); err != nil {
 				return embedded, err
 			}
-			emb, err := ix.reindexChunks(ctx, n.ID, n.Name, doc, true)
+			emb, err := ix.reindexChunks(ctx, n.ID, n.Name, doc, true, "backfill")
 			if err != nil {
 				return embedded, err
 			}

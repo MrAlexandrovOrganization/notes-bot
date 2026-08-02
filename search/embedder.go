@@ -55,13 +55,17 @@ type ollamaEmbedResponse struct {
 // Embed sends the inputs as a batch to /api/embed and returns one vector per
 // input in the same order. The metrics counter (if non-nil) is incremented per
 // batch call (not per input) so it matches Ollama's billing model.
-func (e *Embedder) Embed(ctx context.Context, inputs []string, metrics *Metrics) ([][]float32, error) {
+func (e *Embedder) Embed(ctx context.Context, inputs []string, metrics *Metrics) (out [][]float32, err error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	if len(inputs) == 0 {
 		return nil, nil
 	}
+	started := time.Now()
+	defer func() {
+		metrics.recordEmbed(ctx, inputs, time.Since(started), err)
+	}()
 
 	body, err := json.Marshal(ollamaEmbedRequest{Model: e.model, Input: inputs})
 	if err != nil {
@@ -73,10 +77,6 @@ func (e *Embedder) Embed(ctx context.Context, inputs []string, metrics *Metrics)
 		return nil, fmt.Errorf("create embed request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-
-	if metrics != nil {
-		metrics.embedCalls.Add(ctx, 1)
-	}
 
 	resp, err := e.http.Do(req)
 	if err != nil {
@@ -93,19 +93,19 @@ func (e *Embedder) Embed(ctx context.Context, inputs []string, metrics *Metrics)
 		return nil, fmt.Errorf("%w: status %d: %s", ErrEmbedderUnavailable, resp.StatusCode, msg)
 	}
 
-	var out ollamaEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	var response ollamaEmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("decode embed response: %w", err)
 	}
-	if len(out.Embeddings) != len(inputs) {
-		return nil, fmt.Errorf("embedder returned %d vectors for %d inputs", len(out.Embeddings), len(inputs))
+	if len(response.Embeddings) != len(inputs) {
+		return nil, fmt.Errorf("embedder returned %d vectors for %d inputs", len(response.Embeddings), len(inputs))
 	}
-	for i, v := range out.Embeddings {
+	for i, v := range response.Embeddings {
 		if len(v) != e.dim {
 			return nil, fmt.Errorf("embedder returned dim=%d, expected %d (input %d)", len(v), e.dim, i)
 		}
 	}
-	return out.Embeddings, nil
+	return response.Embeddings, nil
 }
 
 // EmbedOne is a convenience wrapper around Embed for single-input callers (e.g. queries).

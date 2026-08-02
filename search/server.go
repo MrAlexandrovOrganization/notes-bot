@@ -58,9 +58,18 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+func responseHitCount(resp **pb.SearchResponse) func() int {
+	return func() int {
+		if resp == nil || *resp == nil {
+			return 0
+		}
+		return len((*resp).Hits)
+	}
+}
+
 func (s *SearchServer) SearchByName(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchByName", &err)
-	defer s.metrics.recordSearch(ctx, "name", &err)
+	defer s.metrics.recordSearch(ctx, "name", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
 	if req.Query == "" {
@@ -76,7 +85,7 @@ func (s *SearchServer) SearchByName(ctx context.Context, req *pb.SearchRequest) 
 
 func (s *SearchServer) SearchByContent(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchByContent", &err)
-	defer s.metrics.recordSearch(ctx, "content", &err)
+	defer s.metrics.recordSearch(ctx, "content", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
 	if req.Query == "" {
@@ -96,7 +105,7 @@ func (s *SearchServer) SearchByContent(ctx context.Context, req *pb.SearchReques
 
 func (s *SearchServer) SearchSemantic(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchSemantic", &err)
-	defer s.metrics.recordSearch(ctx, "semantic", &err)
+	defer s.metrics.recordSearch(ctx, "semantic", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
 	if !s.cfg.EnableEmbeddings || s.embedder == nil {
@@ -125,7 +134,7 @@ func (s *SearchServer) SearchSemantic(ctx context.Context, req *pb.SearchRequest
 
 func (s *SearchServer) SearchHybrid(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchHybrid", &err)
-	defer s.metrics.recordSearch(ctx, "hybrid", &err)
+	defer s.metrics.recordSearch(ctx, "hybrid", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
 	if !s.cfg.EnableEmbeddings || s.embedder == nil {
@@ -151,10 +160,12 @@ func (s *SearchServer) SearchHybrid(ctx context.Context, req *pb.SearchRequest) 
 		log.Error("hybrid vector search", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.metrics.recordHybridCandidates(ctx, "dense", len(dense))
 	lexical, lexicalErr := SearchChunksByContent(ctx, s.pool, req.Query, fetch, filters)
 	if lexicalErr != nil {
 		log.Warn("hybrid lexical search", zap.Error(lexicalErr))
 	}
+	s.metrics.recordHybridCandidates(ctx, "lexical", len(lexical))
 	maxPerNote := 2
 	if filters.DateFrom != nil && filters.DateTo != nil && filters.DateFrom.Equal(*filters.DateTo) {
 		// A single-day question commonly targets one daily note; diversity must
@@ -162,11 +173,13 @@ func (s *SearchServer) SearchHybrid(ctx context.Context, req *pb.SearchRequest) 
 		maxPerNote = limit
 	}
 	selected := FuseByChunkID(dense, lexical, limit, maxPerNote)
+	s.metrics.recordHybridCandidates(ctx, "fused", len(selected))
 	expanded, err := ExpandChunkNeighbors(ctx, s.pool, selected, 1)
 	if err != nil {
 		log.Error("expand hybrid context", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.metrics.recordHybridCandidates(ctx, "with_neighbors", len(expanded))
 	return &pb.SearchResponse{Hits: hitsToProto(expanded, "")}, nil
 }
 

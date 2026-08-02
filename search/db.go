@@ -536,6 +536,42 @@ func CountNotesPendingIndex(ctx context.Context, pool *pgxpool.Pool, model strin
 	return n, err
 }
 
+// IndexMetricsSnapshot is read in one SQL statement so all gauges exported in
+// a Prometheus scrape describe the same database state.
+type IndexMetricsSnapshot struct {
+	TotalNotes        int64
+	PendingNotes      int64
+	TotalChunks       int64
+	CurrentChunks     int64
+	LatestIndexedUnix int64
+}
+
+func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model string) (IndexMetricsSnapshot, error) {
+	var snapshot IndexMetricsSnapshot
+	err := pool.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM notes),
+			(SELECT COUNT(*) FROM notes
+			 WHERE chunk_index_version <> $1 OR chunk_embedding_model <> $2),
+			(SELECT COUNT(*) FROM note_chunks),
+			(SELECT COUNT(*) FROM note_chunks
+			 WHERE index_version = $1 AND embedding_model = $2),
+			COALESCE((SELECT EXTRACT(EPOCH FROM MAX(chunks_indexed_at))::bigint
+			          FROM notes
+			          WHERE chunk_index_version = $1 AND chunk_embedding_model = $2), 0)
+	`, CurrentIndexVersion, model).Scan(
+		&snapshot.TotalNotes,
+		&snapshot.PendingNotes,
+		&snapshot.TotalChunks,
+		&snapshot.CurrentChunks,
+		&snapshot.LatestIndexedUnix,
+	)
+	if err != nil {
+		return IndexMetricsSnapshot{}, fmt.Errorf("read index metrics snapshot: %w", err)
+	}
+	return snapshot, nil
+}
+
 // NotesNeedingChunks returns notes whose committed index version/model is stale.
 // The note-level marker is updated only after a complete reindex, so interrupted
 // deployments resume safely even if some chunk rows were already written.

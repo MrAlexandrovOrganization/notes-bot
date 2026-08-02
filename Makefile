@@ -120,10 +120,10 @@ clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
-up:
+up: monitoring-register
 	$(DOCKER_COMPOSE) up --build -d
 
-deploy: proto
+deploy: proto monitoring-register
 	$(DOCKER_COMPOSE) build --no-cache
 	$(DOCKER_COMPOSE) up -d
 

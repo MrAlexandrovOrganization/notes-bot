@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,7 +18,16 @@ type searchMetrics struct {
 	indexFilesTouched metric.Int64Counter
 	indexErrors       metric.Int64Counter
 	embedCalls        metric.Int64Counter
+	embedInputs       metric.Int64Counter
+	embedInputRunes   metric.Int64Counter
+	embedDuration     metric.Float64Histogram
+	indexNotes        metric.Int64Counter
+	indexChunks       metric.Int64Counter
+	indexNoteDuration metric.Float64Histogram
 	searchRequests    metric.Int64Counter
+	searchDuration    metric.Float64Histogram
+	searchResults     metric.Int64Histogram
+	hybridCandidates  metric.Int64Histogram
 	syncDuration      metric.Float64Histogram
 	rpcRequests       metric.Int64Counter
 }
@@ -38,9 +48,30 @@ func newSearchMetrics() *searchMetrics {
 	indexErrors, _ := meter.Int64Counter("search.index.errors",
 		metric.WithDescription("Total errors during sync"))
 	embedCalls, _ := meter.Int64Counter("search.embed.calls",
-		metric.WithDescription("Total embedding API calls"))
+		metric.WithDescription("Total embedding API calls by status"))
+	embedInputs, _ := meter.Int64Counter("search.embed.inputs",
+		metric.WithDescription("Total texts sent to the embedding API by status"))
+	embedInputRunes, _ := meter.Int64Counter("search.embed.input.runes",
+		metric.WithDescription("Total Unicode code points sent to the embedding API by status"))
+	embedDuration, _ := meter.Float64Histogram("search.embed.duration",
+		metric.WithDescription("Embedding API request duration by status"),
+		metric.WithUnit("s"))
+	indexNotes, _ := meter.Int64Counter("search.index.notes.processed",
+		metric.WithDescription("Notes processed by the chunk index by source and status"))
+	indexChunks, _ := meter.Int64Counter("search.index.chunks.embedded",
+		metric.WithDescription("Chunks successfully embedded by index source"))
+	indexNoteDuration, _ := meter.Float64Histogram("search.index.note.duration",
+		metric.WithDescription("End-to-end duration of indexing one note by source and status"),
+		metric.WithUnit("s"))
 	searchRequests, _ := meter.Int64Counter("search.requests",
 		metric.WithDescription("Search RPC requests by kind and status"))
+	searchDuration, _ := meter.Float64Histogram("search.duration",
+		metric.WithDescription("Search RPC duration by kind and status"),
+		metric.WithUnit("s"))
+	searchResults, _ := meter.Int64Histogram("search.results",
+		metric.WithDescription("Number of hits returned by successful search RPCs by kind"))
+	hybridCandidates, _ := meter.Int64Histogram("search.hybrid.candidates",
+		metric.WithDescription("Hybrid retrieval candidates by pipeline stage"))
 	syncDuration, _ := meter.Float64Histogram("search.sync.duration",
 		metric.WithDescription("Duration of a SyncOnce pass"),
 		metric.WithUnit("s"))
@@ -55,10 +86,67 @@ func newSearchMetrics() *searchMetrics {
 		indexFilesTouched: indexFilesTouched,
 		indexErrors:       indexErrors,
 		embedCalls:        embedCalls,
+		embedInputs:       embedInputs,
+		embedInputRunes:   embedInputRunes,
+		embedDuration:     embedDuration,
+		indexNotes:        indexNotes,
+		indexChunks:       indexChunks,
+		indexNoteDuration: indexNoteDuration,
 		searchRequests:    searchRequests,
+		searchDuration:    searchDuration,
+		searchResults:     searchResults,
+		hybridCandidates:  hybridCandidates,
 		syncDuration:      syncDuration,
 		rpcRequests:       rpcRequests,
 	}
+}
+
+func metricStatus(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "ok"
+}
+
+func (m *searchMetrics) recordEmbed(ctx context.Context, inputs []string, took time.Duration, err error) {
+	if m == nil || len(inputs) == 0 {
+		return
+	}
+	status := metricStatus(err)
+	attrs := metric.WithAttributes(attribute.String("status", status))
+	var runes int64
+	for _, input := range inputs {
+		runes += int64(utf8.RuneCountInString(input))
+	}
+	m.embedCalls.Add(ctx, 1, attrs)
+	m.embedInputs.Add(ctx, int64(len(inputs)), attrs)
+	m.embedInputRunes.Add(ctx, runes, attrs)
+	m.embedDuration.Record(ctx, took.Seconds(), attrs)
+}
+
+func (m *searchMetrics) recordIndexNote(ctx context.Context, source string, embedded int, took time.Duration, err error) {
+	if m == nil {
+		return
+	}
+	status := metricStatus(err)
+	attrs := metric.WithAttributes(
+		attribute.String("source", source),
+		attribute.String("status", status),
+	)
+	m.indexNotes.Add(ctx, 1, attrs)
+	m.indexNoteDuration.Record(ctx, took.Seconds(), attrs)
+	if embedded > 0 {
+		m.indexChunks.Add(ctx, int64(embedded),
+			metric.WithAttributes(attribute.String("source", source)))
+	}
+}
+
+func (m *searchMetrics) recordHybridCandidates(ctx context.Context, stage string, count int) {
+	if m == nil {
+		return
+	}
+	m.hybridCandidates.Record(ctx, int64(count),
+		metric.WithAttributes(attribute.String("stage", stage)))
 }
 
 func (m *searchMetrics) recordSync(ctx context.Context, s SyncStats, took time.Duration) {
@@ -90,18 +178,21 @@ func (m *searchMetrics) recordRPC(ctx context.Context, method string, err *error
 	)
 }
 
-func (m *searchMetrics) recordSearch(ctx context.Context, kind string, err *error) {
+func (m *searchMetrics) recordSearch(ctx context.Context, kind string, started time.Time, resultCount func() int, err *error) {
 	if m == nil {
 		return
 	}
-	st := "ok"
-	if *err != nil {
-		st = "error"
-	}
-	m.searchRequests.Add(ctx, 1,
-		metric.WithAttributes(
-			attribute.String("kind", kind),
-			attribute.String("status", st),
-		),
+	st := metricStatus(*err)
+	attrs := metric.WithAttributes(
+		attribute.String("kind", kind),
+		attribute.String("status", st),
 	)
+	m.searchRequests.Add(ctx, 1,
+		attrs,
+	)
+	m.searchDuration.Record(ctx, time.Since(started).Seconds(), attrs)
+	if *err == nil && resultCount != nil {
+		m.searchResults.Record(ctx, int64(resultCount()),
+			metric.WithAttributes(attribute.String("kind", kind)))
+	}
 }
