@@ -3,5 +3,6 @@
     - 'notes-bot-notifications:9101'
     - 'notes-bot-telegram:9102'
     - 'notes-bot-search:9103'
+    - 'notes-bot-web:9105'
   labels:
     project: 'notes-bot'
