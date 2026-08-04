@@ -23,44 +23,24 @@ func (a *App) registerSearchRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /search/note/{id}/append", a.handleSearchAppendNote)
 }
 
-// searchNotes mirrors find.go's searchNotes: name search first, falling back
-// to content search when there are fewer than 3 hits.
+// searchNotes delegates retrieval selection to the product-level search API.
 func (a *App) searchNotes(ctx context.Context, q string, limit int) ([]views.SearchHitData, error) {
-	nameHits, err := a.Search.SearchByName(ctx, q, limit)
+	hits, err := a.Search.FindNotes(ctx, q, limit, clients.SearchOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	merged := make([]views.SearchHitData, 0, limit)
-	seen := make(map[int64]struct{}, limit)
-	add := func(h *clients.SearchHit) {
+	for _, h := range hits {
 		if h == nil {
-			return
+			continue
 		}
-		if _, ok := seen[h.NoteID]; ok {
-			return
-		}
-		seen[h.NoteID] = struct{}{}
 		merged = append(merged, views.SearchHitData{
 			NoteID:  h.NoteID,
 			Relpath: h.Relpath,
 			Name:    h.Name,
 			Snippet: truncateSnippet(h.Snippet),
 		})
-	}
-	for _, h := range nameHits {
-		add(h)
-	}
-	if len(merged) < 3 {
-		contentHits, err := a.Search.SearchByContent(ctx, q, limit)
-		if err == nil {
-			for _, h := range contentHits {
-				if len(merged) >= limit {
-					break
-				}
-				add(h)
-			}
-		}
 	}
 	return merged, nil
 }

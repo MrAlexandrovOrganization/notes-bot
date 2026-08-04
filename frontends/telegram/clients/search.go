@@ -119,6 +119,17 @@ func (c *SearchClient) SearchByName(ctx context.Context, query string, limit int
 	return protoToHits(resp), nil
 }
 
+func (c *SearchClient) FindNotes(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error) {
+	resp, err := c.stub.FindNotes(ctx, &pb.SearchRequest{
+		Query: query, Limit: int32(limit), DateFrom: options.DateFrom, DateTo: options.DateTo,
+		Kinds: options.Kinds, NoteIds: options.NoteIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return protoToHits(resp), nil
+}
+
 func (c *SearchClient) SearchByContent(ctx context.Context, query string, limit int) ([]*SearchHit, error) {
 	resp, err := c.stub.SearchByContent(ctx, &pb.SearchRequest{Query: query, Limit: int32(limit)})
 	if err != nil {

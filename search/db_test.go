@@ -36,12 +36,12 @@ func TestVersionedChunkSchemaContainsRollingMigrationColumns(t *testing.T) {
 		t.Fatal("CurrentIndexVersion must be positive")
 	}
 	for _, want := range []string{
-		"chunk_index_version", "chunk_embedding_model", "note_date",
+		"chunk_index_version", "chunk_embedding_version", "chunk_embedding_model", "note_date",
 		"frontmatter JSONB", "heading_path", "embedding_model",
 		"index_version", "tsv_ru", "tsv_simple",
-		"note_profiles", "profile_version", "profile_model", "profile_text",
+		"note_profiles", "chunk_embeddings", "profile_embeddings", "profile_version", "profile_model", "profile_text",
 	} {
-		if !strings.Contains(notesMigrationSQL+vectorMigrationSQL+vectorSchemaSQL, want) {
+		if !strings.Contains(notesMigrationSQL+chunkSchemaSQL+chunkMigrationSQL+legacyVectorRelaxationSQL+vectorSchemaSQL+vectorDataMigrationSQL, want) {
 			t.Errorf("rolling migrations do not contain %q", want)
 		}
 	}

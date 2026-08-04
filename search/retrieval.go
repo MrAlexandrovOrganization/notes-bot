@@ -71,6 +71,11 @@ func FuseByChunkID(dense, lexical []SearchHit, limit, maxPerNote int) []SearchHi
 // FuseByNoteID is the profile-index counterpart of FuseByChunkID. Profile
 // rows have no source chunk id because they are routing documents, not evidence.
 func FuseByNoteID(dense, lexical []SearchHit, limit int) []SearchHit {
+	return FuseManyByNoteID(limit, dense, lexical)
+}
+
+// FuseManyByNoteID combines an arbitrary product-selected set of retrievers.
+func FuseManyByNoteID(limit int, rankings ...[]SearchHit) []SearchHit {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -79,7 +84,7 @@ func FuseByNoteID(dense, lexical []SearchHit, limit int) []SearchHit {
 		hit   SearchHit
 		score float64
 	}
-	candidates := make(map[int64]candidate, len(dense)+len(lexical))
+	candidates := make(map[int64]candidate)
 	add := func(hits []SearchHit) {
 		for rank, hit := range hits {
 			if hit.NoteID == 0 {
@@ -93,8 +98,9 @@ func FuseByNoteID(dense, lexical []SearchHit, limit int) []SearchHit {
 			candidates[hit.NoteID] = c
 		}
 	}
-	add(dense)
-	add(lexical)
+	for _, ranking := range rankings {
+		add(ranking)
+	}
 	ranked := make([]candidate, 0, len(candidates))
 	for _, c := range candidates {
 		c.hit.Score = c.score

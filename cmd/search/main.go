@@ -57,7 +57,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	if err := search.EnsureSchema(ctx, pool, cfg.EnableEmbeddings, cfg.EmbedDim); err != nil {
+	if err := search.EnsureSchema(ctx, pool, cfg.Features, cfg.EmbedDim); err != nil {
 		logger.Fatal("failed to ensure schema", zap.Error(err))
 	}
 
@@ -70,14 +70,23 @@ func main() {
 	var embedder *search.Embedder
 	var profileExtractor *search.ProfileExtractor
 	var agent *search.NotesAgent
-	if cfg.EnableEmbeddings {
+	if cfg.Features.Embeddings {
 		embedder = search.NewEmbedder(cfg.LLMHost, cfg.LLMPort, cfg.EmbedModel, cfg.EmbedDim)
 	}
-	if cfg.EnableProfiles {
+	if cfg.Features.Profiles {
 		profileChat := search.NewChatClient(cfg.LLMHost, cfg.LLMPort, cfg.ProfileModel)
 		profileExtractor = search.NewProfileExtractor(profileChat, cfg.ProfileModel)
+	}
+	if cfg.Features.LLMGeneration {
 		agentChat := search.NewChatClient(cfg.LLMHost, cfg.LLMPort, cfg.AgentModel)
-		agent = search.NewNotesAgent(pool, embedder, agentChat, metrics, cfg.AgentMaxSteps)
+		agent = search.NewNotesAgent(pool, embedder, agentChat, metrics, cfg.AgentMaxSteps, search.AgentRetrievalPolicy{
+			Lexical:           cfg.UsesAskRetriever(search.RetrieverLexical),
+			Dense:             cfg.UsesAskRetriever(search.RetrieverDense),
+			Profiles:          cfg.UsesAskRetriever(search.RetrieverProfiles),
+			ProfileEmbeddings: cfg.UsesAskRetriever(search.RetrieverProfiles) && cfg.Features.ProfileEmbeddings,
+			EmbedModel:        cfg.EmbedModel,
+			ProfileModel:      cfg.ProfileModel,
+		})
 	}
 
 	indexer := search.NewIndexer(cfg, pool, metrics, embedder, profileExtractor)
@@ -113,24 +122,13 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 	if err != nil {
 		return err
 	}
-	if !cfg.EnableEmbeddings {
-		_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
-			count, queryErr := search.CountNotes(ctx, pool)
-			if queryErr == nil {
-				observer.ObserveInt64(notesTotal, count)
-			}
-			return queryErr
-		}, notesTotal)
-		return err
-	}
-
 	pendingNotes, err := meter.Int64ObservableGauge("search.notes.pending_index",
-		metric.WithDescription("Notes waiting for the configured index version and embedding model"))
+		metric.WithDescription("Notes waiting for the current lexical chunk version"))
 	if err != nil {
 		return err
 	}
 	currentNotes, err := meter.Int64ObservableGauge("search.notes.current_index",
-		metric.WithDescription("Notes committed to the configured index version and embedding model"))
+		metric.WithDescription("Notes committed to the current lexical chunk version"))
 	if err != nil {
 		return err
 	}
@@ -146,12 +144,12 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 		return err
 	}
 	chunksCurrent, err := meter.Int64ObservableGauge("search.chunks.current_index",
-		metric.WithDescription("Chunk rows written with the configured index version and embedding model"))
+		metric.WithDescription("Chunk rows written with the current lexical version"))
 	if err != nil {
 		return err
 	}
 	chunksStale, err := meter.Int64ObservableGauge("search.chunks.stale_index",
-		metric.WithDescription("Chunk rows not written with the configured index version and embedding model"))
+		metric.WithDescription("Chunk rows not written with the current lexical version"))
 	if err != nil {
 		return err
 	}
@@ -188,13 +186,12 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 		profilesTotal, profilesPending, profileProgress, latestProfile,
 	}
 	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
-		snapshot, queryErr := search.ReadIndexMetricsSnapshot(ctx, pool, cfg.EmbedModel, cfg.ProfileModel)
+		snapshot, queryErr := search.ReadIndexMetricsSnapshot(ctx, pool, cfg.ProfileModel)
 		if queryErr != nil {
 			return queryErr
 		}
 		attrs := metric.WithAttributes(
 			attribute.Int("index_version", search.CurrentIndexVersion),
-			attribute.String("embedding_model", cfg.EmbedModel),
 		)
 		current := snapshot.TotalNotes - snapshot.PendingNotes
 		staleChunks := snapshot.TotalChunks - snapshot.CurrentChunks
@@ -217,7 +214,6 @@ func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {
 		profileAttrs := metric.WithAttributes(
 			attribute.Int("profile_version", search.CurrentProfileVersion),
 			attribute.String("profile_model", cfg.ProfileModel),
-			attribute.String("embedding_model", cfg.EmbedModel),
 		)
 		profileProgressValue := 1.0
 		if snapshot.TotalNotes > 0 {

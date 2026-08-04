@@ -85,7 +85,7 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 
 	log := applog.With(ctx, logger)
 	start := time.Now()
-	if force && ix.cfg.EnableProfiles {
+	if force && ix.cfg.Features.Profiles {
 		if err := InvalidateNoteProfiles(ctx, ix.pool); err != nil {
 			return stats, err
 		}
@@ -134,8 +134,12 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		return stats, fmt.Errorf("walk vault: %w", walkErr)
 	}
 
-	if ix.cfg.EnableEmbeddings && ix.embedder != nil {
-		if n, err := ix.backfillChunks(ctx); err != nil {
+	if err := ix.backfillChunks(ctx); err != nil {
+		log.Warn("backfill chunks", zap.Error(err))
+		stats.Errors++
+	}
+	if ix.cfg.Features.Embeddings && ix.embedder != nil {
+		if n, err := ix.backfillEmbeddings(ctx); err != nil {
 			log.Warn("backfill chunks", zap.Error(err))
 			stats.Errors++
 		} else {
@@ -155,13 +159,21 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		}
 		stats.Deleted++
 	}
-	if ix.cfg.EnableProfiles && ix.profiles != nil && ix.embedder != nil {
+	if ix.cfg.Features.Profiles && ix.profiles != nil {
 		profiled, itemErrors, err := ix.backfillProfiles(ctx)
 		stats.Profiled += profiled
 		stats.Errors += itemErrors
 		if err != nil {
 			log.Warn("backfill profiles", zap.Error(err))
 			stats.Errors++
+		}
+	}
+	if ix.cfg.Features.ProfileEmbeddings && ix.embedder != nil {
+		if itemErrors, err := ix.backfillProfileEmbeddings(ctx); err != nil {
+			log.Warn("backfill profile embeddings", zap.Error(err))
+			stats.Errors++
+		} else {
+			stats.Errors += itemErrors
 		}
 	}
 
@@ -234,34 +246,29 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, exist
 		stats.Updated++
 	}
 
-	if ix.cfg.EnableEmbeddings && ix.embedder != nil {
+	if err := ix.reindexChunks(ctx, noteID, doc); err != nil {
+		return fmt.Errorf("reindex chunks: %w", err)
+	}
+	if ix.cfg.Features.Embeddings && ix.embedder != nil {
 		source := "sync"
 		if force {
 			source = "force"
 		}
-		embedded, err := ix.reindexChunks(ctx, noteID, name, doc, force, source)
+		embedded, err := ix.reindexEmbeddings(ctx, noteID, name, doc.Metadata, force, source)
 		if err != nil {
-			return fmt.Errorf("reindex chunks: %w", err)
+			return fmt.Errorf("reindex embeddings: %w", err)
 		}
 		stats.Embedded += embedded
 	}
 	return nil
 }
 
-// reindexChunks chunks the note, computes per-chunk hashes, embeds only
-// new/changed chunks, and drops any stale ones. Returns how many chunks were
-// embedded in this pass.
-func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName string, doc ParsedDocument, force bool, source string) (embedded int, err error) {
-	started := time.Now()
-	defer func() {
-		ix.metrics.recordIndexNote(ctx, source, embedded, time.Since(started), err)
-	}()
-
+// reindexChunks materializes chunk text and FTS independently of neural features.
+func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, doc ParsedDocument) error {
 	chunks := ChunkContent(doc.Body)
-
 	existing, err := ListChunkHashes(ctx, ix.pool, noteID)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	existingByKey := make(map[string]ChunkRow, len(existing))
 	for _, c := range existing {
@@ -279,25 +286,54 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName str
 		}
 	}
 
-	// Identify chunks that need embedding (new or changed hash).
+	embeddingsStale := len(staleIDs) > 0
+	for _, c := range chunks {
+		h := sha256Hash([]byte(string(c.Kind) + "\x00" + c.HeadingPath + "\x00" + c.Text))
+		previous, exists := existingByKey[chunkKey(string(c.Kind), c.Ord)]
+		if !exists || previous.Text != c.Text || previous.Heading != c.HeadingPath {
+			embeddingsStale = true
+		}
+		if _, err := UpsertChunk(ctx, ix.pool, noteID, string(c.Kind), c.Ord, c.Text, c.HeadingPath, h); err != nil {
+			return err
+		}
+	}
+	if _, err := DeleteChunksByID(ctx, ix.pool, staleIDs); err != nil {
+		return err
+	}
+	if embeddingsStale {
+		if err := InvalidateNoteEmbeddings(ctx, ix.pool, noteID); err != nil {
+			return err
+		}
+	}
+	return MarkNoteChunksCurrent(ctx, ix.pool, noteID)
+}
+
+func (ix *Indexer) reindexEmbeddings(ctx context.Context, noteID int64, noteName string, metadata NoteMetadata, force bool, source string) (embedded int, err error) {
+	started := time.Now()
+	defer func() {
+		if ix.metrics != nil {
+			ix.metrics.recordIndexNote(ctx, source, embedded, time.Since(started), err)
+		}
+	}()
+	rows, err := ListChunksForEmbedding(ctx, ix.pool, noteID)
+	if err != nil {
+		return 0, err
+	}
 	type pending struct {
-		idx   int
+		row   ChunkRow
 		hash  []byte
 		input string
 	}
 	var todo []pending
-	for i, c := range chunks {
-		input := embeddingInput(noteName, doc.Metadata, c)
+	for _, row := range rows {
+		chunk := Chunk{Kind: ChunkKind(row.Kind), Ord: row.Ord, Text: row.Text, HeadingPath: row.Heading}
+		input := embeddingInput(noteName, metadata, chunk)
 		h := sha256Hash([]byte(input))
-		if prev, ok := existingByKey[chunkKey(string(c.Kind), c.Ord)]; !force && ok && bytesEqual(prev.ChunkHash, h) {
+		if !force && row.EmbeddingVersion == CurrentEmbeddingVersion && row.EmbeddingModel == ix.cfg.EmbedModel && bytesEqual(row.EmbeddingHash, h) {
 			continue
 		}
-		todo = append(todo, pending{idx: i, hash: h, input: input})
+		todo = append(todo, pending{row: row, hash: h, input: input})
 	}
-
-	// Keep both the number of inputs and their total size bounded. Ollama's CPU
-	// backend processes batch members sequentially, so a large count can exceed
-	// the HTTP timeout even when every individual input fits the model context.
 	const (
 		maxBatchInputs = 8
 		maxBatchRunes  = 4000
@@ -323,18 +359,14 @@ func (ix *Indexer) reindexChunks(ctx context.Context, noteID int64, noteName str
 			return 0, fmt.Errorf("embed batch: %w", err)
 		}
 		for i, p := range batch {
-			c := chunks[p.idx]
-			if err := UpsertChunk(ctx, ix.pool, noteID, string(c.Kind), c.Ord, c.Text, c.HeadingPath, p.hash, vecs[i], ix.cfg.EmbedModel); err != nil {
+			if err := UpsertChunkEmbedding(ctx, ix.pool, p.row.ID, p.hash, vecs[i], ix.cfg.EmbedModel); err != nil {
 				return embedded, err
 			}
 		}
 		embedded += len(batch)
 		start = end
 	}
-	if _, err := DeleteChunksByID(ctx, ix.pool, staleIDs); err != nil {
-		return embedded, err
-	}
-	if err := MarkNoteChunksCurrent(ctx, ix.pool, noteID, ix.cfg.EmbedModel); err != nil {
+	if err := MarkNoteEmbeddingsCurrent(ctx, ix.pool, noteID, ix.cfg.EmbedModel); err != nil {
 		return embedded, err
 	}
 	return embedded, nil
@@ -344,35 +376,23 @@ func chunkKey(kind string, ord int) string {
 	return fmt.Sprintf("%s/%d", kind, ord)
 }
 
-// backfillChunks finds notes without chunk rows and embeds them. The DB query
-// is paged. A positive BackfillBatchPerPass bounds work per pass; explicitly
-// setting it to 0 drains the entire backlog without loading it all at once.
+// Chunk backfill is deliberately unbounded: it is local and cheap. The neural
+// materializers have their own bounded queues.
 const backfillPageSize = 200
 
-func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
+func (ix *Indexer) backfillChunks(ctx context.Context) error {
 	log := applog.With(ctx, logger)
-
-	limit := ix.cfg.BackfillBatchPerPass
 	processed := 0
-	embedded := 0
 	var afterID int64
 
 	for {
 		if ctx.Err() != nil {
-			return embedded, ctx.Err()
+			return ctx.Err()
 		}
 		page := backfillPageSize
-		if limit > 0 {
-			remaining := limit - processed
-			if remaining <= 0 {
-				break
-			}
-			page = min(page, remaining)
-		}
-
-		notes, err := NotesNeedingChunks(ctx, ix.pool, afterID, page, ix.cfg.EmbedModel)
+		notes, err := NotesNeedingChunks(ctx, ix.pool, afterID, page)
 		if err != nil {
-			return embedded, err
+			return err
 		}
 		if len(notes) == 0 {
 			break
@@ -382,18 +402,15 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 			afterID = n.ID
 			doc := ParseDocument(n.Content, n.Name)
 			if err := UpdateNoteParsed(ctx, ix.pool, n.ID, doc); err != nil {
-				return embedded, err
+				return err
 			}
-			emb, err := ix.reindexChunks(ctx, n.ID, n.Name, doc, true, "backfill")
-			if err != nil {
-				return embedded, err
+			if err := ix.reindexChunks(ctx, n.ID, doc); err != nil {
+				return err
 			}
-			embedded += emb
 			processed++
 			if processed%100 == 0 {
 				log.Info("backfill progress",
 					zap.Int("notes_processed", processed),
-					zap.Int("chunks_embedded", embedded),
 				)
 			}
 		}
@@ -401,8 +418,43 @@ func (ix *Indexer) backfillChunks(ctx context.Context) (int, error) {
 	if processed > 0 {
 		log.Info("backfill pass done",
 			zap.Int("notes_processed", processed),
-			zap.Int("chunks_embedded", embedded),
 		)
+	}
+	return nil
+}
+
+func (ix *Indexer) backfillEmbeddings(ctx context.Context) (int, error) {
+	limit, processed, embedded := ix.cfg.BackfillBatchPerPass, 0, 0
+	var afterID int64
+	for {
+		if ctx.Err() != nil {
+			return embedded, ctx.Err()
+		}
+		page := backfillPageSize
+		if limit > 0 {
+			if remaining := limit - processed; remaining <= 0 {
+				break
+			} else {
+				page = min(page, remaining)
+			}
+		}
+		notes, err := NotesNeedingEmbeddings(ctx, ix.pool, afterID, page, ix.cfg.EmbedModel)
+		if err != nil {
+			return embedded, err
+		}
+		if len(notes) == 0 {
+			break
+		}
+		for _, note := range notes {
+			afterID = note.ID
+			doc := ParseDocument(note.Content, note.Name)
+			n, err := ix.reindexEmbeddings(ctx, note.ID, note.Name, doc.Metadata, false, "backfill")
+			if err != nil {
+				return embedded, err
+			}
+			embedded += n
+			processed++
+		}
 	}
 	return embedded, nil
 }
@@ -425,7 +477,7 @@ func (ix *Indexer) backfillProfiles(ctx context.Context) (profiled, itemErrors i
 			}
 			page = min(page, remaining)
 		}
-		notes, err := NotesNeedingProfiles(ctx, ix.pool, afterID, page, ix.cfg.ProfileModel, ix.cfg.EmbedModel)
+		notes, err := NotesNeedingProfiles(ctx, ix.pool, afterID, page, ix.cfg.ProfileModel)
 		if err != nil {
 			return profiled, itemErrors, err
 		}
@@ -447,13 +499,7 @@ func (ix *Indexer) backfillProfiles(ctx context.Context) (profiled, itemErrors i
 				log.Warn("extract note profile", zap.Int64("note_id", note.ID), zap.String("relpath", note.Relpath), zap.Error(err))
 				continue
 			}
-			vec, err := ix.embedder.EmbedOne(ctx, profileText, ix.metrics)
-			if err != nil {
-				itemErrors++
-				log.Warn("embed note profile", zap.Int64("note_id", note.ID), zap.Error(err))
-				continue
-			}
-			if err := UpsertNoteProfile(ctx, ix.pool, note, profile, profileText, facets, vec, ix.cfg.ProfileModel, ix.cfg.EmbedModel); err != nil {
+			if err := UpsertNoteProfile(ctx, ix.pool, note, profile, profileText, facets, ix.cfg.ProfileModel); err != nil {
 				itemErrors++
 				log.Warn("save note profile", zap.Int64("note_id", note.ID), zap.Error(err))
 				continue
@@ -469,6 +515,44 @@ func (ix *Indexer) backfillProfiles(ctx context.Context) (profiled, itemErrors i
 		)
 	}
 	return profiled, itemErrors, nil
+}
+
+func (ix *Indexer) backfillProfileEmbeddings(ctx context.Context) (itemErrors int, retErr error) {
+	limit, processed := ix.cfg.ProfileBackfillBatchPerPass, 0
+	var afterID int64
+	for {
+		if ctx.Err() != nil {
+			return itemErrors, ctx.Err()
+		}
+		page := backfillPageSize
+		if limit > 0 {
+			if remaining := limit - processed; remaining <= 0 {
+				break
+			} else {
+				page = min(page, remaining)
+			}
+		}
+		rows, err := ProfilesNeedingEmbeddings(ctx, ix.pool, afterID, page, ix.cfg.ProfileModel, ix.cfg.EmbedModel)
+		if err != nil {
+			return itemErrors, err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			afterID = row.NoteID
+			processed++
+			vec, err := ix.embedder.EmbedOne(ctx, row.ProfileText, ix.metrics)
+			if err != nil {
+				itemErrors++
+				continue
+			}
+			if err := UpsertProfileEmbedding(ctx, ix.pool, row.NoteID, row.SourceHash, vec, ix.cfg.ProfileModel, ix.cfg.EmbedModel); err != nil {
+				itemErrors++
+			}
+		}
+	}
+	return itemErrors, nil
 }
 
 func sha256Hash(data []byte) []byte {

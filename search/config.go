@@ -26,24 +26,17 @@ type Config struct {
 	AgentModel string
 
 	IndexInterval time.Duration
+	Features      FeatureConfig
+	Products      ProductConfig
 
 	// EmbedDim is the expected embedding vector dimension for the configured
 	// EmbedModel. The DB schema column type is vector(EmbedDim); changing this
 	// after initial schema creation requires a manual migration.
 	EmbedDim int
 
-	// EnableEmbeddings toggles the chunking + embedding pipeline.
-	// Commit 1 ships with this off — semantic search lands in commit 2.
-	EnableEmbeddings bool
-
 	// BackfillBatchPerPass caps how many embedding-less notes the indexer
 	// processes per tick. 0 = no cap (drain the queue in one pass).
 	BackfillBatchPerPass int
-
-	// EnableProfiles builds a compact, structured routing card for every note.
-	// Cards are never treated as source evidence: the agent uses them to select
-	// notes and then drills down to the original chunks.
-	EnableProfiles bool
 
 	// ProfileModel is the Ollama chat model used for structured extraction.
 	ProfileModel string
@@ -55,6 +48,32 @@ type Config struct {
 	// AgentMaxSteps limits review/retrieval iterations for one question.
 	AgentMaxSteps int
 }
+
+// FeatureConfig describes materialized technical capabilities. A true flag is
+// a desired-state contract: the indexer continuously backfills that artifact,
+// whether or not a product pipeline currently consumes it.
+type FeatureConfig struct {
+	Embeddings        bool
+	VectorIndex       bool
+	Profiles          bool
+	ProfileEmbeddings bool
+	LLMGeneration     bool
+}
+
+// ProductConfig selects retrieval capabilities for user-facing operations.
+// It never turns materializers on or off; Validate checks that explicitly
+// requested retrievers are backed by enabled features.
+type ProductConfig struct {
+	FindRetrievers []string
+	AskRetrievers  []string
+}
+
+const (
+	RetrieverName     = "name"
+	RetrieverLexical  = "lexical"
+	RetrieverDense    = "dense"
+	RetrieverProfiles = "profiles"
+)
 
 const defaultBackfillBatchPerPass = 50
 const defaultProfileBackfillBatchPerPass = 10
@@ -88,6 +107,13 @@ func getEnvBool(key string, def bool) bool {
 	return b
 }
 
+func getEnvBoolFallback(primary, legacy string, def bool) bool {
+	if os.Getenv(primary) != "" {
+		return getEnvBool(primary, def)
+	}
+	return getEnvBool(legacy, def)
+}
+
 func getEnvDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -116,25 +142,44 @@ func getEnvStrSlice(key string, def []string) []string {
 }
 
 func LoadConfig() *Config {
+	features := FeatureConfig{
+		Embeddings:    getEnvBoolFallback("FEATURE_EMBEDDINGS", "ENABLE_EMBEDDINGS", false),
+		Profiles:      getEnvBoolFallback("FEATURE_PROFILES", "ENABLE_PROFILES", false),
+		LLMGeneration: getEnvBool("FEATURE_LLM_GENERATION", true),
+	}
+	features.VectorIndex = getEnvBool("FEATURE_VECTOR_INDEX", features.Embeddings)
+	features.ProfileEmbeddings = getEnvBool("FEATURE_PROFILE_EMBEDDINGS", features.Embeddings && features.Profiles)
+
+	defaultAskRetrievers := []string{RetrieverLexical}
+	if features.Embeddings {
+		defaultAskRetrievers = append(defaultAskRetrievers, RetrieverDense)
+	}
+	if features.Profiles {
+		defaultAskRetrievers = append(defaultAskRetrievers, RetrieverProfiles)
+	}
+
 	return &Config{
-		DBHost:               getEnvStr("DB_HOST", "localhost"),
-		DBPort:               getEnvStr("DB_PORT", "5432"),
-		DBName:               getEnvStr("DB_NAME", "search"),
-		DBUser:               getEnvStr("DB_USER", "search"),
-		DBPassword:           getEnvStr("DB_PASSWORD", ""),
-		GRPCPort:             getEnvStr("GRPC_PORT", "50054"),
-		MetricsPort:          getEnvStr("METRICS_PORT", "9103"),
-		NotesDir:             getEnvStr("NOTES_DIR", "/notes"),
-		IgnoreDirs:           getEnvStrSlice("INDEX_IGNORE_DIRS", []string{".obsidian", ".trash"}),
-		LLMHost:              getEnvStr("LLM_HOST", "ollama"),
-		LLMPort:              getEnvStr("LLM_PORT", "11434"),
-		EmbedModel:           getEnvStr("EMBED_MODEL", "bge-m3:567m"),
-		AgentModel:           getEnvStr("AGENT_MODEL", "qwen2.5:7b"),
-		IndexInterval:        getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
-		EmbedDim:             getEnvInt("EMBED_DIM", 1024),
-		EnableEmbeddings:     getEnvBool("ENABLE_EMBEDDINGS", false),
+		DBHost:        getEnvStr("DB_HOST", "localhost"),
+		DBPort:        getEnvStr("DB_PORT", "5432"),
+		DBName:        getEnvStr("DB_NAME", "search"),
+		DBUser:        getEnvStr("DB_USER", "search"),
+		DBPassword:    getEnvStr("DB_PASSWORD", ""),
+		GRPCPort:      getEnvStr("GRPC_PORT", "50054"),
+		MetricsPort:   getEnvStr("METRICS_PORT", "9103"),
+		NotesDir:      getEnvStr("NOTES_DIR", "/notes"),
+		IgnoreDirs:    getEnvStrSlice("INDEX_IGNORE_DIRS", []string{".obsidian", ".trash"}),
+		LLMHost:       getEnvStr("LLM_HOST", "ollama"),
+		LLMPort:       getEnvStr("LLM_PORT", "11434"),
+		EmbedModel:    getEnvStr("EMBED_MODEL", "bge-m3:567m"),
+		AgentModel:    getEnvStr("AGENT_MODEL", "qwen2.5:7b"),
+		IndexInterval: getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
+		EmbedDim:      getEnvInt("EMBED_DIM", 1024),
+		Features:      features,
+		Products: ProductConfig{
+			FindRetrievers: getEnvStrSlice("FIND_RETRIEVERS", []string{RetrieverName, RetrieverLexical}),
+			AskRetrievers:  getEnvStrSlice("ASK_RETRIEVERS", defaultAskRetrievers),
+		},
 		BackfillBatchPerPass: getEnvInt("BACKFILL_BATCH_PER_PASS", defaultBackfillBatchPerPass),
-		EnableProfiles:       getEnvBool("ENABLE_PROFILES", false),
 		ProfileModel:         getEnvStr("PROFILE_MODEL", "qwen3.5:2b"),
 		ProfileBackfillBatchPerPass: getEnvInt(
 			"PROFILE_BACKFILL_BATCH_PER_PASS", defaultProfileBackfillBatchPerPass,
@@ -169,14 +214,68 @@ func (c *Config) Validate() error {
 	if c.ProfileBackfillBatchPerPass < 0 {
 		return fmt.Errorf("PROFILE_BACKFILL_BATCH_PER_PASS must be non-negative, got %d", c.ProfileBackfillBatchPerPass)
 	}
-	if c.EnableProfiles && !c.EnableEmbeddings {
-		return fmt.Errorf("ENABLE_PROFILES requires ENABLE_EMBEDDINGS")
+	if c.Features.VectorIndex && !c.Features.Embeddings {
+		return fmt.Errorf("FEATURE_VECTOR_INDEX requires FEATURE_EMBEDDINGS")
 	}
-	if c.EnableProfiles && c.ProfileModel == "" {
+	if c.Features.ProfileEmbeddings && (!c.Features.Profiles || !c.Features.Embeddings) {
+		return fmt.Errorf("FEATURE_PROFILE_EMBEDDINGS requires FEATURE_PROFILES and FEATURE_EMBEDDINGS")
+	}
+	if c.Features.Profiles && c.ProfileModel == "" {
 		return fmt.Errorf("PROFILE_MODEL is required when profiles are enabled")
+	}
+	if c.Features.LLMGeneration && c.AgentModel == "" {
+		return fmt.Errorf("AGENT_MODEL is required when LLM generation is enabled")
 	}
 	if c.AgentMaxSteps < 1 || c.AgentMaxSteps > 5 {
 		return fmt.Errorf("AGENT_MAX_STEPS must be between 1 and 5, got %d", c.AgentMaxSteps)
 	}
+	if err := validateRetrievers("FIND_RETRIEVERS", c.Products.FindRetrievers,
+		map[string]bool{RetrieverName: true, RetrieverLexical: true, RetrieverDense: c.Features.Embeddings}); err != nil {
+		return err
+	}
+	if err := validateRetrievers("ASK_RETRIEVERS", c.Products.AskRetrievers,
+		map[string]bool{RetrieverLexical: true, RetrieverDense: c.Features.Embeddings, RetrieverProfiles: c.Features.Profiles}); err != nil {
+		return err
+	}
+	if !c.UsesAskRetriever(RetrieverLexical) && !c.UsesAskRetriever(RetrieverDense) {
+		return fmt.Errorf("ASK_RETRIEVERS must contain lexical or dense source retrieval")
+	}
 	return nil
+}
+
+func validateRetrievers(field string, values []string, available map[string]bool) error {
+	if len(values) == 0 {
+		return fmt.Errorf("%s must contain at least one retriever", field)
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, known := available[value]; !known {
+			return fmt.Errorf("%s contains unsupported retriever %q", field, value)
+		}
+		if !available[value] {
+			return fmt.Errorf("%s requests disabled retriever %q", field, value)
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return fmt.Errorf("%s contains duplicate retriever %q", field, value)
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
+}
+
+func (c *Config) UsesFindRetriever(name string) bool {
+	return slicesContains(c.Products.FindRetrievers, name)
+}
+
+func (c *Config) UsesAskRetriever(name string) bool {
+	return slicesContains(c.Products.AskRetrievers, name)
+}
+
+func slicesContains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

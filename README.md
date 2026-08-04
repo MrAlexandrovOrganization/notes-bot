@@ -92,18 +92,28 @@ PGADMIN_PASSWORD=change_this_password
 GRAFANA_PASSWORD=change_this_password
 OLLAMA_MODEL=qwen2.5:1.5b   # Модель для разбора напоминаний на естественном языке
 SEARCH_BACKFILL_BATCH_PER_PASS=50  # 0 = весь backlog за один проход
-SEARCH_ENABLE_PROFILES=true
+SEARCH_FEATURE_EMBEDDINGS=true
+SEARCH_FEATURE_VECTOR_INDEX=true
+SEARCH_FEATURE_PROFILES=false      # медленная фоновая суммаризация выключена
+SEARCH_FEATURE_PROFILE_EMBEDDINGS=false
+SEARCH_FEATURE_LLM_GENERATION=true
+SEARCH_FIND_RETRIEVERS=name,lexical
+SEARCH_ASK_RETRIEVERS=lexical,dense
 SEARCH_PROFILE_MODEL=qwen3.5:2b
 SEARCH_PROFILE_BACKFILL_BATCH_PER_PASS=10
 SEARCH_AGENT_MAX_STEPS=3
 ```
 
-Карточки заметок индексируются в фоне и содержат отдельные facets для
-активностей, людей, мыслей, проблем, решений и открытых вопросов. Длинные
-заметки обрабатываются иерархически блоками. Карточка используется только для
-выбора заметок; итоговый ответ строится по исходным чанкам. Прогресс доступен
-через `make search-profiles`, `make search-metrics` и дашборд
-`Notes Bot / Search` в Grafana.
+Поиск разделён на три слоя. Feature-флаги задают материализации: chunks/FTS
+создаются всегда, embeddings, vector index и profiles включаются независимо.
+`SEARCH_FEATURE_PROFILES=false` безопасно отключает медленную фоновую
+суммаризацию, не затрагивая обычный поиск, embeddings и ответы по исходным
+чанкам. Product-настройки `SEARCH_FIND_RETRIEVERS` и
+`SEARCH_ASK_RETRIEVERS` выбирают технологии для пользовательских операций;
+Telegram и Web вызывают уже готовый продуктовый pipeline.
+
+Старые `SEARCH_ENABLE_EMBEDDINGS` и `SEARCH_ENABLE_PROFILES` пока поддерживаются
+как fallback. Новые `SEARCH_FEATURE_*` имеют приоритет.
 
 ### 3. Запустите через Docker
 

@@ -43,3 +43,13 @@ func TestFuseByNoteIDDeduplicatesProfiles(t *testing.T) {
 		t.Fatalf("profile RRF did not reward overlap: %#v", got)
 	}
 }
+
+func TestFuseManyByNoteIDUsesProductSelectedRankings(t *testing.T) {
+	name := []SearchHit{{NoteID: 1}, {NoteID: 2}}
+	lexical := []SearchHit{{NoteID: 2}, {NoteID: 3}}
+	dense := []SearchHit{{NoteID: 3}, {NoteID: 2}}
+	got := FuseManyByNoteID(3, name, lexical, dense)
+	if len(got) != 3 || got[0].NoteID != 2 {
+		t.Fatalf("multi-retriever RRF = %#v", got)
+	}
+}

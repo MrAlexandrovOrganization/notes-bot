@@ -26,6 +26,7 @@ type CoreService interface {
 
 // SearchService is the interface for the search gRPC service.
 type SearchService interface {
+	FindNotes(ctx context.Context, query string, limit int, options SearchOptions) ([]*SearchHit, error)
 	SearchByName(ctx context.Context, query string, limit int) ([]*SearchHit, error)
 	SearchByContent(ctx context.Context, query string, limit int) ([]*SearchHit, error)
 	SearchSemantic(ctx context.Context, query string, limit int) ([]*SearchHit, error)

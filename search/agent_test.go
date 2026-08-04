@@ -32,6 +32,15 @@ func TestLedgerAllowsHybridAndExhaustiveForSameText(t *testing.T) {
 	}
 }
 
+func TestSelectedNotesFallsBackToRawEvidenceWithoutProfiles(t *testing.T) {
+	ledger := newAgentLedger()
+	ledger.addEvidence([]SearchHit{{NoteID: 7, ChunkID: 70}, {NoteID: 8, ChunkID: 80}})
+	got := ledger.selectedNoteIDs(10)
+	if len(got) != 2 || got[0] != 7 || got[1] != 8 {
+		t.Fatalf("selectedNoteIDs() = %#v", got)
+	}
+}
+
 func TestMergeAgentFiltersCannotBroadenExplicitRange(t *testing.T) {
 	from := mustAgentDate(t, "2026-07-01")
 	to := mustAgentDate(t, "2026-07-31")

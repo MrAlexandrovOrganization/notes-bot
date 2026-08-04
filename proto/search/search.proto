@@ -7,6 +7,8 @@ import "google/protobuf/timestamp.proto";
 option go_package = "notes-bot/proto/search";
 
 service SearchService {
+  // Product-level search: concrete retrievers are selected by FIND_RETRIEVERS.
+  rpc FindNotes       (SearchRequest) returns (SearchResponse);
   rpc SearchByName    (SearchRequest) returns (SearchResponse);
   rpc SearchByContent (SearchRequest) returns (SearchResponse);
   rpc SearchSemantic  (SearchRequest) returns (SearchResponse);
@@ -95,4 +97,5 @@ message ReindexResponse {
   int64 pending  = 6;
   int32 profiled = 7;
   int64 profiles_pending = 8;
+  int64 embeddings_pending = 9;
 }

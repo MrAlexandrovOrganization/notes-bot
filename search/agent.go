@@ -25,13 +25,23 @@ type NotesAgent struct {
 	chat     *ChatClient
 	metrics  *searchMetrics
 	maxSteps int
+	policy   AgentRetrievalPolicy
 }
 
-func NewNotesAgent(pool *pgxpool.Pool, embedder *Embedder, chat *ChatClient, metrics *searchMetrics, maxSteps int) *NotesAgent {
+type AgentRetrievalPolicy struct {
+	Lexical           bool
+	Dense             bool
+	Profiles          bool
+	ProfileEmbeddings bool
+	EmbedModel        string
+	ProfileModel      string
+}
+
+func NewNotesAgent(pool *pgxpool.Pool, embedder *Embedder, chat *ChatClient, metrics *searchMetrics, maxSteps int, policy AgentRetrievalPolicy) *NotesAgent {
 	if maxSteps < 1 {
 		maxSteps = defaultAgentMaxSteps
 	}
-	return &NotesAgent{pool: pool, embedder: embedder, chat: chat, metrics: metrics, maxSteps: min(maxSteps, 5)}
+	return &NotesAgent{pool: pool, embedder: embedder, chat: chat, metrics: metrics, maxSteps: min(maxSteps, 5), policy: policy}
 }
 
 type agentQuery struct {
@@ -144,7 +154,7 @@ func (l *agentLedger) hasSearch(mode, query string) bool {
 }
 
 func (l *agentLedger) selectedNoteIDs(limit int) []int64 {
-	ids := make([]int64, 0, min(limit, len(l.profiles)))
+	ids := make([]int64, 0, limit)
 	seen := make(map[int64]struct{})
 	for _, profile := range l.profiles {
 		if _, ok := seen[profile.NoteID]; ok {
@@ -152,6 +162,16 @@ func (l *agentLedger) selectedNoteIDs(limit int) []int64 {
 		}
 		seen[profile.NoteID] = struct{}{}
 		ids = append(ids, profile.NoteID)
+		if len(ids) == limit {
+			break
+		}
+	}
+	for _, hit := range l.evidence {
+		if _, ok := seen[hit.NoteID]; ok {
+			continue
+		}
+		seen[hit.NoteID] = struct{}{}
+		ids = append(ids, hit.NoteID)
 		if len(ids) == limit {
 			break
 		}
@@ -219,26 +239,36 @@ func (a *NotesAgent) retrieve(ctx context.Context, ledger *agentLedger, query ag
 	if !ledger.addSearch(query.Mode, query.Query) && !initial {
 		return nil
 	}
-	if query.Mode == "exhaustive" {
+	if query.Mode == "exhaustive" && a.policy.Lexical {
 		if query.Scope == "selected_notes" && len(filters.NoteIDs) == 0 {
 			filters.NoteIDs = ledger.selectedNoteIDs(64)
 		}
 		return a.retrieveExhaustive(ctx, ledger, query.Query, filters)
 	}
-	vec, err := a.embedder.EmbedOne(ctx, query.Query, a.metrics)
-	if err != nil {
-		return err
+	var vec []float32
+	if a.policy.Dense || a.policy.ProfileEmbeddings {
+		if a.embedder == nil {
+			return ErrEmbedderUnavailable
+		}
+		var err error
+		vec, err = a.embedder.EmbedOne(ctx, query.Query, a.metrics)
+		if err != nil {
+			return err
+		}
 	}
-
-	profileDense, err := SearchProfilesByVector(ctx, a.pool, vec, agentProfileLimit*3, filters)
-	if err != nil {
-		return err
-	}
-	profileLexical, lexicalErr := SearchProfilesByContent(ctx, a.pool, query.Query, agentProfileLimit*3, filters)
-	if lexicalErr == nil {
+	if a.policy.Profiles {
+		profileLexical, err := SearchProfilesByContent(ctx, a.pool, query.Query, agentProfileLimit*3, filters, a.policy.ProfileModel)
+		if err != nil {
+			return err
+		}
+		var profileDense []SearchHit
+		if a.policy.ProfileEmbeddings {
+			profileDense, err = SearchProfilesByVector(ctx, a.pool, vec, agentProfileLimit*3, filters, a.policy.ProfileModel, a.policy.EmbedModel)
+			if err != nil {
+				return err
+			}
+		}
 		ledger.addProfiles(FuseByNoteID(profileDense, profileLexical, agentProfileLimit))
-	} else {
-		ledger.addProfiles(FuseByNoteID(profileDense, nil, agentProfileLimit))
 	}
 
 	rawFilters := filters
@@ -250,7 +280,7 @@ func (a *NotesAgent) retrieve(ctx context.Context, ledger *agentLedger, query ag
 		// drill-down. This works even before the agent has formulated follow-ups.
 		rawFilters.NoteIDs = nil
 	}
-	hits, err := retrieveChunksWithVector(ctx, a.pool, vec, query.Query, agentRoundChunkLimit, rawFilters)
+	hits, err := retrieveAgentChunks(ctx, a.pool, vec, query.Query, agentRoundChunkLimit, rawFilters, a.policy)
 	if err != nil {
 		return err
 	}
@@ -259,7 +289,7 @@ func (a *NotesAgent) retrieve(ctx context.Context, ledger *agentLedger, query ag
 		focused := filters
 		focused.NoteIDs = ledger.selectedNoteIDs(24)
 		if len(focused.NoteIDs) > 0 {
-			hits, err := retrieveChunksWithVector(ctx, a.pool, vec, query.Query, agentRoundChunkLimit, focused)
+			hits, err := retrieveAgentChunks(ctx, a.pool, vec, query.Query, agentRoundChunkLimit, focused, a.policy)
 			if err != nil {
 				return err
 			}
@@ -299,22 +329,31 @@ func (a *NotesAgent) retrieveExhaustive(ctx context.Context, ledger *agentLedger
 	ledger.addEvidence(hits)
 
 	// Exact profile FTS broadens routing without spending another embedding call.
-	profiles, profileErr := SearchProfilesByContent(ctx, a.pool, query, exhaustiveLimit, filters)
-	if profileErr == nil {
-		ledger.addProfiles(profiles)
+	if a.policy.Profiles {
+		profiles, profileErr := SearchProfilesByContent(ctx, a.pool, query, exhaustiveLimit, filters, a.policy.ProfileModel)
+		if profileErr == nil {
+			ledger.addProfiles(profiles)
+		}
 	}
 	return nil
 }
 
-func retrieveChunksWithVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
+func retrieveAgentChunks(ctx context.Context, pool *pgxpool.Pool, vec []float32, query string, limit int, filters SearchFilters, policy AgentRetrievalPolicy) ([]SearchHit, error) {
 	fetch := min(max(limit*4, 60), 200)
-	dense, err := SearchByVector(ctx, pool, vec, fetch, filters)
-	if err != nil {
-		return nil, err
+	var dense []SearchHit
+	var err error
+	if policy.Dense {
+		dense, err = SearchByVector(ctx, pool, vec, fetch, filters, policy.EmbedModel)
+		if err != nil {
+			return nil, err
+		}
 	}
-	lexical, lexicalErr := SearchChunksByContent(ctx, pool, query, fetch, filters)
-	if lexicalErr != nil {
-		lexical = nil
+	var lexical []SearchHit
+	if policy.Lexical {
+		lexical, err = SearchChunksByContent(ctx, pool, query, fetch, filters)
+		if err != nil {
+			return nil, err
+		}
 	}
 	selected := FuseByChunkID(dense, lexical, limit, 3)
 	return ExpandChunkNeighbors(ctx, pool, selected, 1)

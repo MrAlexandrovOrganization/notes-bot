@@ -21,10 +21,11 @@ import (
 // no error) rather than raising an error.
 const ftsDict = "russian"
 
-// CurrentIndexVersion is bumped whenever chunk boundaries or embedding input
-// semantics change. Notes indexed by an older version are picked up by the
-// resumable backfill without requiring a destructive table migration.
-const CurrentIndexVersion = 2
+// Chunk and embedding versions are independent. Changing chunk boundaries must
+// rebuild the lexical projection, while changing embedding input semantics only
+// needs to rebuild vectors.
+const CurrentIndexVersion = 3
+const CurrentEmbeddingVersion = 2
 
 var schemaSQL = fmt.Sprintf(`
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -42,10 +43,12 @@ CREATE TABLE IF NOT EXISTS notes (
 	title          TEXT NOT NULL DEFAULT '',
 	tags           TEXT[] NOT NULL DEFAULT '{}',
 	links          TEXT[] NOT NULL DEFAULT '{}',
-	frontmatter    JSONB NOT NULL DEFAULT '{}'::jsonb,
-	chunk_index_version INT NOT NULL DEFAULT 0,
-	chunk_embedding_model TEXT NOT NULL DEFAULT '',
-	chunks_indexed_at TIMESTAMPTZ,
+		frontmatter    JSONB NOT NULL DEFAULT '{}'::jsonb,
+		chunk_index_version INT NOT NULL DEFAULT 0,
+		chunk_embedding_version INT NOT NULL DEFAULT 0,
+		chunk_embedding_model TEXT NOT NULL DEFAULT '',
+		chunks_indexed_at TIMESTAMPTZ,
+		chunks_embedded_at TIMESTAMPTZ,
     tsv            tsvector GENERATED ALWAYS AS
                      (to_tsvector('%[1]s', coalesce(name, '') || ' ' || coalesce(content, '')))
                      STORED,
@@ -64,8 +67,16 @@ ALTER TABLE notes ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS links TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS frontmatter JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunk_index_version INT NOT NULL DEFAULT 0;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunk_embedding_version INT NOT NULL DEFAULT 0;
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunk_embedding_model TEXT NOT NULL DEFAULT '';
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunks_indexed_at TIMESTAMPTZ;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS chunks_embedded_at TIMESTAMPTZ;
+UPDATE notes
+SET chunk_embedding_version = 2,
+    chunks_embedded_at = COALESCE(chunks_embedded_at, chunks_indexed_at)
+WHERE chunk_embedding_version = 0
+  AND chunk_embedding_model <> ''
+  AND chunk_index_version = 2;
 CREATE OR REPLACE FUNCTION effective_note_date(stored_date DATE, note_name TEXT)
 RETURNS DATE
 LANGUAGE SQL
@@ -110,9 +121,7 @@ BEGIN
 END $$;
 `, ftsDict)
 
-const vectorSchemaSQL = `
-CREATE EXTENSION IF NOT EXISTS vector;
-
+const chunkSchemaSQL = `
 CREATE TABLE IF NOT EXISTS note_chunks (
     id           BIGSERIAL PRIMARY KEY,
     note_id      BIGINT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
@@ -120,9 +129,7 @@ CREATE TABLE IF NOT EXISTS note_chunks (
     ord          INT  NOT NULL,
     text         TEXT NOT NULL,
 	heading_path TEXT NOT NULL DEFAULT '',
-    chunk_hash   BYTEA NOT NULL,
-    embedding    vector(%d) NOT NULL,
-	embedding_model TEXT NOT NULL DEFAULT '',
+	chunk_hash   BYTEA NOT NULL,
 	index_version INT NOT NULL DEFAULT 0,
 	tsv_ru tsvector GENERATED ALWAYS AS
 	       (to_tsvector('russian', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED,
@@ -131,35 +138,29 @@ CREATE TABLE IF NOT EXISTS note_chunks (
     UNIQUE (note_id, kind, ord)
 );
 
-CREATE INDEX IF NOT EXISTS note_chunks_hnsw ON note_chunks
-    USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS note_chunks_tsv_ru ON note_chunks USING GIN (tsv_ru);
+CREATE INDEX IF NOT EXISTS note_chunks_tsv_simple ON note_chunks USING GIN (tsv_simple);
 
 CREATE TABLE IF NOT EXISTS note_profiles (
     note_id          BIGINT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
     source_hash      BYTEA NOT NULL,
-    profile_version  INT NOT NULL,
-    profile_model    TEXT NOT NULL,
-    embedding_model  TEXT NOT NULL,
-    brief            TEXT NOT NULL DEFAULT '',
-    facets           JSONB NOT NULL DEFAULT '{}'::jsonb,
-    profile_text     TEXT NOT NULL,
-    embedding        vector(%d) NOT NULL,
+	profile_version  INT NOT NULL,
+	profile_model    TEXT NOT NULL,
+	brief            TEXT NOT NULL DEFAULT '',
+	facets           JSONB NOT NULL DEFAULT '{}'::jsonb,
+	profile_text     TEXT NOT NULL,
     tsv_ru tsvector GENERATED ALWAYS AS
            (to_tsvector('russian', coalesce(profile_text, ''))) STORED,
     tsv_simple tsvector GENERATED ALWAYS AS
            (to_tsvector('simple', coalesce(profile_text, ''))) STORED,
     indexed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX IF NOT EXISTS note_profiles_hnsw ON note_profiles
-    USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS note_profiles_tsv_ru ON note_profiles USING GIN (tsv_ru);
 CREATE INDEX IF NOT EXISTS note_profiles_tsv_simple ON note_profiles USING GIN (tsv_simple);
 `
 
-const vectorMigrationSQL = `
+const chunkMigrationSQL = `
 ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS heading_path TEXT NOT NULL DEFAULT '';
-ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS embedding_model TEXT NOT NULL DEFAULT '';
 ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS index_version INT NOT NULL DEFAULT 0;
 ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS tsv_ru tsvector GENERATED ALWAYS AS
     (to_tsvector('russian', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED;
@@ -167,6 +168,90 @@ ALTER TABLE note_chunks ADD COLUMN IF NOT EXISTS tsv_simple tsvector GENERATED A
     (to_tsvector('simple', coalesce(heading_path, '') || ' ' || coalesce(text, ''))) STORED;
 CREATE INDEX IF NOT EXISTS note_chunks_tsv_ru ON note_chunks USING GIN (tsv_ru);
 CREATE INDEX IF NOT EXISTS note_chunks_tsv_simple ON note_chunks USING GIN (tsv_simple);
+`
+
+const vectorSchemaSQL = `
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    chunk_id        BIGINT PRIMARY KEY REFERENCES note_chunks(id) ON DELETE CASCADE,
+    embedding_hash  BYTEA NOT NULL,
+    embedding_model TEXT NOT NULL,
+    embedding_version INT NOT NULL,
+    embedding       vector(%d) NOT NULL,
+    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS profile_embeddings (
+    note_id          BIGINT PRIMARY KEY REFERENCES note_profiles(note_id) ON DELETE CASCADE,
+    source_hash      BYTEA NOT NULL,
+    profile_version  INT NOT NULL,
+    profile_model    TEXT NOT NULL,
+    embedding_model  TEXT NOT NULL,
+    embedding        vector(%d) NOT NULL,
+    indexed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`
+
+const vectorIndexSQL = `
+CREATE INDEX IF NOT EXISTS chunk_embeddings_hnsw ON chunk_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS profile_embeddings_hnsw ON profile_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+`
+
+// Relax legacy inline vector columns even when embeddings are disabled. This
+// is what makes a rolling downgrade to lexical-only writes safe.
+const legacyVectorRelaxationSQL = `
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'note_chunks' AND column_name = 'embedding') THEN
+        ALTER TABLE note_chunks ALTER COLUMN embedding DROP NOT NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'note_profiles' AND column_name = 'embedding') THEN
+        ALTER TABLE note_profiles ALTER COLUMN embedding DROP NOT NULL;
+        ALTER TABLE note_profiles ALTER COLUMN embedding_model DROP NOT NULL;
+    END IF;
+END $$;
+`
+
+// Existing installations stored vectors directly on note_chunks/note_profiles.
+// Copy them into the independent materialization tables and make legacy columns
+// nullable so future lexical-only writes remain possible. Columns are retained
+// for a reversible rolling migration and can be removed in a later release.
+const vectorDataMigrationSQL = `
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'note_chunks' AND column_name = 'embedding') THEN
+        EXECUTE $migration$
+        INSERT INTO chunk_embeddings (
+            chunk_id, embedding_hash, embedding_model, embedding_version, embedding, indexed_at
+        )
+        SELECT id, chunk_hash, embedding_model, index_version, embedding, now()
+        FROM note_chunks
+        WHERE embedding IS NOT NULL
+        ON CONFLICT (chunk_id) DO NOTHING
+        $migration$;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'note_profiles' AND column_name = 'embedding') THEN
+        EXECUTE $migration$
+        INSERT INTO profile_embeddings (
+            note_id, source_hash, profile_version, profile_model,
+            embedding_model, embedding, indexed_at
+        )
+        SELECT note_id, source_hash, profile_version, profile_model,
+               embedding_model, embedding, indexed_at
+        FROM note_profiles
+        WHERE embedding IS NOT NULL
+        ON CONFLICT (note_id) DO NOTHING
+        $migration$;
+    END IF;
+END $$;
 `
 
 // NoteRow mirrors a row in the notes table (without content/tsv for list operations).
@@ -181,11 +266,12 @@ type NoteRow struct {
 
 type NoteFull struct {
 	NoteRow
-	Content             string
-	Body                string
-	Metadata            NoteMetadata
-	ChunkIndexVersion   int
-	ChunkEmbeddingModel string
+	Content               string
+	Body                  string
+	Metadata              NoteMetadata
+	ChunkIndexVersion     int
+	ChunkEmbeddingVersion int
+	ChunkEmbeddingModel   string
 }
 
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
@@ -207,9 +293,9 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// EnsureSchema creates the notes table and indexes. When enableVector is true,
-// also installs the pgvector extension and note_chunks table sized to embedDim.
-func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, enableVector bool, embedDim int) error {
+// EnsureSchema always creates the lexical projection. pgvector and vector
+// tables are optional and are not required for a lexical/profile-only setup.
+func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, features FeatureConfig, embedDim int) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -222,12 +308,26 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, enableVector bool, em
 	if _, err := pool.Exec(ctx, migrateTSVDictSQL); err != nil {
 		return fmt.Errorf("migrate tsv dictionary: %w", err)
 	}
-	if enableVector {
+	if _, err := pool.Exec(ctx, chunkSchemaSQL); err != nil {
+		return fmt.Errorf("ensure chunk schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, chunkMigrationSQL); err != nil {
+		return fmt.Errorf("migrate chunk schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, legacyVectorRelaxationSQL); err != nil {
+		return fmt.Errorf("relax legacy vector columns: %w", err)
+	}
+	if features.Embeddings {
 		if _, err := pool.Exec(ctx, fmt.Sprintf(vectorSchemaSQL, embedDim, embedDim)); err != nil {
 			return fmt.Errorf("ensure vector schema: %w", err)
 		}
-		if _, err := pool.Exec(ctx, vectorMigrationSQL); err != nil {
-			return fmt.Errorf("migrate vector schema: %w", err)
+		if _, err := pool.Exec(ctx, vectorDataMigrationSQL); err != nil {
+			return fmt.Errorf("migrate vector data: %w", err)
+		}
+		if features.VectorIndex {
+			if _, err := pool.Exec(ctx, vectorIndexSQL); err != nil {
+				return fmt.Errorf("ensure vector indexes: %w", err)
+			}
 		}
 	}
 	logger.Info("database schema ensured")
@@ -245,12 +345,12 @@ func UpsertNote(ctx context.Context, pool *pgxpool.Pool, n NoteFull) (int64, boo
 	err := pool.QueryRow(ctx, `
 		INSERT INTO notes (
 			relpath, name, mtime, size, content_hash, content, body,
-			note_date, title, tags, links, frontmatter,
-			chunk_index_version, chunk_embedding_model, indexed_at
+				note_date, title, tags, links, frontmatter,
+				chunk_index_version, chunk_embedding_version, chunk_embedding_model, indexed_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
 		        COALESCE($10, '{}'::text[]), COALESCE($11, '{}'::text[]),
-		        $12::jsonb, 0, '', NOW())
+			        $12::jsonb, 0, 0, '', NOW())
 		ON CONFLICT (relpath) DO UPDATE SET
 			name = EXCLUDED.name,
 			mtime = EXCLUDED.mtime,
@@ -262,10 +362,12 @@ func UpsertNote(ctx context.Context, pool *pgxpool.Pool, n NoteFull) (int64, boo
 			title = EXCLUDED.title,
 			tags = EXCLUDED.tags,
 			links = EXCLUDED.links,
-			frontmatter = EXCLUDED.frontmatter,
-			chunk_index_version = 0,
-			chunk_embedding_model = '',
-			chunks_indexed_at = NULL,
+				frontmatter = EXCLUDED.frontmatter,
+				chunk_index_version = 0,
+				chunk_embedding_version = 0,
+				chunk_embedding_model = '',
+				chunks_indexed_at = NULL,
+				chunks_embedded_at = NULL,
 			indexed_at = NOW()
 		RETURNING id, (xmax = 0)
 	`, n.Relpath, n.Name, n.Mtime, n.Size, n.ContentHash, n.Content, n.Body,
@@ -279,8 +381,8 @@ func UpsertNote(ctx context.Context, pool *pgxpool.Pool, n NoteFull) (int64, boo
 
 // UpdateNoteParsed refreshes body/frontmatter fields for notes created before
 // structured metadata was introduced. It intentionally leaves index state
-// untouched; MarkNoteChunksCurrent commits that state only after all chunks
-// were embedded successfully.
+// untouched; chunk and embedding materializers commit their own state after a
+// complete pass.
 func UpdateNoteParsed(ctx context.Context, pool *pgxpool.Pool, noteID int64, doc ParsedDocument) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
@@ -302,19 +404,49 @@ func UpdateNoteParsed(ctx context.Context, pool *pgxpool.Pool, noteID int64, doc
 	return nil
 }
 
-func MarkNoteChunksCurrent(ctx context.Context, pool *pgxpool.Pool, noteID int64, model string) error {
+func MarkNoteChunksCurrent(ctx context.Context, pool *pgxpool.Pool, noteID int64) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	_, err := pool.Exec(ctx, `
+			UPDATE notes SET
+				chunk_index_version = $2,
+				chunks_indexed_at = NOW()
+			WHERE id = $1
+		`, noteID, CurrentIndexVersion)
+	if err != nil {
+		return fmt.Errorf("mark note chunks current: %w", err)
+	}
+	return nil
+}
+
+func MarkNoteEmbeddingsCurrent(ctx context.Context, pool *pgxpool.Pool, noteID int64, model string) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	_, err := pool.Exec(ctx, `
 		UPDATE notes SET
-			chunk_index_version = $2,
+			chunk_embedding_version = $2,
 			chunk_embedding_model = $3,
-			chunks_indexed_at = NOW()
+			chunks_embedded_at = NOW()
 		WHERE id = $1
-	`, noteID, CurrentIndexVersion, model)
+	`, noteID, CurrentEmbeddingVersion, model)
 	if err != nil {
-		return fmt.Errorf("mark note chunks current: %w", err)
+		return fmt.Errorf("mark note embeddings current: %w", err)
+	}
+	return nil
+}
+
+func InvalidateNoteEmbeddings(ctx context.Context, pool *pgxpool.Pool, noteID int64) error {
+	_, err := pool.Exec(ctx, `
+		UPDATE notes SET
+			chunk_embedding_version = 0,
+			chunk_embedding_model = '',
+			chunks_embedded_at = NULL
+		WHERE id = $1
+	`, noteID)
+	if err != nil {
+		return fmt.Errorf("invalidate note embeddings: %w", err)
 	}
 	return nil
 }
@@ -435,6 +567,10 @@ type SearchFilters struct {
 
 // SearchByName returns notes whose name matches the query via pg_trgm similarity.
 func SearchByName(ctx context.Context, pool *pgxpool.Pool, query string, limit int) ([]SearchHit, error) {
+	return SearchByNameFiltered(ctx, pool, query, limit, SearchFilters{})
+}
+
+func SearchByNameFiltered(ctx context.Context, pool *pgxpool.Pool, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -446,10 +582,13 @@ func SearchByName(ctx context.Context, pool *pgxpool.Pool, query string, limit i
 		       LEFT(content, 200) AS snippet,
 		       similarity(name, $1) AS score
 		FROM notes
-		WHERE name ILIKE '%' || $1 || '%' OR name % $1
+		WHERE (name ILIKE '%' || $1 || '%' OR name % $1)
+		  AND ($2::date IS NULL OR effective_note_date(note_date, name) >= $2::date)
+		  AND ($3::date IS NULL OR effective_note_date(note_date, name) <= $3::date)
+		  AND ($4::bigint[] IS NULL OR id = ANY($4::bigint[]))
 		ORDER BY score DESC, name ASC
-		LIMIT $2
-	`, query, limit)
+		LIMIT $5
+	`, query, filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs), limit)
 	if err != nil {
 		return nil, fmt.Errorf("search by name: %w", err)
 	}
@@ -540,16 +679,25 @@ func CountNotes(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	return n, err
 }
 
-func CountNotesPendingIndex(ctx context.Context, pool *pgxpool.Pool, model string) (int64, error) {
+func CountNotesPendingIndex(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	var n int64
 	err := pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM notes
-		WHERE chunk_index_version <> $1 OR chunk_embedding_model <> $2
-	`, CurrentIndexVersion, model).Scan(&n)
+		WHERE chunk_index_version <> $1
+	`, CurrentIndexVersion).Scan(&n)
 	return n, err
 }
 
-func CountNotesPendingProfiles(ctx context.Context, pool *pgxpool.Pool, profileModel, embeddingModel string) (int64, error) {
+func CountNotesPendingEmbeddings(ctx context.Context, pool *pgxpool.Pool, model string) (int64, error) {
+	var n int64
+	err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM notes
+		WHERE chunk_embedding_version <> $1 OR chunk_embedding_model <> $2
+	`, CurrentEmbeddingVersion, model).Scan(&n)
+	return n, err
+}
+
+func CountNotesPendingProfiles(ctx context.Context, pool *pgxpool.Pool, profileModel string) (int64, error) {
 	var n int64
 	err := pool.QueryRow(ctx, `
 		SELECT COUNT(*)
@@ -559,8 +707,7 @@ func CountNotesPendingProfiles(ctx context.Context, pool *pgxpool.Pool, profileM
 		   OR p.source_hash <> n.content_hash
 		   OR p.profile_version <> $1
 		   OR p.profile_model <> $2
-		   OR p.embedding_model <> $3
-	`, CurrentProfileVersion, profileModel, embeddingModel).Scan(&n)
+	`, CurrentProfileVersion, profileModel).Scan(&n)
 	return n, err
 }
 
@@ -568,6 +715,17 @@ func InvalidateNoteProfiles(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `UPDATE note_profiles SET profile_version = 0`)
 	if err != nil {
 		return fmt.Errorf("invalidate note profiles: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		DO $migration$
+		BEGIN
+			IF to_regclass('profile_embeddings') IS NOT NULL THEN
+				EXECUTE 'UPDATE profile_embeddings SET profile_version = 0';
+			END IF;
+		END
+		$migration$;
+	`); err != nil {
+		return fmt.Errorf("invalidate profile embeddings: %w", err)
 	}
 	return nil
 }
@@ -585,26 +743,26 @@ type IndexMetricsSnapshot struct {
 	LatestProfileUnix int64
 }
 
-func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model, profileModel string) (IndexMetricsSnapshot, error) {
+func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, profileModel string) (IndexMetricsSnapshot, error) {
 	var snapshot IndexMetricsSnapshot
 	err := pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM notes),
 			(SELECT COUNT(*) FROM notes
-			 WHERE chunk_index_version <> $1 OR chunk_embedding_model <> $2),
+			 WHERE chunk_index_version <> $1),
 			(SELECT COUNT(*) FROM note_chunks),
 			(SELECT COUNT(*) FROM note_chunks
-			 WHERE index_version = $1 AND embedding_model = $2),
+			 WHERE index_version = $1),
 			COALESCE((SELECT EXTRACT(EPOCH FROM MAX(chunks_indexed_at))::bigint
 			          FROM notes
-			          WHERE chunk_index_version = $1 AND chunk_embedding_model = $2), 0),
+			          WHERE chunk_index_version = $1), 0),
 			(SELECT COUNT(*) FROM note_profiles),
 			(SELECT COUNT(*) FROM notes n LEFT JOIN note_profiles p ON p.note_id = n.id
 			 WHERE p.note_id IS NULL OR p.source_hash <> n.content_hash
-			    OR p.profile_version <> $3 OR p.profile_model <> $4 OR p.embedding_model <> $2),
+			    OR p.profile_version <> $2 OR p.profile_model <> $3),
 			COALESCE((SELECT EXTRACT(EPOCH FROM MAX(indexed_at))::bigint FROM note_profiles
-			          WHERE profile_version = $3 AND profile_model = $4 AND embedding_model = $2), 0)
-	`, CurrentIndexVersion, model, CurrentProfileVersion, profileModel).Scan(
+			          WHERE profile_version = $2 AND profile_model = $3), 0)
+	`, CurrentIndexVersion, CurrentProfileVersion, profileModel).Scan(
 		&snapshot.TotalNotes,
 		&snapshot.PendingNotes,
 		&snapshot.TotalChunks,
@@ -620,10 +778,10 @@ func ReadIndexMetricsSnapshot(ctx context.Context, pool *pgxpool.Pool, model, pr
 	return snapshot, nil
 }
 
-// NotesNeedingChunks returns notes whose committed index version/model is stale.
+// NotesNeedingChunks returns notes whose committed lexical chunk version is stale.
 // The note-level marker is updated only after a complete reindex, so interrupted
 // deployments resume safely even if some chunk rows were already written.
-func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, model string) ([]NoteFull, error) {
+func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int) ([]NoteFull, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -632,13 +790,13 @@ func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 	}
 	rows, err := pool.Query(ctx, `
 		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content,
-		       n.chunk_index_version, n.chunk_embedding_model
+		       n.chunk_index_version, n.chunk_embedding_version, n.chunk_embedding_model
 		FROM notes n
 		WHERE n.id > $1
-		  AND (n.chunk_index_version <> $3 OR n.chunk_embedding_model <> $4)
+		  AND n.chunk_index_version <> $3
 		ORDER BY n.id ASC
 		LIMIT $2
-	`, afterID, limit, CurrentIndexVersion, model)
+	`, afterID, limit, CurrentIndexVersion)
 	if err != nil {
 		return nil, fmt.Errorf("notes missing chunks: %w", err)
 	}
@@ -647,7 +805,44 @@ func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 	for rows.Next() {
 		var n NoteFull
 		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content,
-			&n.ChunkIndexVersion, &n.ChunkEmbeddingModel); err != nil {
+			&n.ChunkIndexVersion, &n.ChunkEmbeddingVersion, &n.ChunkEmbeddingModel); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func NotesNeedingEmbeddings(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, model string) ([]NoteFull, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT n.id, n.relpath, n.name, n.mtime, n.size, n.content_hash, n.content,
+		       n.chunk_index_version, n.chunk_embedding_version, n.chunk_embedding_model
+		FROM notes n
+		WHERE n.id > $1
+		  AND n.chunk_index_version = $3
+		  AND (n.chunk_embedding_version <> $4 OR n.chunk_embedding_model <> $5
+		       OR EXISTS (
+		           SELECT 1
+		           FROM note_chunks c
+		           LEFT JOIN chunk_embeddings e ON e.chunk_id = c.id
+		           WHERE c.note_id = n.id
+		             AND (e.chunk_id IS NULL OR e.embedding_version <> $4 OR e.embedding_model <> $5)
+		       ))
+		ORDER BY n.id
+		LIMIT $2
+	`, afterID, limit, CurrentIndexVersion, CurrentEmbeddingVersion, model)
+	if err != nil {
+		return nil, fmt.Errorf("notes missing embeddings: %w", err)
+	}
+	defer rows.Close()
+	var out []NoteFull
+	for rows.Next() {
+		var n NoteFull
+		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash, &n.Content,
+			&n.ChunkIndexVersion, &n.ChunkEmbeddingVersion, &n.ChunkEmbeddingModel); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -657,7 +852,7 @@ func NotesNeedingChunks(ctx context.Context, pool *pgxpool.Pool, afterID int64, 
 
 // NotesNeedingProfiles pages over stale routing cards. source_hash makes the
 // process resumable and automatically invalidates a card when its note changes.
-func NotesNeedingProfiles(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, profileModel, embeddingModel string) ([]NoteFull, error) {
+func NotesNeedingProfiles(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, profileModel string) ([]NoteFull, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	if limit <= 0 {
@@ -671,11 +866,10 @@ func NotesNeedingProfiles(ctx context.Context, pool *pgxpool.Pool, afterID int64
 		  AND (p.note_id IS NULL
 		       OR p.source_hash <> n.content_hash
 		       OR p.profile_version <> $3
-		       OR p.profile_model <> $4
-		       OR p.embedding_model <> $5)
+		       OR p.profile_model <> $4)
 		ORDER BY n.id
 		LIMIT $2
-	`, afterID, limit, CurrentProfileVersion, profileModel, embeddingModel)
+	`, afterID, limit, CurrentProfileVersion, profileModel)
 	if err != nil {
 		return nil, fmt.Errorf("notes missing profiles: %w", err)
 	}
@@ -691,40 +885,104 @@ func NotesNeedingProfiles(ctx context.Context, pool *pgxpool.Pool, afterID int64
 	return out, rows.Err()
 }
 
-func UpsertNoteProfile(ctx context.Context, pool *pgxpool.Pool, note NoteFull, profile NoteProfile, profileText string, facets []byte, vec []float32, profileModel, embeddingModel string) error {
+func UpsertNoteProfile(ctx context.Context, pool *pgxpool.Pool, note NoteFull, profile NoteProfile, profileText string, facets []byte, profileModel string) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO note_profiles (
-			note_id, source_hash, profile_version, profile_model, embedding_model,
-			brief, facets, profile_text, embedding, indexed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::vector, NOW())
+			note_id, source_hash, profile_version, profile_model,
+			brief, facets, profile_text, indexed_at
+		) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW())
 		ON CONFLICT (note_id) DO UPDATE SET
 			source_hash = EXCLUDED.source_hash,
 			profile_version = EXCLUDED.profile_version,
 			profile_model = EXCLUDED.profile_model,
-			embedding_model = EXCLUDED.embedding_model,
 			brief = EXCLUDED.brief,
 			facets = EXCLUDED.facets,
 			profile_text = EXCLUDED.profile_text,
-			embedding = EXCLUDED.embedding,
 			indexed_at = NOW()
-	`, note.ID, note.ContentHash, CurrentProfileVersion, profileModel, embeddingModel,
-		profile.Brief, string(facets), profileText, vecLiteral(vec))
+	`, note.ID, note.ContentHash, CurrentProfileVersion, profileModel,
+		profile.Brief, string(facets), profileText)
 	if err != nil {
 		return fmt.Errorf("upsert note profile: %w", err)
 	}
 	return nil
 }
 
+func UpsertProfileEmbedding(ctx context.Context, pool *pgxpool.Pool, noteID int64, sourceHash []byte, vec []float32, profileModel, embeddingModel string) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO profile_embeddings (
+			note_id, source_hash, profile_version, profile_model,
+			embedding_model, embedding, indexed_at
+		) VALUES ($1, $2, $3, $4, $5, $6::vector, NOW())
+		ON CONFLICT (note_id) DO UPDATE SET
+			source_hash = EXCLUDED.source_hash,
+			profile_version = EXCLUDED.profile_version,
+			profile_model = EXCLUDED.profile_model,
+			embedding_model = EXCLUDED.embedding_model,
+			embedding = EXCLUDED.embedding,
+			indexed_at = NOW()
+	`, noteID, sourceHash, CurrentProfileVersion, profileModel, embeddingModel, vecLiteral(vec))
+	if err != nil {
+		return fmt.Errorf("upsert profile embedding: %w", err)
+	}
+	return nil
+}
+
+type ProfileEmbeddingRow struct {
+	NoteID      int64
+	SourceHash  []byte
+	ProfileText string
+}
+
+func ProfilesNeedingEmbeddings(ctx context.Context, pool *pgxpool.Pool, afterID int64, limit int, profileModel, embeddingModel string) ([]ProfileEmbeddingRow, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT p.note_id, p.source_hash, p.profile_text
+		FROM note_profiles p
+		JOIN notes n ON n.id = p.note_id
+		LEFT JOIN profile_embeddings e ON e.note_id = p.note_id
+		WHERE p.note_id > $1
+		  AND p.source_hash = n.content_hash
+		  AND p.profile_version = $3
+		  AND p.profile_model = $4
+		  AND (e.note_id IS NULL OR e.source_hash <> p.source_hash
+		       OR e.profile_version <> p.profile_version
+		       OR e.profile_model <> p.profile_model
+		       OR e.embedding_model <> $5)
+		ORDER BY p.note_id
+		LIMIT $2
+	`, afterID, limit, CurrentProfileVersion, profileModel, embeddingModel)
+	if err != nil {
+		return nil, fmt.Errorf("profiles missing embeddings: %w", err)
+	}
+	defer rows.Close()
+	var out []ProfileEmbeddingRow
+	for rows.Next() {
+		var row ProfileEmbeddingRow
+		if err := rows.Scan(&row.NoteID, &row.SourceHash, &row.ProfileText); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // ChunkRow is a row in note_chunks (without embedding or text — those are
 // fetched only on demand to keep listings cheap).
 type ChunkRow struct {
-	ID        int64
-	NoteID    int64
-	Kind      string
-	Ord       int
-	ChunkHash []byte
+	ID               int64
+	NoteID           int64
+	Kind             string
+	Ord              int
+	Text             string
+	Heading          string
+	ChunkHash        []byte
+	EmbeddingHash    []byte
+	EmbeddingModel   string
+	EmbeddingVersion int
 }
 
 // vecLiteral serialises a float32 vector to the pgvector textual format
@@ -751,8 +1009,12 @@ func ListChunkHashes(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]C
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	rows, err := pool.Query(ctx,
-		`SELECT id, note_id, kind, ord, chunk_hash FROM note_chunks WHERE note_id = $1`,
+	rows, err := pool.Query(ctx, `
+		SELECT c.id, c.note_id, c.kind, c.ord, c.text, c.heading_path, c.chunk_hash,
+		       NULL::bytea, ''::text, 0
+		FROM note_chunks c
+		WHERE c.note_id = $1
+	`,
 		noteID)
 	if err != nil {
 		return nil, fmt.Errorf("list chunk hashes: %w", err)
@@ -761,7 +1023,8 @@ func ListChunkHashes(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]C
 	var out []ChunkRow
 	for rows.Next() {
 		var c ChunkRow
-		if err := rows.Scan(&c.ID, &c.NoteID, &c.Kind, &c.Ord, &c.ChunkHash); err != nil {
+		if err := rows.Scan(&c.ID, &c.NoteID, &c.Kind, &c.Ord, &c.Text, &c.Heading,
+			&c.ChunkHash, &c.EmbeddingHash, &c.EmbeddingModel, &c.EmbeddingVersion); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -769,29 +1032,68 @@ func ListChunkHashes(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]C
 	return out, rows.Err()
 }
 
-// UpsertChunk inserts or updates a chunk row. Embeddings are written only when
-// content actually changes — callers should skip the embed call if the hash
-// matches an existing row.
-func UpsertChunk(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, ord int, text, heading string, hash []byte, vec []float32, model string) error {
+func ListChunksForEmbedding(ctx context.Context, pool *pgxpool.Pool, noteID int64) ([]ChunkRow, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT c.id, c.note_id, c.kind, c.ord, c.text, c.heading_path, c.chunk_hash,
+		       e.embedding_hash, COALESCE(e.embedding_model, ''), COALESCE(e.embedding_version, 0)
+		FROM note_chunks c
+		LEFT JOIN chunk_embeddings e ON e.chunk_id = c.id
+		WHERE c.note_id = $1
+	`, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunks for embedding: %w", err)
+	}
+	defer rows.Close()
+	var out []ChunkRow
+	for rows.Next() {
+		var c ChunkRow
+		if err := rows.Scan(&c.ID, &c.NoteID, &c.Kind, &c.Ord, &c.Text, &c.Heading,
+			&c.ChunkHash, &c.EmbeddingHash, &c.EmbeddingModel, &c.EmbeddingVersion); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UpsertChunk writes the lexical projection and returns its stable row id.
+func UpsertChunk(ctx context.Context, pool *pgxpool.Pool, noteID int64, kind string, ord int, text, heading string, hash []byte) (int64, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	_, err := pool.Exec(ctx, `
+	var chunkID int64
+	err := pool.QueryRow(ctx, `
 		INSERT INTO note_chunks (
-			note_id, kind, ord, text, heading_path, chunk_hash, embedding,
-			embedding_model, index_version
+			note_id, kind, ord, text, heading_path, chunk_hash, index_version
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (note_id, kind, ord) DO UPDATE SET
 			text       = EXCLUDED.text,
 			heading_path = EXCLUDED.heading_path,
 			chunk_hash = EXCLUDED.chunk_hash,
-			embedding  = EXCLUDED.embedding,
-			embedding_model = EXCLUDED.embedding_model,
 			index_version = EXCLUDED.index_version
-	`, noteID, kind, ord, text, heading, hash, vecLiteral(vec), model, CurrentIndexVersion)
+		RETURNING id
+	`, noteID, kind, ord, text, heading, hash, CurrentIndexVersion).Scan(&chunkID)
 	if err != nil {
-		return fmt.Errorf("upsert chunk: %w", err)
+		return 0, fmt.Errorf("upsert chunk: %w", err)
+	}
+	return chunkID, nil
+}
+
+func UpsertChunkEmbedding(ctx context.Context, pool *pgxpool.Pool, chunkID int64, hash []byte, vec []float32, model string) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO chunk_embeddings (
+			chunk_id, embedding_hash, embedding_model, embedding_version, embedding, indexed_at
+		) VALUES ($1, $2, $3, $4, $5::vector, NOW())
+		ON CONFLICT (chunk_id) DO UPDATE SET
+			embedding_hash = EXCLUDED.embedding_hash,
+			embedding_model = EXCLUDED.embedding_model,
+			embedding_version = EXCLUDED.embedding_version,
+			embedding = EXCLUDED.embedding,
+			indexed_at = NOW()
+	`, chunkID, hash, model, CurrentEmbeddingVersion, vecLiteral(vec))
+	if err != nil {
+		return fmt.Errorf("upsert chunk embedding: %w", err)
 	}
 	return nil
 }
@@ -813,7 +1115,7 @@ func DeleteChunksByID(ctx context.Context, pool *pgxpool.Pool, ids []int64) (int
 // SearchByVector runs cosine search over filtered chunks. The materialized
 // candidate CTE deliberately uses an exact scan: this vault is small, and exact
 // ordering avoids HNSW under-returning after selective date/kind filters.
-func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters) ([]SearchHit, error) {
+func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters, model string) ([]SearchHit, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -824,12 +1126,17 @@ func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limi
 	query := `
 		WITH candidates AS MATERIALIZED (
 			SELECT n.id AS note_id, c.id AS chunk_id, n.relpath, n.name,
-			       c.text, c.embedding, c.kind, c.heading_path, c.ord,
+			       c.text, e.embedding, c.kind, c.heading_path, c.ord,
 			       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), '') AS note_date,
 			       n.title, n.tags, n.links
 			FROM note_chunks c
+			JOIN chunk_embeddings e ON e.chunk_id = c.id
 			JOIN notes n ON n.id = c.note_id
 			WHERE c.kind <> 'note'
+			  AND e.embedding_version = $6
+			  AND e.embedding_model = $7
+			  AND n.chunk_embedding_version = $6
+			  AND n.chunk_embedding_model = $7
 			  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
 			  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
 			  AND ($4::text[] IS NULL OR c.kind = ANY($4::text[]))
@@ -840,10 +1147,10 @@ func SearchByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limi
 		       kind, heading_path, ord, note_date, title, tags, links
 		FROM candidates
 		ORDER BY embedding <=> $1::vector ASC, chunk_id
-		LIMIT $6
+		LIMIT $8
 	`
 	rows, err := pool.Query(ctx, query, vecLiteral(vec), filters.DateFrom, filters.DateTo,
-		nullableStrings(filters.Kinds), nullableInt64s(filters.NoteIDs), limit)
+		nullableStrings(filters.Kinds), nullableInt64s(filters.NoteIDs), CurrentEmbeddingVersion, model, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ann search: %w", err)
 	}
@@ -878,23 +1185,29 @@ func nullableInt64s(values []int64) any {
 
 // SearchProfilesByVector searches compact cards. Hits route the agent to note
 // ids and must not be presented as source evidence.
-func SearchProfilesByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters) ([]SearchHit, error) {
+func SearchProfilesByVector(ctx context.Context, pool *pgxpool.Pool, vec []float32, limit int, filters SearchFilters, profileModel, embeddingModel string) ([]SearchHit, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 	rows, err := pool.Query(ctx, `
 		SELECT n.id, 0::bigint, n.relpath, n.name, p.profile_text,
-		       1 - (p.embedding <=> $1::vector), 'profile', ''::text, 0,
+		       1 - (e.embedding <=> $1::vector), 'profile', ''::text, 0,
 		       COALESCE(to_char(effective_note_date(n.note_date, n.name), 'YYYY-MM-DD'), ''),
 		       n.title, n.tags, n.links
 		FROM note_profiles p
+		JOIN profile_embeddings e ON e.note_id = p.note_id
 		JOIN notes n ON n.id = p.note_id
-		WHERE ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
+		WHERE p.source_hash = n.content_hash
+		  AND p.profile_version = $5 AND p.profile_model = $6
+		  AND e.source_hash = p.source_hash AND e.profile_version = p.profile_version
+		  AND e.profile_model = p.profile_model AND e.embedding_model = $7
+		  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
 		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
 		  AND ($4::bigint[] IS NULL OR n.id = ANY($4::bigint[]))
-		ORDER BY p.embedding <=> $1::vector, n.id
-		LIMIT $5
-	`, vecLiteral(vec), filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs), limit)
+		ORDER BY e.embedding <=> $1::vector, n.id
+		LIMIT $8
+	`, vecLiteral(vec), filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs),
+		CurrentProfileVersion, profileModel, embeddingModel, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search profiles by vector: %w", err)
 	}
@@ -902,7 +1215,7 @@ func SearchProfilesByVector(ctx context.Context, pool *pgxpool.Pool, vec []float
 	return scanStructuredHits(rows)
 }
 
-func SearchProfilesByContent(ctx context.Context, pool *pgxpool.Pool, query string, limit int, filters SearchFilters) ([]SearchHit, error) {
+func SearchProfilesByContent(ctx context.Context, pool *pgxpool.Pool, query string, limit int, filters SearchFilters, profileModel string) ([]SearchHit, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -919,13 +1232,16 @@ func SearchProfilesByContent(ctx context.Context, pool *pgxpool.Pool, query stri
 		FROM note_profiles p
 		JOIN notes n ON n.id = p.note_id
 		CROSS JOIN q
-		WHERE (p.tsv_ru @@ q.ru OR p.tsv_simple @@ q.simple)
+		WHERE p.source_hash = n.content_hash
+		  AND p.profile_version = $5 AND p.profile_model = $6
+		  AND (p.tsv_ru @@ q.ru OR p.tsv_simple @@ q.simple)
 		  AND ($2::date IS NULL OR effective_note_date(n.note_date, n.name) >= $2::date)
 		  AND ($3::date IS NULL OR effective_note_date(n.note_date, n.name) <= $3::date)
 		  AND ($4::bigint[] IS NULL OR n.id = ANY($4::bigint[]))
 		ORDER BY 6 DESC, n.id
-		LIMIT $5
-	`, query, filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs), limit)
+		LIMIT $7
+	`, query, filters.DateFrom, filters.DateTo, nullableInt64s(filters.NoteIDs),
+		CurrentProfileVersion, profileModel, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search profiles by content: %w", err)
 	}

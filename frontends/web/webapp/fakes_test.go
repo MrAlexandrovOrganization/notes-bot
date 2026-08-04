@@ -128,6 +128,9 @@ type fakeSearch struct {
 func (f *fakeSearch) SearchByName(ctx context.Context, query string, limit int) ([]*clients.SearchHit, error) {
 	return f.byName, f.err
 }
+func (f *fakeSearch) FindNotes(ctx context.Context, query string, limit int, options clients.SearchOptions) ([]*clients.SearchHit, error) {
+	return append(append([]*clients.SearchHit(nil), f.byName...), f.byContent...), f.err
+}
 func (f *fakeSearch) SearchByContent(ctx context.Context, query string, limit int) ([]*clients.SearchHit, error) {
 	return f.byContent, f.err
 }

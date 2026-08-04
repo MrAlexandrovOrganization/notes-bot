@@ -57,7 +57,7 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID
 		switch st.Code() {
 		case codes.Unimplemented:
 			sendText(ctx, tgBot, chatID,
-				tgfmt.Escape("⚙️ Агентный поиск выключен. Включите SEARCH_ENABLE_EMBEDDINGS и SEARCH_ENABLE_PROFILES."),
+				tgfmt.Escape("⚙️ Ответы по заметкам выключены. Включите SEARCH_FEATURE_LLM_GENERATION."),
 				nil, true)
 		case codes.Unavailable:
 			sendText(ctx, tgBot, chatID,

@@ -86,6 +86,50 @@ func (s *SearchServer) SearchByName(ctx context.Context, req *pb.SearchRequest) 
 	return &pb.SearchResponse{Hits: hitsToProto(hits, "")}, nil
 }
 
+func (s *SearchServer) FindNotes(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
+	defer s.metrics.recordRPC(ctx, "FindNotes", &err)
+	defer s.metrics.recordSearch(ctx, "find", time.Now(), responseHitCount(&resp), &err)
+	if strings.TrimSpace(req.Query) == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+	filters, err := searchFiltersFromRequest(req)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	limit := normalizedLimit(int(req.Limit), 12, 100)
+	fetch := min(max(limit*3, 30), 200)
+	var rankings [][]SearchHit
+	if s.cfg.UsesFindRetriever(RetrieverName) && len(filters.Kinds) == 0 {
+		hits, searchErr := SearchByNameFiltered(ctx, s.pool, req.Query, fetch, filters)
+		if searchErr != nil {
+			return nil, status.Error(codes.Internal, searchErr.Error())
+		}
+		rankings = append(rankings, hits)
+	}
+	if s.cfg.UsesFindRetriever(RetrieverLexical) {
+		hits, searchErr := SearchChunksByContent(ctx, s.pool, req.Query, fetch, filters)
+		if searchErr != nil {
+			return nil, status.Error(codes.Internal, searchErr.Error())
+		}
+		rankings = append(rankings, hits)
+	}
+	if s.cfg.UsesFindRetriever(RetrieverDense) {
+		if s.embedder == nil {
+			return nil, status.Error(codes.Unavailable, ErrEmbedderUnavailable.Error())
+		}
+		vec, embedErr := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
+		if embedErr != nil {
+			return nil, status.Error(codes.Unavailable, embedErr.Error())
+		}
+		hits, searchErr := SearchByVector(ctx, s.pool, vec, fetch, filters, s.cfg.EmbedModel)
+		if searchErr != nil {
+			return nil, status.Error(codes.Internal, searchErr.Error())
+		}
+		rankings = append(rankings, hits)
+	}
+	return &pb.SearchResponse{Hits: hitsToProto(FuseManyByNoteID(limit, rankings...), "")}, nil
+}
+
 func (s *SearchServer) SearchByContent(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchByContent", &err)
 	defer s.metrics.recordSearch(ctx, "content", time.Now(), responseHitCount(&resp), &err)
@@ -111,8 +155,8 @@ func (s *SearchServer) SearchSemantic(ctx context.Context, req *pb.SearchRequest
 	defer s.metrics.recordSearch(ctx, "semantic", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
-	if !s.cfg.EnableEmbeddings || s.embedder == nil {
-		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set SEARCH_ENABLE_EMBEDDINGS=true)")
+	if !s.cfg.Features.Embeddings || s.embedder == nil {
+		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set SEARCH_FEATURE_EMBEDDINGS=true)")
 	}
 	if req.Query == "" {
 		return nil, status.Error(codes.InvalidArgument, "query is required")
@@ -127,7 +171,7 @@ func (s *SearchServer) SearchSemantic(ctx context.Context, req *pb.SearchRequest
 		log.Error("embed query", zap.Error(err))
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
-	hits, err := SearchByVector(ctx, s.pool, vec, normalizedLimit(int(req.Limit), 8, 100), filters)
+	hits, err := SearchByVector(ctx, s.pool, vec, normalizedLimit(int(req.Limit), 8, 100), filters, s.cfg.EmbedModel)
 	if err != nil {
 		log.Error("vector search", zap.Error(err))
 		return nil, status.Error(codes.Internal, err.Error())
@@ -140,8 +184,8 @@ func (s *SearchServer) SearchHybrid(ctx context.Context, req *pb.SearchRequest) 
 	defer s.metrics.recordSearch(ctx, "hybrid", time.Now(), responseHitCount(&resp), &err)
 	log := applog.With(ctx, logger)
 
-	if !s.cfg.EnableEmbeddings || s.embedder == nil {
-		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set SEARCH_ENABLE_EMBEDDINGS=true)")
+	if !s.cfg.Features.Embeddings || s.embedder == nil {
+		return nil, status.Error(codes.Unimplemented, "semantic search disabled (set SEARCH_FEATURE_EMBEDDINGS=true)")
 	}
 	if req.Query == "" {
 		return nil, status.Error(codes.InvalidArgument, "query is required")
@@ -169,7 +213,7 @@ func (s *SearchServer) hybrid(ctx context.Context, query string, limit int, filt
 		return nil, err
 	}
 	fetch := min(max(limit*4, 40), 200)
-	dense, err := SearchByVector(ctx, s.pool, vec, fetch, filters)
+	dense, err := SearchByVector(ctx, s.pool, vec, fetch, filters, s.cfg.EmbedModel)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +240,7 @@ func (s *SearchServer) hybrid(ctx context.Context, query string, limit int, filt
 func (s *SearchServer) SearchProfiles(ctx context.Context, req *pb.SearchRequest) (resp *pb.SearchResponse, err error) {
 	defer s.metrics.recordRPC(ctx, "SearchProfiles", &err)
 	defer s.metrics.recordSearch(ctx, "profiles", time.Now(), responseHitCount(&resp), &err)
-	if !s.cfg.EnableProfiles || s.embedder == nil {
+	if !s.cfg.Features.Profiles {
 		return nil, status.Error(codes.Unimplemented, "note profiles disabled")
 	}
 	if req.Query == "" {
@@ -206,17 +250,23 @@ func (s *SearchServer) SearchProfiles(ctx context.Context, req *pb.SearchRequest
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	vec, err := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
-	if err != nil {
-		return nil, status.Error(codes.Unavailable, err.Error())
-	}
 	limit := normalizedLimit(int(req.Limit), 20, 100)
 	fetch := min(max(limit*3, 40), 200)
-	dense, err := SearchProfilesByVector(ctx, s.pool, vec, fetch, filters)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	var dense []SearchHit
+	if s.cfg.Features.ProfileEmbeddings {
+		if s.embedder == nil {
+			return nil, status.Error(codes.Unavailable, ErrEmbedderUnavailable.Error())
+		}
+		vec, embedErr := s.embedder.EmbedOne(ctx, req.Query, s.metrics)
+		if embedErr != nil {
+			return nil, status.Error(codes.Unavailable, embedErr.Error())
+		}
+		dense, err = SearchProfilesByVector(ctx, s.pool, vec, fetch, filters, s.cfg.ProfileModel, s.cfg.EmbedModel)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
-	lexical, lexicalErr := SearchProfilesByContent(ctx, s.pool, req.Query, fetch, filters)
+	lexical, lexicalErr := SearchProfilesByContent(ctx, s.pool, req.Query, fetch, filters, s.cfg.ProfileModel)
 	if lexicalErr != nil {
 		applog.With(ctx, logger).Warn("profile lexical search", zap.Error(lexicalErr))
 	}
@@ -238,7 +288,7 @@ func (s *SearchServer) AskNotes(ctx context.Context, req *pb.AskRequest) (resp *
 		}
 		s.metrics.recordAgent(ctx, time.Since(started), steps, evidenceCount, exhausted, err)
 	}()
-	if s.agent == nil || !s.cfg.EnableProfiles {
+	if s.agent == nil || !s.cfg.Features.LLMGeneration {
 		return nil, status.Error(codes.Unimplemented, "notes agent disabled")
 	}
 	question := strings.TrimSpace(req.Question)
@@ -351,26 +401,34 @@ func (s *SearchServer) Reindex(ctx context.Context, req *pb.ReindexRequest) (res
 	if syncErr != nil {
 		return nil, status.Error(codes.Internal, syncErr.Error())
 	}
-	pending, countErr := CountNotesPendingIndex(ctx, s.pool, s.cfg.EmbedModel)
+	pending, countErr := CountNotesPendingIndex(ctx, s.pool)
 	if countErr != nil {
 		return nil, status.Error(codes.Internal, countErr.Error())
 	}
 	var profilesPending int64
-	if s.cfg.EnableProfiles {
-		profilesPending, countErr = CountNotesPendingProfiles(ctx, s.pool, s.cfg.ProfileModel, s.cfg.EmbedModel)
+	var embeddingsPending int64
+	if s.cfg.Features.Embeddings {
+		embeddingsPending, countErr = CountNotesPendingEmbeddings(ctx, s.pool, s.cfg.EmbedModel)
+		if countErr != nil {
+			return nil, status.Error(codes.Internal, countErr.Error())
+		}
+	}
+	if s.cfg.Features.Profiles {
+		profilesPending, countErr = CountNotesPendingProfiles(ctx, s.pool, s.cfg.ProfileModel)
 		if countErr != nil {
 			return nil, status.Error(codes.Internal, countErr.Error())
 		}
 	}
 	return &pb.ReindexResponse{
-		Added:           int32(stats.Added),
-		Updated:         int32(stats.Updated),
-		Deleted:         int32(stats.Deleted),
-		Embedded:        int32(stats.Embedded),
-		Errors:          int32(stats.Errors),
-		Pending:         pending,
-		Profiled:        int32(stats.Profiled),
-		ProfilesPending: profilesPending,
+		Added:             int32(stats.Added),
+		Updated:           int32(stats.Updated),
+		Deleted:           int32(stats.Deleted),
+		Embedded:          int32(stats.Embedded),
+		Errors:            int32(stats.Errors),
+		Pending:           pending,
+		Profiled:          int32(stats.Profiled),
+		ProfilesPending:   profilesPending,
+		EmbeddingsPending: embeddingsPending,
 	}, nil
 }
 

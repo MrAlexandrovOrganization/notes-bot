@@ -70,43 +70,25 @@ func (a *App) handleFindInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatI
 	a.showFindResults(ctx, tgBot, chatID, 0, q, hits, nil)
 }
 
-// searchNotes runs name + content searches and merges results, name-matches first.
+// searchNotes uses the product-level retrieval pipeline configured by the
+// search service; the frontend does not select technologies.
 func (a *App) searchNotes(ctx context.Context, q string, limit int) ([]tgstates.SearchHit, error) {
-	nameHits, err := a.Search.SearchByName(ctx, q, limit)
+	hits, err := a.Search.FindNotes(ctx, q, limit, clients.SearchOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("search by name: %w", err)
+		return nil, fmt.Errorf("find notes: %w", err)
 	}
 
 	merged := make([]tgstates.SearchHit, 0, limit)
-	seen := make(map[int64]struct{}, limit)
-	add := func(h *clients.SearchHit) {
+	for _, h := range hits {
 		if h == nil {
-			return
+			continue
 		}
-		if _, ok := seen[h.NoteID]; ok {
-			return
-		}
-		seen[h.NoteID] = struct{}{}
 		merged = append(merged, tgstates.SearchHit{
 			NoteID:  h.NoteID,
 			Relpath: h.Relpath,
 			Name:    h.Name,
 			Snippet: truncateSnippet(h.Snippet),
 		})
-	}
-	for _, h := range nameHits {
-		add(h)
-	}
-	if len(merged) < 3 {
-		contentHits, err := a.Search.SearchByContent(ctx, q, limit)
-		if err == nil {
-			for _, h := range contentHits {
-				if len(merged) >= limit {
-					break
-				}
-				add(h)
-			}
-		}
 	}
 	return merged, nil
 }
