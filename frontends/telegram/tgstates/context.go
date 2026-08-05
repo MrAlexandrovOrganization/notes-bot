@@ -63,6 +63,7 @@ type UserContext struct {
 	FindResults     []SearchHit `json:"find_results"`
 	FindResultsPage int         `json:"find_results_page"`
 	ActiveRelpath   string      `json:"active_relpath"`
+	ActiveNoteID    int64       `json:"active_note_id"`
 
 	// Vault browse state.
 	BrowsePath string `json:"browse_path"`

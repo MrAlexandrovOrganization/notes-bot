@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -18,8 +19,6 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
 )
-
-const browseNotePreviewMaxChars = 3500
 
 func (a *App) HandleMenuBrowse(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
@@ -82,6 +81,27 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		fmt.Sscanf(parts[2], "%d", &page)
 		return a.showBrowseFolderAtPage(ctx, tgBot, query, userID, uc.BrowsePath, page)
 
+	case "file_page":
+		if len(parts) < 3 || parts[2] == "noop" {
+			return nil
+		}
+		page, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("parse browse file page: %w", err)
+		}
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
+		if uc.ActiveRelpath == "" {
+			return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Файл больше не выбран."), nil)
+		}
+		content, err := a.Core.GetNoteByPath(ctx, uc.ActiveRelpath)
+		if err != nil {
+			return fmt.Errorf("get note by path: %w", err)
+		}
+		return a.showBrowseFile(ctx, tgBot, query, userID, uc.ActiveRelpath, content, page)
+
 	case "noop":
 		return nil
 
@@ -95,6 +115,7 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	case "file_back":
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateBrowseView
+			u.ActiveRelpath = ""
 		})
 		uc, err := a.State.GetContext(ctx, userID)
 		if err != nil {
@@ -132,7 +153,7 @@ func (a *App) handleBrowseOpenByIndex(ctx context.Context, tgBot *tgbotapi.BotAP
 
 	content, readErr := a.Core.GetNoteByPath(ctx, relpath)
 	if readErr == nil && content != "" {
-		return a.showBrowseFile(ctx, tgBot, query, userID, relpath, content)
+		return a.showBrowseFile(ctx, tgBot, query, userID, relpath, content, 0)
 	}
 
 	_, listErr := a.Core.ListDirectory(ctx, relpath)
@@ -188,7 +209,7 @@ func (a *App) showBrowseFolderAtPage(ctx context.Context, tgBot *tgbotapi.BotAPI
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, relpath string, content string) error {
+func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, relpath string, content string, page int) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("browse.file", relpath))
 	defer span.End()
 
@@ -200,16 +221,7 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 	}
 
 	fileName := filepath.Base(relpath)
-	if utf8.RuneCountInString(content) > browseNotePreviewMaxChars {
-		runes := []rune(content)
-		content = string(runes[:browseNotePreviewMaxChars]) + "\n\n_... обрезано_"
-	}
-
-	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "browse:file_back"),
-		),
-	)
+	pageContent, kb := tgkeyboards.BrowseFilePagination(content, page)
 
 	text := tgfmt.Join(
 		tgfmt.Escape("📄 "),
@@ -217,7 +229,7 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		tgfmt.Raw("\n"),
 		tgfmt.Escape(relpath),
 		tgfmt.Raw("\n\n"),
-		tgfmt.Blockquote(tgfmt.Escape(content)),
+		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
 
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -225,5 +237,5 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		u.ActiveRelpath = relpath
 	})
 
-	return replyToCallback(ctx, tgBot, query, text, &kb)
+	return replyToCallback(ctx, tgBot, query, text, kb)
 }

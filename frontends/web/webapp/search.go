@@ -12,9 +12,8 @@ import (
 )
 
 const (
-	searchLimit      = 25
-	notePreviewChars = 3500
-	snippetMaxRunes  = 120
+	searchLimit     = 25
+	snippetMaxRunes = 120
 )
 
 func (a *App) registerSearchRoutes(mux *http.ServeMux) {
@@ -57,15 +56,11 @@ func truncateSnippet(s string) string {
 	return string(r[:snippetMaxRunes-1]) + "…"
 }
 
-func truncatePreview(s string) string {
+func normalizeNoteContent(s string) string {
 	if !utf8.ValidString(s) {
 		s = strings.ToValidUTF8(s, "")
 	}
-	if utf8.RuneCountInString(s) <= notePreviewChars {
-		return s
-	}
-	r := []rune(s)
-	return string(r[:notePreviewChars]) + "\n\n…"
+	return s
 }
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +96,7 @@ func (a *App) handleSearchOpenNote(w http.ResponseWriter, r *http.Request) {
 		ID:      note.ID,
 		Name:    note.Name,
 		Relpath: note.Relpath,
-		Content: truncatePreview(note.Content),
+		Content: normalizeNoteContent(note.Content),
 	}))
 }
 

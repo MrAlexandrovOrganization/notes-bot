@@ -60,7 +60,7 @@ func (a *App) handleBrowseFile(w http.ResponseWriter, r *http.Request) {
 	a.render(w, r, views.BrowseFile(views.BrowseFileData{
 		Name:      filepath.Base(relpath),
 		Relpath:   relpath,
-		Content:   truncatePreview(content),
+		Content:   normalizeNoteContent(content),
 		FolderURL: parent,
 	}))
 }

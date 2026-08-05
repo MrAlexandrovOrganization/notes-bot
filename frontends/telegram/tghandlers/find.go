@@ -3,6 +3,7 @@ package tghandlers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -19,9 +20,8 @@ import (
 )
 
 const (
-	findSearchLimit  = 25
-	notePreviewChars = 3500
-	snippetMaxRunes  = 120
+	findSearchLimit = 25
+	snippetMaxRunes = 120
 )
 
 // HandleMenuFind opens the find-note prompt — user types a query, we search by
@@ -36,6 +36,7 @@ func (a *App) HandleMenuFind(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		u.FindResults = nil
 		u.FindResultsPage = 0
 		u.ActiveRelpath = ""
+		u.ActiveNoteID = 0
 	})
 	return replyToCallback(ctx, tgBot, query,
 		tgfmt.Escape("🔎 Введите имя заметки или фразу для поиска:"), nil)
@@ -174,7 +175,24 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if _, err := fmt.Sscanf(parts[2], "%d", &id); err != nil {
 			return fmt.Errorf("parse id: %w", err)
 		}
-		return a.openFoundNote(ctx, tgBot, query, userID, id)
+		return a.openFoundNote(ctx, tgBot, query, userID, id, 0)
+
+	case "note_page":
+		if len(parts) < 3 || parts[2] == "noop" {
+			return nil
+		}
+		page, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("parse note page: %w", err)
+		}
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
+		if uc.ActiveNoteID == 0 {
+			return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Заметка больше не выбрана."), nil)
+		}
+		return a.openFoundNote(ctx, tgBot, query, userID, uc.ActiveNoteID, page)
 
 	case "page":
 		if len(parts) < 3 {
@@ -200,6 +218,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateFindNoteResults
 			u.ActiveRelpath = ""
+			u.ActiveNoteID = 0
 		})
 		a.showFindResults(ctx, tgBot, query.Message.Chat.ID, uc.FindResultsPage, uc.FindQuery, uc.FindResults, query)
 		return nil
@@ -216,7 +235,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	return nil
 }
 
-func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, id int64) error {
+func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, id int64, page int) error {
 	log := applog.With(ctx, a.Logger)
 	note, err := a.Search.GetNoteByID(ctx, id)
 	if err != nil {
@@ -230,31 +249,26 @@ func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateViewNote
 		u.ActiveRelpath = note.Relpath
+		u.ActiveNoteID = id
 	})
 
-	preview := note.Content
-	if !utf8.ValidString(preview) {
-		preview = strings.ToValidUTF8(preview, "")
-	}
-	suffix := ""
-	if utf8.RuneCountInString(preview) > notePreviewChars {
-		r := []rune(preview)
-		preview = string(r[:notePreviewChars])
-		suffix = "\n\n…"
+	content := note.Content
+	if !utf8.ValidString(content) {
+		content = strings.ToValidUTF8(content, "")
 	}
 
 	uc, _ := a.State.GetContext(ctx, userID)
 	hasResults := uc != nil && len(uc.FindResults) > 0
-	kb := tgkeyboards.NoteView(hasResults)
+	pageContent, kb := tgkeyboards.FoundNotePagination(content, page, hasResults)
 
 	text := tgfmt.Join(
 		tgfmt.Bold(tgfmt.Escape("📄 "+note.Name)),
 		tgfmt.Raw("\n"),
 		tgfmt.Italic(tgfmt.Escape(note.Relpath)),
 		tgfmt.Raw("\n\n"),
-		tgfmt.Blockquote(tgfmt.Escape(preview+suffix)),
+		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
-	return replyToCallback(ctx, tgBot, query, text, &kb)
+	return replyToCallback(ctx, tgBot, query, text, kb)
 }
 
 // handleNoteAppendAction handles the "note:append" callback shown on an opened note.
