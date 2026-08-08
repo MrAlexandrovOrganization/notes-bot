@@ -219,12 +219,13 @@ func TestScheduleType_HasAllTypes(t *testing.T) {
 
 // --- ReminderCancel ---
 
-func TestReminderCancel_SingleButton(t *testing.T) {
+func TestReminderCancel_HasCancelAndBack(t *testing.T) {
 	kb := ReminderCancel()
-	require.Len(t, kb.InlineKeyboard, 1)
+	require.Len(t, kb.InlineKeyboard, 2)
 	require.Len(t, kb.InlineKeyboard[0], 1)
 	require.NotNil(t, kb.InlineKeyboard[0][0].CallbackData)
 	assert.Equal(t, "reminder:cancel", *kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "reminder:back", *kb.InlineKeyboard[1][0].CallbackData)
 }
 
 // --- ReminderCalendar ---

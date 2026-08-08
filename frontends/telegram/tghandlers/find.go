@@ -38,8 +38,9 @@ func (a *App) HandleMenuFind(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		u.ActiveRelpath = ""
 		u.ActiveNoteID = 0
 	})
+	kb := tgkeyboards.FindPrompt()
 	return replyToCallback(ctx, tgBot, query,
-		tgfmt.Escape("🔎 Введите имя заметки или фразу для поиска:"), nil)
+		tgfmt.Escape("🔎 Введите имя заметки или фразу для поиска:"), &kb)
 }
 
 func (a *App) handleFindInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {

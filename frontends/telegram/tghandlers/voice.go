@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -247,8 +248,7 @@ func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID 
 		return "", err
 	}
 
-	fileURL := tgFile.Link(tgBot.Token)
-	rc, err := downloadFile(ctx, fileURL)
+	rc, err := a.downloadTelegramFile(ctx, tgBot, tgFile, log)
 	if err != nil {
 		log.Error("download file", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при загрузке файла.")
@@ -310,6 +310,21 @@ func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID 
 	}
 
 	return text, nil
+}
+
+// downloadTelegramFile supports the local Telegram Bot API used in production
+// for large files. Its FilePath points into a shared volume, so no public HTTP
+// download is needed. The remote API remains the fallback for local development.
+func (a *App) downloadTelegramFile(ctx context.Context, tgBot *tgbotapi.BotAPI, file tgbotapi.File, log *zap.Logger) (io.ReadCloser, error) {
+	if a.Cfg.LocalAPIURL != "" {
+		log.Info("reading telegram file from local api volume", zap.String("path", file.FilePath))
+		f, err := os.Open(file.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("open local telegram file: %w", err)
+		}
+		return f, nil
+	}
+	return downloadFile(ctx, file.Link(tgBot.Token))
 }
 
 // deliverVoiceResult appends text to the note and updates the status message.

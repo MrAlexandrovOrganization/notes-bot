@@ -56,6 +56,13 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 		log.Warn("unauthorized callback", zap.Int64("user_id", userID))
 		return
 	}
+	// Remember the message containing the current flow. Text replies can then
+	// edit it in place instead of leaving stale inline buttons in the chat.
+	if query.Message != nil {
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
+			u.LastMessageID = query.Message.MessageID
+		})
+	}
 
 	parts := strings.Split(query.Data, ":")
 	if len(parts) == 0 {

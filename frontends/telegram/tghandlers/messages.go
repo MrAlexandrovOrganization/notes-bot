@@ -19,6 +19,19 @@ import (
 
 type stateTextHandler func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext)
 
+// replyToStateMessage keeps wizard prompts in one Telegram message. This
+// removes obsolete buttons (especially the cancel button) as soon as the user
+// advances to the next step.
+func (a *App) replyToStateMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+	uc, err := a.State.GetContext(ctx, userID)
+	if err == nil && uc.LastMessageID != 0 {
+		if err := editText(ctx, tgBot, chatID, uc.LastMessageID, text, keyboard); err == nil {
+			return nil
+		}
+	}
+	return sendText(ctx, tgBot, chatID, text, keyboard, true)
+}
+
 // stateTextHandlers maps each UserState to its text-input handler.
 // To add a new state: define the constant in tgstates/context.go, then add an entry here.
 // States not listed fall through to handleAppendNote (default note-append behaviour).

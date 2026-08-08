@@ -89,6 +89,11 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 	return err
 }
 
+func clearInlineKeyboard(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int) error {
+	_, err := bot.Request(tgbotapi.NewEditMessageReplyMarkup(chatID, messageID, tgbotapi.InlineKeyboardMarkup{}))
+	return err
+}
+
 // replyToUpdate sends a reply to a message update.
 func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)

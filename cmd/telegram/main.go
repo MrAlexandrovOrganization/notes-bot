@@ -140,7 +140,11 @@ func main() {
 		}),
 		Timeout: 120 * time.Second,
 	}
-	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, tgbotapi.APIEndpoint, httpClient)
+	apiEndpoint := tgbotapi.APIEndpoint
+	if cfg.LocalAPIURL != "" {
+		apiEndpoint = cfg.LocalAPIURL + "/bot%s/%s"
+	}
+	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, apiEndpoint, httpClient)
 	if err != nil {
 		logger.Fatal("failed to create telegram bot", zap.Error(err))
 	}

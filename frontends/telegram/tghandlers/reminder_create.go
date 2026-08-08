@@ -30,6 +30,21 @@ var scheduleTypeHandlers = map[string]func(*App, context.Context, *tgbotapi.BotA
 	"yearly":      (*App).handleScheduleTypeYearly,
 }
 
+func reminderProgress(uc *tgstates.UserContext, prompt tgfmt.HTML) tgfmt.HTML {
+	parts := make([]tgfmt.HTML, 0, 3)
+	if uc.ReminderDraft.Title != "" {
+		parts = append(parts, tgfmt.Join(tgfmt.Escape("🔔 Напоминание:\n"), tgfmt.Blockquote(tgfmt.Escape(uc.ReminderDraft.Title))))
+	}
+	if uc.ReminderDraft.ScheduleType != "" {
+		parts = append(parts, tgfmt.Escape(fmt.Sprintf("Тип: %s", scheduleLabel(uc.ReminderDraft.ScheduleType))))
+	}
+	if len(parts) == 0 {
+		return prompt
+	}
+	parts = append(parts, tgfmt.Raw("\n\n"), prompt)
+	return tgfmt.Join(parts...)
+}
+
 func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
@@ -52,7 +67,7 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 		u.ReminderDraft.Title = text
 	})
 	kb := tgkeyboards.ScheduleType()
-	replyToUpdate(ctx, tgBot, update,
+	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID,
 		tgfmt.Join(
 			tgfmt.Escape("Название: "),
 			tgfmt.Blockquote(tgfmt.Escape(fmt.Sprintf("%s", text))),
@@ -77,37 +92,40 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 }
 
 func (a *App) handleScheduleTypeWeekly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateDay
 	})
-	replyToCallback(ctx, tgBot, query,
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc,
 		tgfmt.Join(
 			tgfmt.Escape("Введите дни недели через запятую (0=Пн, 1=Вт, …, 6=Вс).\nПример: "),
 			tgfmt.Code(tgfmt.Escape("0,2,4")),
-		),
+		)),
 		&cancelKb)
 }
 
 func (a *App) handleScheduleTypeMonthly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateDay
 	})
-	replyToCallback(ctx, tgBot, query, tgfmt.Escape("Введите число месяца (1–31):"), &cancelKb)
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc, tgfmt.Escape("Введите число месяца (1–31):")), &cancelKb)
 }
 
 func (a *App) handleScheduleTypeCustomDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateInterval
 	})
-	replyToCallback(ctx, tgBot, query,
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc,
 		tgfmt.Join(
 			tgfmt.Escape("Введите интервал в днях (например "),
 			tgfmt.Code(tgfmt.Escape("3")),
 			tgfmt.Escape("):"),
-		),
+		)),
 		&cancelKb)
 }
 
@@ -127,7 +145,8 @@ func (a *App) startReminderDatePicker(ctx context.Context, tgBot *tgbotapi.BotAP
 		u.ReminderCalYear = now.Year()
 	})
 	kb := tgkeyboards.ReminderCalendar(now.Year(), int(now.Month()), calCtx, a.Cfg.TimezoneOffsetHours)
-	replyToCallback(ctx, tgBot, query, prompt, &kb)
+	uc, _ := a.State.GetContext(ctx, userID)
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc, prompt), &kb)
 }
 
 func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
@@ -137,7 +156,8 @@ func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotA
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
 	kb := tgkeyboards.TaskConfirm()
-	replyToCallback(ctx, tgBot, query, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?"), &kb)
+	uc, _ := a.State.GetContext(ctx, userID)
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?")), &kb)
 }
 
 func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
@@ -147,7 +167,8 @@ func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgb
 		u.State = tgstates.StateReminderCreateTaskConfirm
 	})
 	kb := tgkeyboards.TaskConfirm()
-	replyToUpdate(ctx, tgBot, update, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?"), &kb)
+	uc, _ := a.State.GetContext(ctx, userID)
+	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, reminderProgress(uc, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?")), &kb)
 }
 
 func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, createTask bool) {
@@ -158,14 +179,15 @@ func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.Bot
 		u.ReminderDraft.CreateTask = createTask
 	})
 	kb := tgkeyboards.ReminderCancel()
-	replyToCallback(ctx, tgBot, query,
+	uc, _ := a.State.GetContext(ctx, userID)
+	replyToCallback(ctx, tgBot, query, reminderProgress(uc,
 		tgfmt.Join(
 			tgfmt.Escape("Введите время в формате "),
 			tgfmt.Code(tgfmt.Escape("ЧЧ:ММ")),
 			tgfmt.Escape(" (например "),
 			tgfmt.Code(tgfmt.Escape("09:30")),
 			tgfmt.Escape("):"),
-		),
+		)),
 		&kb)
 }
 
@@ -189,7 +211,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 			for part := range strings.SplitSeq(text, ",") {
 				d, err := strconv.Atoi(strings.TrimSpace(part))
 				if err != nil || d < 0 || d > 6 {
-					replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите числа от 0 до 6 через запятую."), &cancelKb)
+					a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Введите числа от 0 до 6 через запятую."), &cancelKb)
 					return
 				}
 				days = append(days, d)
@@ -201,7 +223,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 		case "monthly":
 			d, err := strconv.Atoi(strings.TrimSpace(text))
 			if err != nil || d < 1 || d > 31 {
-				replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите число от 1 до 31."), &cancelKb)
+				a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Введите число от 1 до 31."), &cancelKb)
 				return
 			}
 			a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -213,7 +235,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 	case tgstates.StateReminderCreateInterval:
 		interval, err := strconv.Atoi(strings.TrimSpace(text))
 		if err != nil || interval < 1 {
-			replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите положительное целое число."), &cancelKb)
+			a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Введите положительное целое число."), &cancelKb)
 			return
 		}
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -224,13 +246,13 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 	case tgstates.StateReminderCreateTime:
 		parts := strings.SplitN(strings.TrimSpace(text), ":", 2)
 		if len(parts) != 2 {
-			replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
+			a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
 			return
 		}
 		h, err1 := strconv.Atoi(parts[0])
 		m, err2 := strconv.Atoi(parts[1])
 		if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-			replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
+			a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Введите время в формате ЧЧ:ММ."), &cancelKb)
 			return
 		}
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -273,7 +295,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 			a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 				u.State = tgstates.StateReminderCreateTime
 			})
-			replyToUpdate(ctx, tgBot, update,
+			a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID,
 				tgfmt.Join(
 					tgfmt.Escape("❌ Выбранное время уже прошло.\nВведите другое время в формате "),
 					tgfmt.Code(tgfmt.Escape("ЧЧ:ММ")),
@@ -283,7 +305,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 			return
 		}
 		log.Error("create reminder", zap.Error(err))
-		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Не удалось создать напоминание."), nil)
+		a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Не удалось создать напоминание."), nil)
 		return
 	}
 
@@ -312,7 +334,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	} else {
 		msgText = tgfmt.Escape("❌ Не удалось создать напоминание.")
 	}
-	replyToUpdate(ctx, tgBot, update, msgText, &kb)
+	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, msgText, &kb)
 	log.Info("created reminder", zap.Int64("user_id", userID), zap.String("title", title))
 }
 

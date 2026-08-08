@@ -114,8 +114,9 @@ func TestTasks_BackButtonCallback(t *testing.T) {
 
 func TestTaskAdd_CancelButton(t *testing.T) {
 	kb := TaskAdd()
-	require.Len(t, kb.InlineKeyboard, 1)
+	require.Len(t, kb.InlineKeyboard, 2)
 	require.Len(t, kb.InlineKeyboard[0], 1)
 	require.NotNil(t, kb.InlineKeyboard[0][0].CallbackData)
 	assert.Equal(t, "task:cancel", *kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "task:cancel", *kb.InlineKeyboard[1][0].CallbackData)
 }

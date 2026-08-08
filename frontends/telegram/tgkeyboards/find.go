@@ -10,6 +10,14 @@ import (
 
 const FindResultsPerPage = 5
 
+func FindPrompt() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "menu:back"),
+		),
+	)
+}
+
 // FindResults builds an inline keyboard with one button per hit on the current
 // page (label "📄 name"), pagination row, and a back-to-menu row.
 func FindResults(hits []tgstates.SearchHit, page int) tgbotapi.InlineKeyboardMarkup {

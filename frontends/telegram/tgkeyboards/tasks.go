@@ -62,5 +62,8 @@ func TaskAdd() tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "task:cancel"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "task:cancel"),
+		),
 	)
 }

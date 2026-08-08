@@ -125,14 +125,11 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		}
 	}
 
-	original := ""
 	if query.Message != nil {
-		original = query.Message.Text
+		_ = clearInlineKeyboard(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID)
 	}
-
 	kb := a.getMainMenuKeyboard(ctx)
-
-	replyToCallback(ctx, tgBot, query, tgfmt.Escape(original+"\n\n✅ Принято!"), &kb)
+	sendText(ctx, tgBot, userID, tgfmt.Escape("✅ Напоминание принято."), &kb, true)
 	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -141,12 +138,11 @@ func (a *App) HandleReminderReject(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	original := ""
 	if query.Message != nil {
-		original = query.Message.Text
+		_ = clearInlineKeyboard(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID)
 	}
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToCallback(ctx, tgBot, query, tgfmt.Escape(original+"\n\n❌ Отклонено."), &kb) // TODO: display reminder as Block quote
+	sendText(ctx, tgBot, userID, tgfmt.Escape("❌ Напоминание отклонено."), &kb, true)
 	applog.With(ctx, a.Logger).Info("reminder rejected", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 

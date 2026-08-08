@@ -126,6 +126,9 @@ func ReminderCancel() tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "reminder:cancel"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "reminder:back"),
+		),
 	)
 }
 

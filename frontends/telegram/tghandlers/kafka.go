@@ -30,6 +30,13 @@ func (a *App) MakeReminderHandler(tgBot *tgbotapi.BotAPI) func(context.Context, 
 			bot.ReminderDeliveryErrors.Add(ctx, 1)
 			return err
 		}
+		// Keep the fired reminder as a separate, immutable message. The menu is
+		// deliberately sent afterwards so working with it cannot overwrite the
+		// reminder text or its history.
+		menu := a.getMainMenuKeyboard(ctx)
+		if err := sendText(ctx, tgBot, ev.UserID, tgfmt.Escape("Выбери следующее действие:"), &menu, true); err != nil {
+			return err
+		}
 		a.Logger.Info("sent reminder notification",
 			zap.Int64("user_id", ev.UserID),
 			zap.Int64("reminder_id", ev.ReminderID),
