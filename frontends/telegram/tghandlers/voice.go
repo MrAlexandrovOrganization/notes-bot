@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -311,20 +312,20 @@ func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID 
 	return text, nil
 }
 
-// downloadTelegramFile uses the local Bot API's HTTP file endpoint when it is
-// configured. Reading the shared volume directly is not safe because the API
-// container may create files that the bot's non-root user cannot read.
+// downloadTelegramFile follows the same local Bot API flow as transcriber-bot:
+// GetFile returns a path in the shared volume, which is read directly. The
+// telegram container therefore intentionally runs with a user that can read
+// that volume.
 func (a *App) downloadTelegramFile(ctx context.Context, tgBot *tgbotapi.BotAPI, file tgbotapi.File, log *zap.Logger) (io.ReadCloser, error) {
 	if a.Cfg.LocalAPIURL != "" {
-		url := telegramFileURL(a.Cfg.LocalAPIURL, tgBot.Token, file.FilePath)
-		log.Info("downloading telegram file from local api", zap.String("path", file.FilePath))
-		return downloadFile(ctx, url)
+		log.Info("reading telegram file from local api volume", zap.String("path", file.FilePath))
+		f, err := os.Open(file.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("open local telegram file: %w", err)
+		}
+		return f, nil
 	}
 	return downloadFile(ctx, file.Link(tgBot.Token))
-}
-
-func telegramFileURL(baseURL, token, filePath string) string {
-	return strings.TrimRight(baseURL, "/") + "/file/bot" + token + "/" + strings.TrimLeft(filePath, "/")
 }
 
 // deliverVoiceResult appends text to the note and updates the status message.

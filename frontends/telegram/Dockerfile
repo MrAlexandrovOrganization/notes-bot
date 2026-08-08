@@ -27,6 +27,4 @@ RUN apk add --no-cache ca-certificates && \
 
 COPY --from=builder /telegram /telegram
 
-USER app
-
 CMD ["/telegram"]
