@@ -57,6 +57,14 @@ func SmartConfirm() tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
+func SmartInput() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "smart:back"),
+		),
+	)
+}
+
 // SmartIntentPicker показывается, когда LLM не уверена или не поняла —
 // пользователь выбирает intent вручную.
 func SmartIntentPicker() tgbotapi.InlineKeyboardMarkup {

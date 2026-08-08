@@ -32,9 +32,10 @@ func (a *App) HandleSmartStart(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		u.State = tgstates.StateSmartInput
 		u.SmartDraft = tgstates.SmartDraft{}
 	})
+	kb := tgkeyboards.SmartInput()
 	replyToCallback(ctx, tgBot, query,
 		tgfmt.Escape("✨ Опиши, что хочешь сделать — текстом или голосом.\n\nПримеры:\n• Купил молоко\n• Позвонить маме\n• Завтра в 9 утра планёрка"),
-		nil)
+		&kb)
 }
 
 // handleSmartInput вызывает LLM-классификатор, складывает гипотезу в SmartDraft

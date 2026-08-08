@@ -177,6 +177,8 @@ func (a *App) handleSmartAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 		a.HandleSmartConfirm(ctx, tgBot, query, userID)
 	case "no":
 		a.HandleSmartReject(ctx, tgBot, query, userID)
+	case "back":
+		a.HandleSmartReject(ctx, tgBot, query, userID)
 	case "pick":
 		if len(parts) >= 3 {
 			a.HandleSmartPickIntent(ctx, tgBot, query, userID, parts[2])
