@@ -12,6 +12,7 @@ import (
 
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/tgfmt"
+	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/searchquery"
@@ -29,9 +30,10 @@ func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateAskQuestion
 	})
+	kb := tgkeyboards.FindPrompt()
 	return replyToCallback(ctx, tgBot, query,
-		tgfmt.Escape("🧠 Спроси что-нибудь по заметкам: «что я делал вчера», «когда писал про X», «какие задачи по Y»."),
-		nil)
+		tgfmt.Escape("🧠 Спроси что-нибудь по заметкам: «что я делал вчера», «когда писал про X», «какие задачи по Y»"),
+		&kb)
 }
 
 func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {

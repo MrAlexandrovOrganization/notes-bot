@@ -125,11 +125,14 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		}
 	}
 
+	original := ""
 	if query.Message != nil {
-		_ = clearInlineKeyboard(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID)
+		original = query.Message.Text
+		// Preserve the fired reminder in place and remove its buttons. This
+		// makes repeated clicks impossible without creating extra messages.
+		_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
+			tgfmt.Escape(original+"\n\n✅ Принято!"), nil)
 	}
-	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, userID, tgfmt.Escape("✅ Напоминание принято."), &kb, true)
 	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
@@ -138,11 +141,12 @@ func (a *App) HandleReminderReject(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
+	original := ""
 	if query.Message != nil {
-		_ = clearInlineKeyboard(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID)
+		original = query.Message.Text
+		_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
+			tgfmt.Escape(original+"\n\n❌ Отклонено."), nil)
 	}
-	kb := a.getMainMenuKeyboard(ctx)
-	sendText(ctx, tgBot, userID, tgfmt.Escape("❌ Напоминание отклонено."), &kb, true)
 	applog.With(ctx, a.Logger).Info("reminder rejected", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
