@@ -46,8 +46,6 @@ type Indexer struct {
 
 type vaultFile struct{ path, relpath string }
 
-const syncFileWorkers = 8
-
 func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder, profiles *ProfileExtractor) *Indexer {
 	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder, profiles: profiles}
 }
@@ -179,52 +177,17 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 }
 
 func (ix *Indexer) syncFiles(ctx context.Context, log *zap.Logger, files []vaultFile, known map[string]*NoteRow, force bool, stats *SyncStats) {
-	ctx, span := telemetry.StartSpan(ctx,
-		attribute.Int("search.sync.files.total", len(files)),
-		attribute.Int("search.sync.files.workers", syncFileWorkers),
-	)
+	ctx, span := telemetry.StartSpan(ctx, attribute.Int("search.sync.files.total", len(files)))
 	defer span.End()
 
-	type job struct {
-		file     vaultFile
-		existing *NoteRow
-	}
-	jobs := make([]job, 0, len(files))
 	for _, file := range files {
 		existing := known[file.relpath]
 		delete(known, file.relpath)
-		jobs = append(jobs, job{file: file, existing: existing})
+		if err := ix.syncFile(ctx, file.path, file.relpath, existing, force, stats); err != nil {
+			log.Warn("sync file", zap.String("relpath", file.relpath), zap.Error(err))
+			stats.Errors++
+		}
 	}
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(syncFileWorkers)
-	var statsMu sync.Mutex
-	for _, job := range jobs {
-		job := job
-		g.Go(func() error {
-			var fileStats SyncStats
-			if err := ix.syncFile(gctx, job.file.path, job.file.relpath, job.existing, force, &fileStats); err != nil {
-				log.Warn("sync file", zap.String("relpath", job.file.relpath), zap.Error(err))
-				fileStats.Errors++
-			}
-			statsMu.Lock()
-			mergeSyncStats(stats, fileStats)
-			statsMu.Unlock()
-			return nil
-		})
-	}
-	_ = g.Wait()
-}
-
-func mergeSyncStats(stats *SyncStats, other SyncStats) {
-	stats.Seen += other.Seen
-	stats.Added += other.Added
-	stats.Updated += other.Updated
-	stats.Touched += other.Touched
-	stats.Deleted += other.Deleted
-	stats.Embedded += other.Embedded
-	stats.Profiled += other.Profiled
-	stats.Errors += other.Errors
 }
 
 func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *SyncStats) ([]vaultFile, error) {
