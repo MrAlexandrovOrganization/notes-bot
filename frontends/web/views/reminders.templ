@@ -134,17 +134,17 @@ templ reminderCreateForm(f ReminderFormData, action string) {
 
 		<div data-schedule-field="monthly" class="rounded border border-slate-100 p-2">
 			<label class="mb-1 block text-xs font-medium text-slate-500">Число месяца (1-31)</label>
-			<input type="number" name="day_of_month" min="1" max="31" value={ intValue(f.DayOfMonth) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			<input type="number" name="day_of_month" min="1" max="31" value={ positiveIntValue(f.DayOfMonth) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
 		</div>
 
 		<div data-schedule-field="yearly" class="flex gap-2 rounded border border-slate-100 p-2">
 			<div>
 				<label class="mb-1 block text-xs font-medium text-slate-500">Месяц (1-12)</label>
-				<input type="number" name="month" min="1" max="12" value={ intValue(f.Month) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+				<input type="number" name="month" min="1" max="12" value={ positiveIntValue(f.Month) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
 			</div>
 			<div>
 				<label class="mb-1 block text-xs font-medium text-slate-500">День (1-31)</label>
-				<input type="number" name="day" min="1" max="31" value={ intValue(f.Day) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+				<input type="number" name="day" min="1" max="31" value={ positiveIntValue(f.Day) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
 			</div>
 		</div>
 
@@ -155,7 +155,7 @@ templ reminderCreateForm(f ReminderFormData, action string) {
 
 		<div data-schedule-field="custom_days" class="rounded border border-slate-100 p-2">
 			<label class="mb-1 block text-xs font-medium text-slate-500">Интервал в днях</label>
-			<input type="number" name="interval_days" min="1" value={ intValue(f.IntervalDays) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
+			<input type="number" name="interval_days" min="1" value={ positiveIntValue(f.IntervalDays) } class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"/>
 		</div>
 
 		<label class="flex items-center gap-2 text-sm">
@@ -215,6 +215,13 @@ func containsInt(xs []int, v int) bool {
 
 func intValue(n int) string {
 	if n < 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
+
+func positiveIntValue(n int) string {
+	if n < 1 {
 		return ""
 	}
 	return strconv.Itoa(n)
