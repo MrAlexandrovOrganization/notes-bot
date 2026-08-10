@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
@@ -42,6 +43,8 @@ type Indexer struct {
 	profiles *ProfileExtractor
 	syncMu   sync.Mutex
 }
+
+type vaultFile struct{ path, relpath string }
 
 func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder, profiles *ProfileExtractor) *Indexer {
 	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder, profiles: profiles}
@@ -91,47 +94,33 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		}
 	}
 
-	known, err := AllNoteMeta(ctx, ix.pool)
-	if err != nil {
-		return stats, fmt.Errorf("load note metadata: %w", err)
-	}
-
-	walkErr := filepath.WalkDir(ix.cfg.NotesDir, func(path string, d fs.DirEntry, err error) error {
+	var known map[string]*NoteRow
+	var files []vaultFile
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var err error
+		known, err = AllNoteMeta(gctx, ix.pool)
 		if err != nil {
-			log.Warn("walk error", zap.String("path", path), zap.Error(err))
-			stats.Errors++
-			return nil
-		}
-		if d.IsDir() {
-			name := d.Name()
-			if strings.HasPrefix(name, ".") || slices.Contains(ix.cfg.IgnoreDirs, name) {
-				if path != ix.cfg.NotesDir {
-					return filepath.SkipDir
-				}
-			}
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
-			return nil
-		}
-		rel, err := filepath.Rel(ix.cfg.NotesDir, path)
-		if err != nil {
-			stats.Errors++
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		stats.Seen++
-
-		existing := known[rel]
-		delete(known, rel)
-		if err := ix.syncFile(ctx, path, rel, existing, force, &stats); err != nil {
-			log.Warn("sync file", zap.String("relpath", rel), zap.Error(err))
-			stats.Errors++
+			return fmt.Errorf("load note metadata: %w", err)
 		}
 		return nil
 	})
-	if walkErr != nil {
-		return stats, fmt.Errorf("walk vault: %w", walkErr)
+	g.Go(func() error {
+		var err error
+		files, err = ix.discoverFiles(gctx, log, &stats)
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		return stats, err
+	}
+
+	for _, file := range files {
+		existing := known[file.relpath]
+		delete(known, file.relpath)
+		if err := ix.syncFile(ctx, file.path, file.relpath, existing, force, &stats); err != nil {
+			log.Warn("sync file", zap.String("relpath", file.relpath), zap.Error(err))
+			stats.Errors++
+		}
 	}
 
 	if err := ix.backfillChunks(ctx); err != nil {
@@ -192,6 +181,44 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		zap.Duration("took", time.Since(start)),
 	)
 	return stats, nil
+}
+
+func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *SyncStats) ([]vaultFile, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	var files []vaultFile
+	err := filepath.WalkDir(ix.cfg.NotesDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Warn("walk error", zap.String("path", path), zap.Error(err))
+			stats.Errors++
+			return nil
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if strings.HasPrefix(name, ".") || slices.Contains(ix.cfg.IgnoreDirs, name) {
+				if path != ix.cfg.NotesDir {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(ix.cfg.NotesDir, path)
+		if err != nil {
+			stats.Errors++
+			return nil
+		}
+		files = append(files, vaultFile{path: path, relpath: filepath.ToSlash(rel)})
+		stats.Seen++
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk vault: %w", err)
+	}
+	return files, nil
 }
 
 func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, existing *NoteRow, force bool, stats *SyncStats) error {

@@ -473,7 +473,7 @@ func AllNoteMeta(ctx context.Context, pool *pgxpool.Pool) (map[string]*NoteRow, 
 	defer span.End()
 
 	rows, err := pool.Query(ctx,
-		`SELECT id, relpath, name, mtime, size, content_hash FROM notes`)
+		`SELECT relpath, mtime, size, content_hash FROM notes`)
 	if err != nil {
 		return nil, fmt.Errorf("list note metadata: %w", err)
 	}
@@ -482,7 +482,7 @@ func AllNoteMeta(ctx context.Context, pool *pgxpool.Pool) (map[string]*NoteRow, 
 	out := make(map[string]*NoteRow)
 	for rows.Next() {
 		n := new(NoteRow)
-		if err := rows.Scan(&n.ID, &n.Relpath, &n.Name, &n.Mtime, &n.Size, &n.ContentHash); err != nil {
+		if err := rows.Scan(&n.Relpath, &n.Mtime, &n.Size, &n.ContentHash); err != nil {
 			return nil, fmt.Errorf("scan note metadata: %w", err)
 		}
 		out[n.Relpath] = n
