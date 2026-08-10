@@ -174,7 +174,11 @@ templ reminderCreateForm(f ReminderFormData, action string) {
 	<script>
 		function reminderScheduleTypeChanged(value) {
 			document.querySelectorAll('[data-schedule-field]').forEach(function (el) {
-				el.style.display = el.getAttribute('data-schedule-field') === value ? '' : 'none';
+				var isActive = el.getAttribute('data-schedule-field') === value;
+				el.style.display = isActive ? '' : 'none';
+				el.querySelectorAll('input, select, textarea').forEach(function (control) {
+					control.disabled = !isActive;
+				});
 			});
 		}
 		reminderScheduleTypeChanged(document.getElementById('schedule_type').value);
