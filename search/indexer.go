@@ -114,14 +114,7 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		return stats, err
 	}
 
-	for _, file := range files {
-		existing := known[file.relpath]
-		delete(known, file.relpath)
-		if err := ix.syncFile(ctx, file.path, file.relpath, existing, force, &stats); err != nil {
-			log.Warn("sync file", zap.String("relpath", file.relpath), zap.Error(err))
-			stats.Errors++
-		}
-	}
+	ix.syncFiles(ctx, log, files, known, force, &stats)
 
 	if err := ix.backfillChunks(ctx); err != nil {
 		log.Warn("backfill chunks", zap.Error(err))
@@ -181,6 +174,20 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		zap.Duration("took", time.Since(start)),
 	)
 	return stats, nil
+}
+
+func (ix *Indexer) syncFiles(ctx context.Context, log *zap.Logger, files []vaultFile, known map[string]*NoteRow, force bool, stats *SyncStats) {
+	ctx, span := telemetry.StartSpan(ctx, attribute.Int("search.sync.files.total", len(files)))
+	defer span.End()
+
+	for _, file := range files {
+		existing := known[file.relpath]
+		delete(known, file.relpath)
+		if err := ix.syncFile(ctx, file.path, file.relpath, existing, force, stats); err != nil {
+			log.Warn("sync file", zap.String("relpath", file.relpath), zap.Error(err))
+			stats.Errors++
+		}
+	}
 }
 
 func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *SyncStats) ([]vaultFile, error) {
