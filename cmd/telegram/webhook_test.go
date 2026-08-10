@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestTelegramWebhookHandler(t *testing.T) {
@@ -32,4 +38,41 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		require.Len(t, updates, 1)
 		assert.Equal(t, 42, (<-updates).UpdateID)
 	})
+}
+
+func TestTelegramTracingTransportRedactsToken(t *testing.T) {
+	const token = "123456:secret"
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previousProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
+
+	var receivedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		receivedPath = req.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	endpoint, err := url.Parse(server.URL + "/bot" + token + "/getUpdates?offset=42")
+	require.NoError(t, err)
+	request, err := http.NewRequest(http.MethodPost, endpoint.String(), nil)
+	require.NoError(t, err)
+	client := &http.Client{Transport: telegramTracingTransport{base: http.DefaultTransport, botToken: token}}
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	response.Body.Close()
+
+	assert.Equal(t, "/bot"+token+"/getUpdates", receivedPath)
+	spans := recorder.Ended()
+	require.Len(t, spans, 1)
+	attributes := spans[0].Attributes()
+	assert.Contains(t, attributes, attribute.String("url.full", server.URL+"/botREDACTED/getUpdates"))
+	for _, attr := range attributes {
+		assert.NotContains(t, attr.Value.AsString(), token)
+	}
 }

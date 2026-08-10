@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -18,10 +19,11 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
@@ -41,6 +43,45 @@ import (
 // unbounded goroutines on a backlog (e.g. after bot restart) can exhaust
 // file descriptors or cause OOM.
 const maxConcurrentUpdates = 16
+
+type telegramTracingTransport struct {
+	base     http.RoundTripper
+	botToken string
+}
+
+func (t telegramTracingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, span := otel.Tracer("telegram").Start(req.Context(), "Telegram Bot API "+req.Method,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("http.request.method", req.Method),
+			attribute.String("server.address", req.URL.Hostname()),
+			attribute.String("url.full", maskedTelegramAPIURL(req.URL, t.botToken)),
+		),
+	)
+	defer span.End()
+
+	// The request keeps the real token; only trace attributes are redacted.
+	outgoing := req.Clone(ctx)
+	outgoing.Header = req.Header.Clone()
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(outgoing.Header))
+	resp, err := t.base.RoundTrip(outgoing)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
+	return resp, nil
+}
+
+func maskedTelegramAPIURL(rawURL *url.URL, botToken string) string {
+	sanitized := *rawURL
+	sanitized.Path = strings.Replace(sanitized.Path, "/bot"+botToken, "/botREDACTED", 1)
+	sanitized.RawPath = ""
+	sanitized.RawQuery = ""
+	sanitized.ForceQuery = false
+	return sanitized.String()
+}
 
 var logger *zap.Logger
 
@@ -133,11 +174,14 @@ func main() {
 
 	// Telegram bot
 	httpClient := &http.Client{
-		Transport: otelhttp.NewTransport(&http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			DialContext:         (&net.Dialer{Timeout: 60 * time.Second}).DialContext,
-			TLSHandshakeTimeout: 60 * time.Second,
-		}),
+		Transport: telegramTracingTransport{
+			base: &http.Transport{
+				Proxy:               http.ProxyFromEnvironment,
+				DialContext:         (&net.Dialer{Timeout: 60 * time.Second}).DialContext,
+				TLSHandshakeTimeout: 60 * time.Second,
+			},
+			botToken: cfg.BOTToken,
+		},
 		Timeout: 120 * time.Second,
 	}
 	apiEndpoint := tgbotapi.APIEndpoint
