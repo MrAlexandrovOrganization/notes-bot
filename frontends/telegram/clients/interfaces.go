@@ -40,6 +40,7 @@ type SearchService interface {
 type NotificationsService interface {
 	CreateReminder(ctx context.Context, userID int64, title, scheduleType string, scheduleParams *pb.ScheduleParams, createTask bool) (*ReminderInfo, error)
 	ListReminders(ctx context.Context, userID int64) ([]*ReminderInfo, error)
+	GetReminder(ctx context.Context, reminderID, userID int64) (*ReminderInfo, error)
 	DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error)
 	PostponeReminder(ctx context.Context, reminderID, userID int64, postponeMinutes int32) (*ReminderInfo, error)
 }

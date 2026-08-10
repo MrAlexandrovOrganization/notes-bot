@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
-	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -112,12 +110,21 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	if createTaskFlag == 1 && dateStr != "" && query.Message != nil {
-		title := extractReminderTitle(query.Message.Text)
+	if query.Message == nil {
+		return
+	}
+
+	reminder, err := a.Notifications.GetReminder(ctx, reminderID, userID)
+	if err != nil || reminder == nil {
+		log.Error("get acknowledged reminder", zap.Int64("reminder_id", reminderID), zap.Error(err))
+		return
+	}
+
+	if createTaskFlag == 1 && dateStr != "" {
 		tasks, err := a.Core.GetTasks(ctx, dateStr)
 		if err == nil {
 			for _, t := range tasks {
-				if t.Text == title && !t.Completed {
+				if t.Text == reminder.Title && !t.Completed {
 					a.Core.ToggleTask(ctx, dateStr, t.Index)
 					break
 				}
@@ -125,15 +132,19 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 		}
 	}
 
-	original := ""
-	if query.Message != nil {
-		original = query.Message.Text
-		// Preserve the fired reminder in place and remove its buttons. This
-		// makes repeated clicks impossible without creating extra messages.
-		_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
-			tgfmt.Escape(original+"\n\n✅ Принято!"), nil)
-	}
+	// Preserve the fired reminder in place and remove its buttons. This
+	// makes repeated clicks impossible without creating extra messages.
+	_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
+		acknowledgedReminderText(reminder.Title), nil)
 	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
+}
+
+func acknowledgedReminderText(title string) tgfmt.HTML {
+	return tgfmt.Join(
+		tgfmt.Escape("🔔 Напоминание: "),
+		tgfmt.Blockquote(tgfmt.Escape(title)),
+		tgfmt.Raw("\n\n✅ Принято!"),
+	)
 }
 
 // HandleReminderReject dismisses the current reminder firing without affecting the schedule.
@@ -194,18 +205,4 @@ func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		text = tgfmt.Raw("🔔 Уведомления:")
 	}
 	replyToCallback(ctx, tgBot, query, text, &kb)
-}
-
-// extractReminderTitle recovers the raw reminder title from the HTML source
-// of the notification message. The message is constructed as:
-//
-//	🔔 Напоминание: <blockquote>escaped_title</blockquote>
-//
-// so we strip the prefix, the blockquote tags, and unescape HTML entities
-// to get back the original title for task matching.
-func extractReminderTitle(msgText string) string {
-	s := strings.TrimPrefix(msgText, "🔔 Напоминание: ")
-	s = strings.TrimPrefix(s, "<blockquote>")
-	s = strings.TrimSuffix(s, "</blockquote>")
-	return html.UnescapeString(s)
 }

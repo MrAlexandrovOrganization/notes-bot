@@ -105,6 +105,14 @@ func (f *fakeNotifications) CreateReminder(ctx context.Context, userID int64, ti
 func (f *fakeNotifications) ListReminders(ctx context.Context, userID int64) ([]*clients.ReminderInfo, error) {
 	return f.reminders, nil
 }
+func (f *fakeNotifications) GetReminder(ctx context.Context, reminderID, userID int64) (*clients.ReminderInfo, error) {
+	for _, reminder := range f.reminders {
+		if reminder.ID == reminderID {
+			return reminder, nil
+		}
+	}
+	return nil, nil
+}
 func (f *fakeNotifications) DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error) {
 	f.deletedID = reminderID
 	return true, nil

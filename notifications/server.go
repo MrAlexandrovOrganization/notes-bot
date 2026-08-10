@@ -161,6 +161,17 @@ func (s *NotificationsServer) ListReminders(ctx context.Context, req *pb.ListRem
 	return &pb.ListRemindersResponse{Reminders: reminders}, nil
 }
 
+func (s *NotificationsServer) GetReminder(ctx context.Context, req *pb.GetReminderRequest) (resp *pb.ReminderResponse, err error) {
+	defer s.recordRPC(ctx, "GetReminder", &err)
+	log := applog.With(ctx, logger)
+	r, err := GetReminder(ctx, s.pool, req.ReminderId, req.UserId)
+	if err != nil {
+		log.Error("get reminder", zap.Error(err))
+		return nil, status.Error(codes.NotFound, "reminder not found")
+	}
+	return &pb.ReminderResponse{Success: true, Reminder: reminderToProto(r)}, nil
+}
+
 func (s *NotificationsServer) DeleteReminder(ctx context.Context, req *pb.DeleteReminderRequest) (resp *pb.SuccessResponse, err error) {
 	defer s.recordRPC(ctx, "DeleteReminder", &err)
 	log := applog.With(ctx, logger)

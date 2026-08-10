@@ -85,6 +85,23 @@ func (c *NotificationsClient) ListReminders(ctx context.Context, userID int64) (
 	return result, nil
 }
 
+func (c *NotificationsClient) GetReminder(ctx context.Context, reminderID, userID int64) (*ReminderInfo, error) {
+	resp, err := c.stub.GetReminder(ctx, &pb.GetReminderRequest{
+		ReminderId: reminderID,
+		UserId:     userID,
+	})
+	if err != nil {
+		if isUnavailable(err) {
+			return nil, errUnavailable("notifications")
+		}
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, nil
+	}
+	return protoToReminderInfo(resp.Reminder), nil
+}
+
 func (c *NotificationsClient) DeleteReminder(ctx context.Context, reminderID, userID int64) (bool, error) {
 	resp, err := c.stub.DeleteReminder(ctx, &pb.DeleteReminderRequest{
 		ReminderId: reminderID,

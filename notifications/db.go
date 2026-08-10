@@ -125,6 +125,20 @@ func ListReminders(ctx context.Context, pool *pgxpool.Pool, userID int64) ([]*Re
 	return result, rows.Err()
 }
 
+// GetReminder returns a reminder for its owner, including inactive reminders
+// that have already fired.
+func GetReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64) (*Reminder, error) {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	row := pool.QueryRow(ctx, `
+		SELECT id, user_id, title, schedule_type, schedule_params, next_fire_at, is_active, create_task
+		FROM reminders
+		WHERE id = $1 AND user_id = $2
+	`, reminderID, userID)
+	return scanReminder(ctx, row)
+}
+
 func DeleteReminder(ctx context.Context, pool *pgxpool.Pool, reminderID, userID int64) (bool, error) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
