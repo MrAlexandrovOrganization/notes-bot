@@ -390,9 +390,6 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
-	ctx, span := telemetry.StartSpan(ctx)
-	defer span.End()
-
 	log := applog.With(ctx, logger)
 	interval := time.Duration(s.cfg.SchedulerIntervalSecs) * time.Second
 	ticker := time.NewTicker(interval)
