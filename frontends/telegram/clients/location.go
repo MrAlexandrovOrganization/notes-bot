@@ -17,6 +17,12 @@ type LocationService interface {
 	ListByDate(ctx context.Context, date string) ([]*LocationRecord, error)
 }
 
+// Known location point sources. Add a new constant here when a new client
+// starts saving locations.
+const (
+	SourceTelegramBot = "telegram-bot"
+)
+
 type SaveLocationInput struct {
 	Latitude   float64
 	Longitude  float64
@@ -24,6 +30,7 @@ type SaveLocationInput struct {
 	LivePeriod int
 	Date       string
 	RecordedAt time.Time
+	Source     string
 }
 
 type LocationRecord struct {
@@ -33,6 +40,7 @@ type LocationRecord struct {
 	Accuracy   float32   `json:"accuracy"`
 	LivePeriod int       `json:"live_period"`
 	Date       string    `json:"date"`
+	Source     string    `json:"source"`
 	RecordedAt time.Time `json:"recorded_at"`
 }
 
@@ -58,6 +66,7 @@ func (c *LocationClient) Save(ctx context.Context, input *SaveLocationInput) (*L
 		"accuracy":    input.Accuracy,
 		"live_period": input.LivePeriod,
 		"date":        input.Date,
+		"source":      input.Source,
 		"recorded_at": input.RecordedAt,
 	})
 	if err != nil {

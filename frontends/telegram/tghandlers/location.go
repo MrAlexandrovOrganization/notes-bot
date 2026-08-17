@@ -64,6 +64,7 @@ func (a *App) HandleLocationMessage(ctx context.Context, tgBot *tgbotapi.BotAPI,
 		LivePeriod: loc.LivePeriod,
 		Date:       activeDate,
 		RecordedAt: time.Now(),
+		Source:     clients.SourceTelegramBot,
 	}
 
 	if _, err := a.Location.Save(ctx, input); err != nil {
