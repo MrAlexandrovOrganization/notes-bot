@@ -17,6 +17,8 @@ networks:
     external: true
   location-api-net:
     external: true
+  telegram-net:
+    external: true
 
 services:
   postgres:
@@ -196,21 +198,6 @@ services:
       file: docker-compose.base.yml
       service: base
 
-  telegram-bot-api:
-    image: aiogram/telegram-bot-api:9.6
-    restart: unless-stopped
-    environment:
-      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
-      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
-      - TELEGRAM_LOCAL=1
-    volumes:
-      - telegram_bot_api_data:/var/lib/telegram-bot-api
-    networks:
-      - default
-    extends:
-      file: docker-compose.base.yml
-      service: base
-
   telegram:
     container_name: notes-bot-telegram
     build:
@@ -254,7 +241,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - telegram_bot_api_data:/var/lib/telegram-bot-api:ro
+      - telegram-bot-api-data:/var/lib/telegram-bot-api:ro
     networks:
       - default
       - caddy-net
@@ -264,9 +251,8 @@ services:
       - kafka-net
       - redis-net
       - location-api-net  # location microservice (backends/location)
+      - telegram-net      # shared local Telegram Bot API (infra/telegram-bot-api)
     depends_on:
-      telegram-bot-api:
-        condition: service_started
       core:
         condition: service_healthy
       search:
@@ -332,4 +318,6 @@ services:
 volumes:
   postgres_data:
   postgres_search_data:
-  telegram_bot_api_data:
+  telegram-bot-api-data:
+    external: true
+    name: telegram-bot-api-data
