@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package search;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "notes-bot/proto/search";
+
+service SearchService {
+  // Product-level search: concrete retrievers are selected by FIND_RETRIEVERS.
+  rpc FindNotes       (SearchRequest) returns (SearchResponse);
+  rpc SearchByName    (SearchRequest) returns (SearchResponse);
+  rpc SearchByContent (SearchRequest) returns (SearchResponse);
+  rpc SearchSemantic  (SearchRequest) returns (SearchResponse);
+  rpc SearchHybrid    (SearchRequest) returns (SearchResponse);
+  rpc SearchProfiles  (SearchRequest) returns (SearchResponse);
+  rpc AskNotes        (AskRequest) returns (AskResponse);
+  rpc GetNote         (GetNoteRequest) returns (Note);
+  rpc Reindex         (ReindexRequest) returns (ReindexResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  int32  limit = 2;
+  // Optional inclusive date filters (YYYY-MM-DD or DD-Mmm-YYYY).
+  string date_from = 3;
+  string date_to   = 4;
+  // Optional chunk kinds filter: "paragraph" | "task".
+  repeated string kinds = 5;
+  // Optional note scope used for card -> source drill-down.
+  repeated int64 note_ids = 6;
+}
+
+message Hit {
+  int64  note_id    = 1;
+  string relpath    = 2;
+  string name       = 3;
+  string snippet    = 4;
+  double score      = 5;
+  string chunk_kind = 6;
+  int64  chunk_id = 7;
+  string heading_path = 8;
+  int32  ord = 9;
+  bool   neighbor = 10;
+  string note_date = 11;
+  string title = 12;
+  repeated string tags = 13;
+  repeated string links = 14;
+}
+
+message SearchResponse {
+  repeated Hit hits = 1;
+}
+
+message AskRequest {
+  string question = 1;
+  // Current local date/time supplied by the frontend (YYYY-MM-DD HH:MM).
+  string current_datetime = 2;
+  string date_from = 3;
+  string date_to = 4;
+}
+
+message AskResponse {
+  string answer = 1;
+  // Raw chunks used by the final synthesis. Profiles are never returned here.
+  repeated Hit evidence = 2;
+  repeated string searches = 3;
+  int32 steps = 4;
+  bool budget_exhausted = 5;
+}
+
+message GetNoteRequest {
+  oneof key {
+    int64  id      = 1;
+    string relpath = 2;
+  }
+}
+
+message Note {
+  int64  id      = 1;
+  string relpath = 2;
+  string name    = 3;
+  string content = 4;
+  google.protobuf.Timestamp mtime = 5;
+}
+
+message ReindexRequest {
+  bool force = 1;
+}
+
+message ReindexResponse {
+  int32 added    = 1;
+  int32 updated  = 2;
+  int32 deleted  = 3;
+  int32 embedded = 4;
+  int32 errors   = 5;
+  int64 pending  = 6;
+  int32 profiled = 7;
+  int64 profiles_pending = 8;
+  int64 embeddings_pending = 9;
+}

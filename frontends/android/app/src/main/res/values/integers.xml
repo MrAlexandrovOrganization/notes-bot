@@ -1,0 +1,6 @@
+<resources>
+    <integer name="core_port">50051</integer>
+    <integer name="notifications_port">50052</integer>
+    <integer name="search_port">50054</integer>
+    <integer name="llm_port">11434</integer>
+</resources>

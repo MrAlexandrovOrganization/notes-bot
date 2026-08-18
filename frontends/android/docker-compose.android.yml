@@ -1,0 +1,18 @@
+# Development override for the Android frontend.
+#
+# Publishes the plaintext gRPC ports of core/notifications/search on the host
+# so an Android app (emulator via 10.0.2.2, or a phone on the LAN) can reach
+# them. Use only on a trusted network — the services have no auth/TLS.
+#
+#   docker compose -f docker-compose.yml -f frontends/android/docker-compose.android.yml up -d
+services:
+  core:
+    ports:
+      - "50051:50051"
+  notifications:
+    ports:
+      - "50052:50052"
+  search:
+    ports:
+      - "127.0.0.1:9103:9103"
+      - "50054:50054"

@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Notes</string>
+
+    <!-- Backend endpoints. Defaults target the Android emulator (10.0.2.2 maps
+         to the host's loopback). For a physical device replace with your
+         machine's LAN IP (e.g. 192.168.1.20) and make sure the gRPC ports are
+         exposed (see docker-compose.android.yml in the repo root of frontends/android). -->
+    <string name="core_host">10.0.2.2</string>
+    <string name="notifications_host">10.0.2.2</string>
+    <string name="search_host">10.0.2.2</string>
+    <string name="llm_host">10.0.2.2</string>
+    <string name="llm_model">qwen2.5:7b</string>
+
+    <!-- user_id scopes reminders in the notifications service. Must equal the
+         ROOT_ID used by the Telegram/web frontends to share reminders. -->
+    <string name="user_id">0</string>
+</resources>
