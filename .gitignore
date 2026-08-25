@@ -10,7 +10,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
+# Python (root-anchored so Go packages like internal/env/ are not ignored)
+/env/
 venv/
 ENV/
 build/
