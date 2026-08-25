@@ -48,10 +48,10 @@ jobs:
       - name: Lint (golangci-lint)
         uses: golangci/golangci-lint-action@v9
         with:
-          # Pin to a v2 release built with Go >= 1.26; v1.x fails with
-          # "Go language version used to build golangci-lint is lower than
-          # the targeted Go version".
-          version: v2.4.0
+          # Pin a v2 release built with Go >= our go.mod directive.
+          # golangci-lint refuses to lint modules targeting a newer Go than
+          # it was built with, so both sides must stay in sync.
+          version: v2.13.1
           args: ./...
 
       - name: Test (race + coverage)

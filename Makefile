@@ -119,7 +119,7 @@ lint-golangci:
 	golangci-lint run ./...
 
 install-linters:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 vulncheck:
