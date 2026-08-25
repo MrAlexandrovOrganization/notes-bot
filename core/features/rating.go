@@ -10,7 +10,7 @@ import (
 )
 
 func UpdateRatingImpl(ctx context.Context, content string, rating int) (string, bool) {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	parts := strings.Split(content, "---")
@@ -84,7 +84,7 @@ func UpdateRatingImpl(ctx context.Context, content string, rating int) (string, 
 }
 
 func GetRatingImpl(ctx context.Context, content string) *int {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	parts := strings.Split(content, "---")

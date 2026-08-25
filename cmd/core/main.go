@@ -70,5 +70,5 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")
-	grpcServer.GracefulStop()
+	grpcutil.StopWithTimeout(logger, grpcServer, grpcutil.DefaultStopTimeout)
 }

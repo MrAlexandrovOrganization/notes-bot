@@ -40,7 +40,7 @@ func reminderListText(reminders []*clients.ReminderInfo, page, tzOffset int) tgf
 	for _, r := range reminders[start:end] {
 		lines = append(lines, tgfmt.Join(
 			tgfmt.Escape("• "),
-			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", r.Title))),
+			tgfmt.Code(tgfmt.Escape(r.Title)),
 			tgfmt.Escape(fmt.Sprintf(" (%s) — %s",
 				scheduleLabel(r.ScheduleType),
 				timeutil.FormatLocalTime(r.NextFireAt, tzOffset),

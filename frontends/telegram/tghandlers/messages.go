@@ -161,7 +161,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 
 	text_to_send := tgfmt.Join(
 		tgfmt.Escape("✅ Задача добавлена: "),
-		tgfmt.Blockquote(tgfmt.Escape(fmt.Sprintf("%s", text))),
+		tgfmt.Blockquote(tgfmt.Escape(text)),
 	)
 	sendText(ctx, tgBot, chatID, text_to_send, nil, true)
 
@@ -183,7 +183,7 @@ func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 	kb := a.getMainMenuKeyboard(ctx)
 	text_to_send := tgfmt.Join(
 		tgfmt.Escape("✅ Текст добавлен в заметку "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", activeDate))),
+		tgfmt.Code(tgfmt.Escape(activeDate)),
 	)
 	sendText(ctx, tgBot, chatID, text_to_send, &kb, true)
 	log.Info("user appended text", zap.Int64("user_id", userID))

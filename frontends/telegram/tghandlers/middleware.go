@@ -29,7 +29,7 @@ func isRetriableNetworkError(err error) bool {
 
 // sendText sends a new text message to a chat with optional keyboard, using HTML parse mode.
 func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	msg := tgbotapi.NewMessage(chatID, text.String())
@@ -86,11 +86,6 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 		span.SetStatus(codes.Error, err.Error())
 		span.SetAttributes(attribute.Int("text_len", len(text)))
 	}
-	return err
-}
-
-func clearInlineKeyboard(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int) error {
-	_, err := bot.Request(tgbotapi.NewEditMessageReplyMarkup(chatID, messageID, tgbotapi.InlineKeyboardMarkup{}))
 	return err
 }
 

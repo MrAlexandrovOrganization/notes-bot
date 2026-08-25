@@ -247,11 +247,13 @@ func (a *App) executeSmart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 
 	case clients.IntentReminder:
 		fakeUpdate := &tgbotapi.Update{Message: query.Message}
-		a.finalizeReminderFromUpdate(ctx, tgBot, fakeUpdate, userID)
+		created := a.finalizeReminderFromUpdate(ctx, tgBot, fakeUpdate, userID)
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.SmartDraft = tgstates.SmartDraft{}
 		})
-		bot.SmartIntentConfirmed.Add(ctx, 1, confirmedAttr)
+		if created {
+			bot.SmartIntentConfirmed.Add(ctx, 1, confirmedAttr)
+		}
 
 	default:
 		replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Не поняла, что сделать."), nil)

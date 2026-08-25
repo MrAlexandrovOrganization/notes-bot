@@ -82,7 +82,11 @@ func main() {
 	}
 
 	scheduler := notifications.NewScheduler(ctx, pool, cfg)
-	go scheduler.Run(ctx)
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		scheduler.Run(ctx)
+	}()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
 	if err != nil {
@@ -103,5 +107,8 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")
-	grpcServer.GracefulStop()
+	grpcutil.StopWithTimeout(logger, grpcServer, grpcutil.DefaultStopTimeout)
+	// Wait for the scheduler to flush in-flight Kafka publishes and release
+	// its resources before the deferred pool.Close() runs.
+	<-schedulerDone
 }

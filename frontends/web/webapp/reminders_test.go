@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	"github.com/stretchr/testify/require"
+	"notes-bot/internal/duration"
 
 	"notes-bot/frontends/web/views"
 )
@@ -89,7 +91,7 @@ func TestFormToScheduleParams_UnknownType(t *testing.T) {
 }
 
 func TestParseDuration_BareMinutes(t *testing.T) {
-	n, err := parseDuration("90")
+	n, err := duration.Parse("90")
 	require.NoError(t, err)
 	assert.Equal(t, 90, n)
 }
@@ -104,32 +106,32 @@ func TestParseDuration_CompositeUnits(t *testing.T) {
 		"3d6h30m": 3*1440 + 6*60 + 30,
 	}
 	for input, want := range cases {
-		n, err := parseDuration(input)
+		n, err := duration.Parse(input)
 		require.NoError(t, err, input)
 		assert.Equal(t, want, n, input)
 	}
 }
 
 func TestParseDuration_RejectsOverflow(t *testing.T) {
-	_, err := parseDuration("90m")
+	_, err := duration.Parse("90m")
 	assert.Error(t, err)
-	_, err = parseDuration("27h")
+	_, err = duration.Parse("27h")
 	assert.Error(t, err)
-	_, err = parseDuration("8d")
+	_, err = duration.Parse("8d")
 	assert.Error(t, err)
 }
 
 func TestParseDuration_RejectsInvalid(t *testing.T) {
-	_, err := parseDuration("")
+	_, err := duration.Parse("")
 	assert.Error(t, err)
-	_, err = parseDuration("abc")
+	_, err = duration.Parse("abc")
 	assert.Error(t, err)
-	_, err = parseDuration("5x")
+	_, err = duration.Parse("5x")
 	assert.Error(t, err)
-	_, err = parseDuration("5m5m")
+	_, err = duration.Parse("5m5m")
 	assert.Error(t, err)
-	_, err = parseDuration("0")
+	_, err = duration.Parse("0")
 	assert.Error(t, err)
-	_, err = parseDuration("-5")
+	_, err = duration.Parse("-5")
 	assert.Error(t, err)
 }

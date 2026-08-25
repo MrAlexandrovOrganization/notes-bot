@@ -18,7 +18,7 @@ type Task struct {
 }
 
 func ParseTasks(ctx context.Context, content string) []Task {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	logger.Debug("ParseTasks")
@@ -114,7 +114,7 @@ func ToggleTaskContent(ctx context.Context, content string, taskIndex int) (stri
 }
 
 func AddTaskContent(ctx context.Context, content string, taskText string) (string, error) {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	parts := strings.Split(content, "---")

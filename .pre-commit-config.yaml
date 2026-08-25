@@ -12,13 +12,20 @@ repos:
         always_run: true
         stages: [pre-commit]
 
-      - id: make-test
-        name: Run make test
-        entry: make test
+      - id: make-lint
+        name: Run make lint (gofmt + go vet)
+        entry: make lint
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-push]
+        stages: [pre-commit]
+
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
+        entry: gitleaks protect --staged --redact
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
 
       - id: no-large-files
         name: Check for large files (>500KB)

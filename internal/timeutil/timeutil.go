@@ -16,7 +16,12 @@ func LocalNow(tzOffsetHours int) time.Time {
 // TodayDate returns the current logical date as "DD-MMM-YYYY".
 // The day boundary is at dayStartHour — before that hour, the previous calendar day is returned.
 func TodayDate(tzOffsetHours, dayStartHour int) string {
-	local := LocalNow(tzOffsetHours)
+	return TodayDateAt(time.Now(), tzOffsetHours, dayStartHour)
+}
+
+// TodayDateAt is TodayDate for an explicit instant (testable).
+func TodayDateAt(now time.Time, tzOffsetHours, dayStartHour int) string {
+	local := now.In(FixedZone(tzOffsetHours))
 	if local.Hour() < dayStartHour {
 		local = local.AddDate(0, 0, -1)
 	}

@@ -30,8 +30,8 @@ FROM node:20-alpine AS twbuilder
 WORKDIR /css
 COPY --from=gobuilder /app/frontends/web/views ./views
 COPY --from=gobuilder /app/frontends/web/webapp/static/input.css ./input.css
-RUN npm install --no-save @tailwindcss/cli && \
-    npx @tailwindcss/cli -i ./input.css -o ./output.css --minify
+RUN npm install --no-save @tailwindcss/cli@4.3.3 && \
+    npx @tailwindcss/cli@4.3.3 -i ./input.css -o ./output.css --minify
 
 
 FROM gobuilder AS finalbuilder

@@ -1,0 +1,30 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - copyloopvar
+    - gocheckcompilerdirectives
+  exclusions:
+    rules:
+      # Generated code.
+      - path: (_templ\.go|\.pb\.go|_grpc\.pb\.go)$
+        linters:
+          - staticcheck
+          - unused
+      # Tests commonly ignore errors on purpose (assert helpers).
+      - path: _test\.go
+        linters:
+          - staticcheck
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

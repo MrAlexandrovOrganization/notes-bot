@@ -7,12 +7,63 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"notes-bot/core/features"
 	"notes-bot/internal/telemetry"
 
 	"go.uber.org/zap"
 )
+
+// --- File locking & atomic writes ---
+//
+// Telegram and web frontends hit the same core concurrently; every
+// read-modify-write on a note file must hold a per-file lock, otherwise
+// updates are lost. Writes go through temp-file+rename so a crash mid-write
+// cannot corrupt a note.
+
+var fileLocks sync.Map // map[abs path]*sync.Mutex
+
+// lockFile acquires the per-file mutex for path and returns the unlock func.
+func lockFile(path string) func() {
+	muAny, _ := fileLocks.LoadOrStore(path, &sync.Mutex{})
+	mu := muAny.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// writeFileAtomic writes data to filePath via a temp file in the same
+// directory followed by an atomic rename.
+func writeFileAtomic(filePath string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(filePath)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			os.Remove(tmpName) //nolint:errcheck
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close() //nolint:errcheck
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, filePath); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	cleanup = false
+	return nil
+}
 
 // --- Interfaces ---
 
@@ -116,6 +167,8 @@ func (r *realNoteStore) EnsureNote(ctx context.Context, date string) error {
 	if err != nil {
 		return err
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return r.createFromTemplate(ctx, filePath, date)
 	}
@@ -131,6 +184,8 @@ func (r *realNoteStore) AppendToNote(ctx context.Context, date, text string) err
 	if err != nil {
 		return err
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		if err := r.createFromTemplate(ctx, filePath, date); err != nil {
 			return err
@@ -155,6 +210,8 @@ func (r *realNoteStore) AppendByPath(ctx context.Context, relpath, text string) 
 		}
 		return fmt.Errorf("stat note: %w", err)
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	return appendToFile(filePath, text)
 }
 
@@ -264,7 +321,7 @@ func (r *realNoteStore) createFromTemplate(ctx context.Context, filePath, dateSt
 		return fmt.Errorf("error reading template: %w", err)
 	}
 	result := strings.ReplaceAll(string(content), "{{date:DD-MMM-YYYY}}", dateStr)
-	if err := os.WriteFile(filePath, []byte(result), 0644); err != nil {
+	if err := writeFileAtomic(filePath, []byte(result), 0644); err != nil {
 		zap.L().Error("error writing note", zap.Error(err))
 		return fmt.Errorf("error writing note: %w", err)
 	}
@@ -273,12 +330,12 @@ func (r *realNoteStore) createFromTemplate(ctx context.Context, filePath, dateSt
 }
 
 func (r *realNoteStore) createBasicNote(ctx context.Context, filePath, dateStr string) error {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	logger.Debug("createBasicNote")
 	content := fmt.Sprintf("---\ndate: \"[[%s]]\"\ntitle: \"[[%s]]\"\nОценка:\ntags:\n  - daily\n---\n---\n", dateStr, dateStr)
-	return os.WriteFile(filePath, []byte(content), 0644)
+	return writeFileAtomic(filePath, []byte(content), 0644)
 }
 
 // --- realRatingStore ---
@@ -300,6 +357,8 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 	if err != nil {
 		return err
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		zap.L().Error("file not found", zap.String("path", filePath))
 		return err
@@ -312,7 +371,7 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 	if !ok {
 		return fmt.Errorf("failed to update rating in file %s", filePath)
 	}
-	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+	if err := writeFileAtomic(filePath, []byte(newContent), 0644); err != nil {
 		return err
 	}
 	zap.L().Info("successfully updated rating", zap.Int("rating", rating), zap.String("path", filePath))
@@ -340,6 +399,8 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	if err != nil {
 		return err
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -348,7 +409,7 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, []byte(newContent), 0644)
+	return writeFileAtomic(filePath, []byte(newContent), 0644)
 }
 
 func (r *realTaskStore) AddTask(ctx context.Context, date, text string) error {
@@ -360,6 +421,8 @@ func (r *realTaskStore) AddTask(ctx context.Context, date, text string) error {
 	if err != nil {
 		return err
 	}
+	unlock := lockFile(filePath)
+	defer unlock()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -368,7 +431,7 @@ func (r *realTaskStore) AddTask(ctx context.Context, date, text string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, []byte(newContent), 0644)
+	return writeFileAtomic(filePath, []byte(newContent), 0644)
 }
 
 func (r *realNoteStore) ListDirectory(ctx context.Context, relpath string) ([]DirEntry, error) {

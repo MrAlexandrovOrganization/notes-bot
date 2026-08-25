@@ -23,6 +23,7 @@ networks:
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: notes-bot-postgres
     restart: unless-stopped
     environment:
       - POSTGRES_DB=${DB_NAME:-notifications}
@@ -76,7 +77,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=notes-bot-postgres-1
+      - DB_HOST=notes-bot-postgres
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-notifications}
       - DB_USER=${DB_USER:-notif}

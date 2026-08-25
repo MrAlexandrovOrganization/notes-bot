@@ -7,7 +7,6 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -22,9 +21,8 @@ import (
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
+	"notes-bot/internal/timeutil"
 )
-
-const notePreviewMaxChars = 3800
 
 var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.BotAPI, *tgbotapi.CallbackQuery, int64, []string) error{
 	"menu":     (*App).handleMenuAction,
@@ -284,9 +282,9 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		text := tgfmt.Join(
 			tgfmt.Escape("✅ Выбрана дата: "),
-			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", date))),
+			tgfmt.Code(tgfmt.Escape(date)),
 			tgfmt.Escape("\n\n📅 Активная дата: "),
-			tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", date))),
+			tgfmt.Code(tgfmt.Escape(date)),
 			tgfmt.Escape("\n\nВыберите действие:"),
 		)
 		kb := a.getMainMenuKeyboard(ctx)
@@ -298,7 +296,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 			return fmt.Errorf("get today date: %w", err)
 		}
 		a.setActiveDate(ctx, userID, todayDate)
-		now := time.Now()
+		now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.CalendarMonth = int(now.Month())
 			u.CalendarYear = now.Year()
@@ -462,7 +460,7 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	}
 	text := tgfmt.Join(
 		tgfmt.Escape("📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
 		tgfmt.Escape("\n\nВыберите действие:"),
 	)
 	kb := a.getMainMenuKeyboard(ctx)
@@ -486,7 +484,7 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 
 	header := tgfmt.Join(
 		tgfmt.Escape("✅ Задачи на "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
 		tgfmt.Escape(":\n\n"),
 	)
 	if len(tasks) == 0 {
@@ -522,7 +520,7 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	kb := tgkeyboards.Calendar(ctx, uc.CalendarYear, uc.CalendarMonth, uc.ActiveDate, existingDates)
 	text := tgfmt.Join(
 		tgfmt.Escape("📅 Календарь\n\nАктивная дата: "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
 	)
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }

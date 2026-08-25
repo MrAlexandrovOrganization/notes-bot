@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"notes-bot/internal/env"
 )
 
 type Config struct {
@@ -48,23 +50,26 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ROOT_ID is not a valid integer: %w", err)
 	}
+	if rootID <= 0 {
+		return nil, fmt.Errorf("ROOT_ID must be a positive Telegram user id, got %d", rootID)
+	}
 
 	return &Config{
-		WebListenAddr:         envStr("WEB_LISTEN_ADDR", ":8090"),
+		WebListenAddr:         env.Str("WEB_LISTEN_ADDR", ":8090"),
 		WebPassword:           password,
 		WebSessionSecret:      secret,
 		RootID:                rootID,
-		TimezoneOffsetHours:   envInt("TIMEZONE_OFFSET_HOURS", 3),
-		DayStartHour:          envInt("DAY_START_HOUR", 7),
-		CoreGRPCHost:          envStr("CORE_GRPC_HOST", "localhost"),
-		CoreGRPCPort:          envStr("CORE_GRPC_PORT", "50051"),
-		NotificationsGRPCHost: envStr("NOTIFICATIONS_GRPC_HOST", "localhost"),
-		NotificationsGRPCPort: envStr("NOTIFICATIONS_GRPC_PORT", "50052"),
-		SearchGRPCHost:        envStr("SEARCH_GRPC_HOST", "localhost"),
-		SearchGRPCPort:        envStr("SEARCH_GRPC_PORT", "50054"),
-		LLMHost:               envStr("LLM_HOST", "ollama"),
-		LLMPort:               envStr("LLM_PORT", "11434"),
-		LLMModel:              envStr("LLM_MODEL", "qwen2.5:7b"),
+		TimezoneOffsetHours:   env.Int("TIMEZONE_OFFSET_HOURS", 3),
+		DayStartHour:          env.Int("DAY_START_HOUR", 7),
+		CoreGRPCHost:          env.Str("CORE_GRPC_HOST", "localhost"),
+		CoreGRPCPort:          env.Str("CORE_GRPC_PORT", "50051"),
+		NotificationsGRPCHost: env.Str("NOTIFICATIONS_GRPC_HOST", "localhost"),
+		NotificationsGRPCPort: env.Str("NOTIFICATIONS_GRPC_PORT", "50052"),
+		SearchGRPCHost:        env.Str("SEARCH_GRPC_HOST", "localhost"),
+		SearchGRPCPort:        env.Str("SEARCH_GRPC_PORT", "50054"),
+		LLMHost:               env.Str("LLM_HOST", "ollama"),
+		LLMPort:               env.Str("LLM_PORT", "11434"),
+		LLMModel:              env.Str("LLM_MODEL", "qwen2.5:7b"),
 	}, nil
 }
 
@@ -78,20 +83,4 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("DAY_START_HOUR must be between 0 and 23, got %d", c.DayStartHour)
 	}
 	return nil
-}
-
-func envStr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

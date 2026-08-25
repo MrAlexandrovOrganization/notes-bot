@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	pb "notes-bot/proto/notifications"
 )
 
 const tzMoscow = 3 // UTC+3
@@ -142,8 +144,8 @@ func TestParamInt_Defaults(t *testing.T) {
 }
 
 func TestParamIntSlice_Defaults(t *testing.T) {
-	assert.Equal(t, []int{0}, paramIntSlice(t.Context(), map[string]any{}, "days", []int{0}))
-	assert.Equal(t, []int{1, 3, 5}, paramIntSlice(t.Context(), map[string]any{
+	assert.Equal(t, []int{0}, paramIntSlice(map[string]any{}, "days", []int{0}))
+	assert.Equal(t, []int{1, 3, 5}, paramIntSlice(map[string]any{
 		"days": []any{float64(1), float64(3), float64(5)},
 	}, "days", nil))
 }
@@ -169,14 +171,33 @@ func TestParamInt_InvalidJsonNumber_ReturnsDefault(t *testing.T) {
 // --- paramIntSlice with int type ---
 
 func TestParamIntSlice_IntType(t *testing.T) {
-	result := paramIntSlice(t.Context(), map[string]any{
+	result := paramIntSlice(map[string]any{
 		"days": []any{1, 3, 5},
 	}, "days", nil)
 	assert.Equal(t, []int{1, 3, 5}, result)
 }
 
+// Regression: scheduleParamsToMap stores days as []int; the first
+// ComputeNextFire call must not silently fall back to the default [Monday].
+func TestParamIntSlice_TypedIntSlice(t *testing.T) {
+	result := paramIntSlice(map[string]any{
+		"days": []int{2, 4},
+	}, "days", []int{0})
+	assert.Equal(t, []int{2, 4}, result)
+}
+
+func TestComputeNextFire_Weekly_TypedIntDays(t *testing.T) {
+	// Regression: []int (not []any) used to be ignored → default Monday.
+	after := utc("2025-11-09 10:00") // Saturday
+	params := map[string]any{"days": []int{2}, "hour": 9, "minute": 0}
+	got := ComputeNextFire(t.Context(), "weekly", params, after, tzMoscow)
+	require.NotNil(t, got)
+	want := utc("2025-11-12 06:00") // Wednesday 09:00 Moscow
+	assert.Equal(t, want, *got)
+}
+
 func TestParamIntSlice_NotSlice_ReturnsDefault(t *testing.T) {
-	assert.Equal(t, []int{0}, paramIntSlice(t.Context(), map[string]any{
+	assert.Equal(t, []int{0}, paramIntSlice(map[string]any{
 		"days": "monday",
 	}, "days", []int{0}))
 }
@@ -193,16 +214,27 @@ func TestSafeDate_ValidDate(t *testing.T) {
 	assert.NotNil(t, result)
 }
 
-// --- Monthly: day doesn't exist in next month (returns nil) ---
+// --- Monthly: day doesn't exist in some months → skip to next month with it ---
 
 func TestComputeNextFire_Monthly_NextMonthHasNoSuchDay(t *testing.T) {
 	// After Jan 31 13:00 Moscow, day_of_month=31.
-	// Current month Jan 31 09:00 already passed → advance to Feb.
-	// Feb has no day 31 → safeDate returns nil → ComputeNextFire returns nil.
+	// Feb has no day 31 → skip to Mar 31 (cron semantics, no deactivation).
 	after := utc("2025-01-31 10:00") // 13:00 Moscow
 	params := map[string]any{"day_of_month": 31, "hour": 9, "minute": 0}
 	got := ComputeNextFire(t.Context(), "monthly", params, after, tzMoscow)
-	assert.Nil(t, got)
+	require.NotNil(t, got)
+	want := utc("2025-03-31 06:00") // 09:00 Moscow
+	assert.Equal(t, want, *got)
+}
+
+func TestComputeNextFire_Yearly_Feb29_SkipsNonLeapYears(t *testing.T) {
+	// After Mar 1 2025, Feb 29 already passed this (non-leap) year → next is Feb 29 2028.
+	after := utc("2025-03-01 10:00")
+	params := map[string]any{"month": 2, "day": 29, "hour": 9, "minute": 0}
+	got := ComputeNextFire(t.Context(), "yearly", params, after, tzMoscow)
+	require.NotNil(t, got)
+	want := utc("2028-02-29 06:00") // 09:00 Moscow
+	assert.Equal(t, want, *got)
 }
 
 func TestComputeNextFire_Monthly_CurrentMonthNoSuchDay(t *testing.T) {
@@ -232,4 +264,27 @@ func TestComputeNextFire_Yearly_InvalidDate(t *testing.T) {
 	params := map[string]any{"month": 2, "day": 31, "hour": 9, "minute": 0}
 	got := ComputeNextFire(t.Context(), "yearly", params, after, tzMoscow)
 	assert.Nil(t, got)
+}
+
+// --- CreateReminder request validation ---
+
+func TestValidateReminderRequest(t *testing.T) {
+	ok := func() *pb.ScheduleParams {
+		return &pb.ScheduleParams{Hour: 9, Minute: 0}
+	}
+	assert.NoError(t, validateReminderRequest("daily", ok()))
+	// typed []int32 weekly days accepted
+	assert.NoError(t, validateReminderRequest("weekly", &pb.ScheduleParams{
+		Hour: 9, Minute: 0,
+		Extra: &pb.ScheduleParams_Weekly{Weekly: &pb.ScheduleParams_WeeklyExtra{Days: []int32{1, 3}}},
+	}))
+	assert.Error(t, validateReminderRequest("unknown", ok()), "unknown schedule_type")
+	assert.Error(t, validateReminderRequest("daily", nil))
+	badHour := ok()
+	badHour.Hour = 25
+	assert.Error(t, validateReminderRequest("daily", badHour), "hour out of range")
+	noDays := &pb.ScheduleParams{Hour: 9, Extra: &pb.ScheduleParams_Weekly{Weekly: &pb.ScheduleParams_WeeklyExtra{}}}
+	assert.Error(t, validateReminderRequest("weekly", noDays), "weekly without days")
+	badInterval := &pb.ScheduleParams{Hour: 9, Extra: &pb.ScheduleParams_CustomDays{CustomDays: &pb.ScheduleParams_CustomDaysExtra{IntervalDays: 0}}}
+	assert.Error(t, validateReminderRequest("custom_days", badInterval), "interval_days must be >= 1")
 }

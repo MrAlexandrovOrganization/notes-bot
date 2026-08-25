@@ -294,7 +294,14 @@ var updateHandlers = map[string]updateHandler{
 }
 
 func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
-	updateType, _ := classifyUpdate(update)
+	updateType, userID := classifyUpdate(update)
+	// Serialize full handler execution per user: handlers follow a
+	// snapshot → decision → write pattern, so two concurrent updates from
+	// the same user could otherwise act on stale state.
+	if userID != 0 {
+		unlock := app.LockUser(userID)
+		defer unlock()
+	}
 	if h, ok := updateHandlers[updateType]; ok {
 		h(ctx, app, tgBot, update)
 	}
@@ -306,6 +313,7 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 	updates := tgBot.GetUpdatesChan(u)
 
 	sem := semaphore.NewWeighted(maxConcurrentUpdates)
+	var handlers sync.WaitGroup
 
 	log.Info("bot started (polling mode)")
 
@@ -314,6 +322,7 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 		case <-ctx.Done():
 			log.Info("shutting down bot")
 			tgBot.StopReceivingUpdates()
+			handlers.Wait()
 			wg.Wait()
 			return
 		case update, ok := <-updates:
@@ -323,7 +332,9 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 			if err := sem.Acquire(ctx, 1); err != nil {
 				return
 			}
+			handlers.Add(1)
 			go func() {
+				defer handlers.Done()
 				defer sem.Release(1)
 				handleUpdateTraced(ctx, app, tgBot, &update)
 			}()
@@ -372,6 +383,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 	log.Info("bot started (webhook mode)", zap.String("addr", cfg.WebhookListenAddr))
 
 	sem := semaphore.NewWeighted(maxConcurrentUpdates)
+	var handlers sync.WaitGroup
 
 	for {
 		select {
@@ -388,6 +400,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 				log.Warn("webhook server shutdown error", zap.Error(err))
 			}
 
+			handlers.Wait()
 			wg.Wait()
 			return
 		case update, ok := <-updates:
@@ -397,7 +410,9 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 			if err := sem.Acquire(ctx, 1); err != nil {
 				return
 			}
+			handlers.Add(1)
 			go func() {
+				defer handlers.Done()
 				defer sem.Release(1)
 				handleUpdateTraced(ctx, app, tgBot, &update)
 			}()

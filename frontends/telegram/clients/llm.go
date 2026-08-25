@@ -67,13 +67,20 @@ type LLMClient struct {
 	http    *http.Client
 }
 
+// Timeouts per call class. Structured outputs are short; free-form answers
+// may generate long text. The HTTP client timeout is the hard upper bound.
+const (
+	llmStructuredTimeout = 2 * time.Minute
+	llmAskTimeout        = 5 * time.Minute
+)
+
 // NewLLMClient creates a new LLMClient targeting the given Ollama host/port with the specified model.
 func NewLLMClient(host, port, model string) *LLMClient {
 	return &LLMClient{
 		baseURL: fmt.Sprintf("http://%s:%s", host, port),
 		model:   model,
 		http: &http.Client{
-			Timeout:   10 * time.Minute,
+			Timeout:   llmAskTimeout + 30*time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
@@ -179,6 +186,9 @@ const llmSystemPrompt = `Сейчас: %s
 // chat выполняет POST /api/chat с отключённым reasoning и компактными options.
 // Возвращает уже очищенное содержимое (без <think> и без markdown-обёртки).
 func (c *LLMClient) chat(ctx context.Context, system, user string, schema any, numPredict int) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, llmStructuredTimeout)
+	defer cancel()
+
 	thinkOff := false
 	reqBody := ollamaChatRequest{
 		Model: c.model,
@@ -218,11 +228,63 @@ func (c *LLMClient) chat(ctx context.Context, system, user string, schema any, n
 
 	var ollamaResp ollamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return "", fmt.Errorf("%w: decode response: %s", ErrLLMUnavailable, err.Error())
 	}
 
 	content := strings.TrimSpace(thinkTagRegexp.ReplaceAllString(ollamaResp.Message.Content, ""))
 	return extractJSON(content), nil
+}
+
+// Validate checks the LLM-extracted reminder parameters against the same
+// rules the notifications service enforces. Small local models ignore the
+// format schema surprisingly often; rejecting garbage here gives the user an
+// honest "не удалось разобрать" instead of a silently wrong reminder.
+func (r *LLMReminderResult) Validate() error {
+	switch r.ScheduleType {
+	case "daily":
+	case "weekly":
+		if len(r.Days) == 0 {
+			return fmt.Errorf("weekly reminder without days of week")
+		}
+		seen := make(map[int]struct{}, len(r.Days))
+		for _, d := range r.Days {
+			if d < 0 || d > 6 {
+				return fmt.Errorf("weekday out of range 0-6: %d", d)
+			}
+			seen[d] = struct{}{}
+		}
+		if len(seen) != len(r.Days) {
+			return fmt.Errorf("duplicate days of week")
+		}
+	case "monthly":
+		if r.DayOfMonth < 1 || r.DayOfMonth > 31 {
+			return fmt.Errorf("day_of_month out of range 1-31: %d", r.DayOfMonth)
+		}
+	case "yearly":
+		if r.Month < 1 || r.Month > 12 {
+			return fmt.Errorf("month out of range 1-12: %d", r.Month)
+		}
+		if r.Day < 1 || r.Day > 31 {
+			return fmt.Errorf("day out of range 1-31: %d", r.Day)
+		}
+	case "once":
+		if _, err := time.Parse("2006-01-02", r.Date); err != nil {
+			return fmt.Errorf("invalid date %q", r.Date)
+		}
+	case "custom_days":
+		if r.IntervalDays < 1 {
+			return fmt.Errorf("interval_days must be at least 1")
+		}
+	default:
+		return fmt.Errorf("unknown schedule_type %q", r.ScheduleType)
+	}
+	if r.Hour < 0 || r.Hour > 23 {
+		return fmt.Errorf("hour out of range 0-23: %d", r.Hour)
+	}
+	if r.Minute < 0 || r.Minute > 59 {
+		return fmt.Errorf("minute out of range 0-59: %d", r.Minute)
+	}
+	return nil
 }
 
 // ParseReminder calls Ollama with structured output to parse a natural-language reminder description.
@@ -234,7 +296,10 @@ func (c *LLMClient) ParseReminder(ctx context.Context, text, currentDateTime, to
 
 	var result LLMReminderResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("parse LLM result: %w", err)
+		return nil, fmt.Errorf("%w: parse LLM result: %s", ErrLLMUnavailable, err.Error())
+	}
+	if err := result.Validate(); err != nil {
+		return nil, fmt.Errorf("LLM returned invalid reminder params: %w", err)
 	}
 
 	return &result, nil
@@ -288,7 +353,7 @@ func (c *LLMClient) ClassifyIntent(ctx context.Context, text, currentDate string
 
 	var result LLMIntentResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("parse LLM result: %w", err)
+		return nil, fmt.Errorf("%w: parse LLM result: %s", ErrLLMUnavailable, err.Error())
 	}
 
 	return &result, nil
@@ -302,6 +367,9 @@ func (c *LLMClient) Ask(ctx context.Context, system, user string, numPredict int
 	if numPredict <= 0 {
 		numPredict = 512
 	}
+	ctx, cancel := context.WithTimeout(ctx, llmAskTimeout)
+	defer cancel()
+
 	reqBody := ollamaChatRequest{
 		Model: c.model,
 		Messages: []ollamaMessage{
@@ -339,7 +407,7 @@ func (c *LLMClient) Ask(ctx context.Context, system, user string, numPredict int
 
 	var ollamaResp ollamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return "", fmt.Errorf("%w: decode response: %s", ErrLLMUnavailable, err.Error())
 	}
 	return strings.TrimSpace(thinkTagRegexp.ReplaceAllString(ollamaResp.Message.Content, "")), nil
 }

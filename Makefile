@@ -36,7 +36,6 @@ GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
 TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
 WEB_COVERPKGS = notes-bot/frontends/web/webapp
 GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,notes-bot/internal/searchquery,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
-GO_COVERPKGS_ALL  = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,notes-bot/internal/searchquery,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
 
 test-go:
 	go test $(GO_UNIT_PKGS)
@@ -55,24 +54,27 @@ test-go-cover-html:
 	@rm -f coverage.out
 
 cover:
-	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
+	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes-bot/core,notes-bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	go tool cover -func=combined.out
 	@rm -f unit.out integration.out combined.out
 
 cover-html:
-	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_ALL) $(GO_UNIT_PKGS)
+	go test -coverprofile=unit.out -coverpkg=$(GO_COVERPKGS_UNIT) $(GO_UNIT_PKGS)
 	go test -coverprofile=integration.out -coverpkg=notes-bot/core,notes-bot/core/features ./integration/...
 	@{ cat unit.out; tail -n +2 integration.out; } > combined.out
 	@mkdir -p htmlcov
 	go tool cover -html=combined.out -o htmlcov/go_coverage.html
 	@rm -f unit.out integration.out combined.out
 	@echo "Coverage report saved to htmlcov/go_coverage.html"
-	open htmlcov/go_coverage.html
 
 test-integration:
 	go test ./integration/... -v
+
+# CI-friendly integration tests: self-contained, no external services needed.
+test-integration-ci:
+	go test ./integration/...
 
 test-notifications:
 	go test ./notifications/... -v
@@ -98,16 +100,30 @@ test-search:
 	go test ./search/... -v
 
 format:
-	gofmt -w ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./frontends/web/ ./cmd/
+	gofmt -w ./core/ ./notifications/ ./search/ ./internal/ ./integration/ ./frontends/telegram/ ./frontends/web/ ./cmd/
+
+lint-dirs = ./core/ ./notifications/ ./search/ ./internal/ ./integration/ ./frontends/telegram/ ./frontends/web/ ./cmd/
 
 lint:
-	@diff=$$(gofmt -l ./core/ ./notifications/ ./search/ ./frontends/telegram/ ./frontends/web/ ./cmd/); \
+	@diff=$$(gofmt -l $(lint-dirs)); \
 	if [ -n "$$diff" ]; then \
 		echo "gofmt found unformatted files:"; \
 		echo "$$diff"; \
 		exit 1; \
 	fi
 	go vet ./...
+
+# Full static analysis (staticcheck, unused, ineffassign, …).
+# Install: make install-linters
+lint-golangci:
+	golangci-lint run ./...
+
+install-linters:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
+vulncheck:
+	govulncheck ./...
 
 # Print helpers for CI / scripts
 print-unit-pkgs:
@@ -117,8 +133,8 @@ print-coverpkgs:
 	@echo $(GO_COVERPKGS_UNIT)
 
 clean:
-	find . -type f -name '*.pyc' -delete
-	find . -type d -name '__pycache__' -exec rm -rf {} +
+	@rm -f coverage.out unit.out integration.out combined.out
+	@rm -rf htmlcov
 
 up: monitoring-register
 	$(DOCKER_COMPOSE) up --build -d
@@ -178,4 +194,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up up-ci deploy down logs restart docker-clean proto proto-docker proto-lint format lint print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister
+.PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

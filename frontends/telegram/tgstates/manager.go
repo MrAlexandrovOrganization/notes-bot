@@ -69,7 +69,7 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 			zap.Int64("user_id", userID), zap.Error(err))
 	}
 
-	now := time.Now()
+	now := timeutil.LocalNow(m.timezoneOffsetHours)
 	uc := &UserContext{
 		UserID:        userID,
 		State:         StateIdle,

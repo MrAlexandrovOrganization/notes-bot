@@ -19,6 +19,15 @@ import (
 const (
 	kafkaTopic   = "reminders_due"
 	kafkaGroupID = "telegram-bot-reminders"
+
+	// maxHandlerAttempts is the number of delivery attempts per message.
+	// After the last failed attempt the message is committed and skipped
+	// (poison-message policy) so a permanently failing notification cannot
+	// block the queue. Delivery semantics are at-least-once: transient
+	// failures are retried, exhausted ones are dropped with an error metric.
+	maxHandlerAttempts = 3
+
+	handlerRetryBaseDelay = 5 * time.Second
 )
 
 // ReminderEvent is the payload published to the reminders_due Kafka topic.
@@ -95,7 +104,6 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 			zap.Int32("partition", int32(msg.Partition)),
 			zap.Int64("offset", msg.Offset),
 			zap.Int("value_len", len(msg.Value)),
-			zap.String("value", string(msg.Value)),
 		)
 
 		var ev ReminderEvent
@@ -130,17 +138,43 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				attribute.Int64("reminder_id", ev.ReminderID),
 			),
 		)
-		handlerErr := handler(msgCtx, ev)
-
-		if handlerErr != nil {
+		var lastErr error
+		for attempt := 1; attempt <= maxHandlerAttempts; attempt++ {
+			handlerErr := handler(msgCtx, ev)
+			if handlerErr == nil {
+				lastErr = nil
+				break
+			}
+			lastErr = handlerErr
 			msgSpan.RecordError(handlerErr)
 			msgSpan.SetStatus(codes.Error, handlerErr.Error())
-			msgSpan.End()
-			log.Error("reminder handler failed, skipping commit",
+			log.Error("reminder handler failed",
 				zap.Error(handlerErr),
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", maxHandlerAttempts),
 				zap.Int64("offset", msg.Offset),
 				zap.Int64("reminder_id", ev.ReminderID),
 			)
+			if attempt < maxHandlerAttempts {
+				delay := handlerRetryBaseDelay * time.Duration(attempt)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(delay):
+				}
+			}
+		}
+		if lastErr != nil {
+			// Poison message: all attempts failed. Commit and skip so the
+			// queue keeps moving; the loss is visible via the error metric.
+			ReminderDeliveryErrors.Add(msgCtx, 1)
+			log.Error("reminder handler failed permanently, committing and skipping message",
+				zap.Error(lastErr),
+				zap.Int64("offset", msg.Offset),
+				zap.Int64("reminder_id", ev.ReminderID),
+			)
+			msgSpan.End()
+			commitMsg(ctx, r, msg, log)
 			continue
 		}
 		commitMsg(ctx, r, msg, log)

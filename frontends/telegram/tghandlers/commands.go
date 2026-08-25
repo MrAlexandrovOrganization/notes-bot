@@ -2,7 +2,6 @@ package tghandlers
 
 import (
 	"context"
-	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -34,7 +33,7 @@ func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *t
 
 	text := tgfmt.Join(
 		tgfmt.Escape("👋 Добро пожаловать!\n\n📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
 		tgfmt.Escape("\n\nВыберите действие:"),
 	)
 	kb := a.getMainMenuKeyboard(ctx)

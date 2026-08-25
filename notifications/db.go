@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"notes-bot/internal/telemetry"
 	"time"
@@ -245,8 +246,8 @@ func scanReminder(ctx context.Context, row rowScanner) (*Reminder, error) {
 		&r.ID, &r.UserID, &r.Title, &r.ScheduleType,
 		&paramsJSON, &r.NextFireAt, &r.IsActive, &r.CreateTask,
 	); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("no reminder row")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, err // callers distinguish NotFound via errors.Is(pgx.ErrNoRows)
 		}
 		return nil, fmt.Errorf("scan: %w", err)
 	}

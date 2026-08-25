@@ -32,6 +32,9 @@ const (
 	// voiceCharsPerPage is the max text length per page.
 	// We reserve space for the header, code block markers, and page indicator.
 	voiceCharsPerPage = 3200
+	// maxCachedVoiceTexts bounds the transcription pagination cache so
+	// multi-page results cannot accumulate without limit.
+	maxCachedVoiceTexts = 16
 )
 
 // pendingVoiceResult holds everything needed to deliver one transcription.
@@ -83,14 +86,6 @@ func (b *voiceReorderBuffer) register(msgID int, r *pendingVoiceResult) {
 	copy(b.ids[i+1:], b.ids[i:])
 	b.ids[i] = msgID
 	b.results[msgID] = r
-}
-
-// isEmpty reports whether the buffer has no registered (pending or done) entries.
-// Safe to call concurrently.
-func (b *voiceReorderBuffer) isEmpty() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.ids) == 0
 }
 
 // complete marks msgID as done and returns all consecutive completed results
@@ -206,11 +201,10 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 					a.deliverVoiceResult(rr)
 				}
 			}
-			// Release the per-user buffer once all queued messages are processed.
-			// New voice messages will create a fresh buffer via getVoiceBuffer.
-			if buf.isEmpty() {
-				a.voiceBuffers.Delete(userID)
-			}
+			// The buffer stays in a.voiceBuffers for the user: deleting it here
+			// raced with a concurrently starting handler that had already
+			// fetched the same buffer and registered into the orphaned copy,
+			// breaking send-order guarantees. Buffers are tiny and reused.
 		}()
 
 		text, transcribeErr := a.transcribeVoice(tgBot, chatID, statusMsg.MessageID, fileID, format, log)
@@ -332,6 +326,18 @@ func (a *App) downloadTelegramFile(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 // It is only called once a result has reached the front of the reorder queue,
 // so note appends always happen in the user's original send order.
 func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
+	// A panic here would silently drop every result queued after this one
+	// (they are already removed from the reorder buffer), so contain it.
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.log.Error("panic delivering voice result",
+				zap.Any("recover", rec),
+				zap.String("stack", string(debug.Stack())))
+			editStatus(context.Background(), r.tgBot, r.chatID, r.statusMsgID,
+				"❌ Произошла внутренняя ошибка.")
+		}
+	}()
+
 	// Errors and empty transcriptions were already surfaced in transcribeVoice.
 	if r.transcribeErr != nil || r.text == "" {
 		return
@@ -367,7 +373,7 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 	if totalPages == 0 {
 		totalPages = 1
 	}
-	a.voiceTexts.Store(r.statusMsgID, r.text)
+	a.storeVoiceText(r.statusMsgID, r.text)
 	if err := a.showVoicePage(ctx, r.tgBot, r.chatID, r.statusMsgID, r.text, 0); err != nil {
 		r.log.Error("show voice page failed, sending as plain message", zap.Error(err))
 		a.voiceTexts.Delete(r.statusMsgID) // no pagination possible in fallback path
@@ -388,6 +394,20 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 	if totalPages == 1 {
 		a.voiceTexts.Delete(r.statusMsgID)
 	}
+}
+
+// storeVoiceText caches a transcription for pagination, evicting the oldest
+// entries beyond maxCachedVoiceTexts so the cache stays bounded.
+func (a *App) storeVoiceText(msgID int, text string) {
+	a.voiceTexts.Store(msgID, text)
+	a.voiceTextsOrderMu.Lock()
+	a.voiceTextsOrder = append(a.voiceTextsOrder, msgID)
+	for len(a.voiceTextsOrder) > maxCachedVoiceTexts {
+		oldest := a.voiceTextsOrder[0]
+		a.voiceTextsOrder = a.voiceTextsOrder[1:]
+		a.voiceTexts.Delete(oldest)
+	}
+	a.voiceTextsOrderMu.Unlock()
 }
 
 // showVoicePage renders a specific page of the transcription result.

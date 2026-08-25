@@ -27,6 +27,7 @@ templ Page(title string, active string) {
 				<main class="flex-1 px-4 py-6">
 					{ children... }
 				</main>
+				<div id="form-error" aria-live="polite"></div>
 			</div>
 		</body>
 	</html>
@@ -46,4 +47,17 @@ templ ErrorBanner(message string) {
 			{ message }
 		</div>
 	}
+}
+
+// FormErrorOOB renders an out-of-band swap target for htmx form errors.
+// webapp.formError responds with this fragment so validation errors become
+// visible even though the request's hx-target is <main>.
+templ FormErrorOOB(message string) {
+	<div id="form-error" hx-swap-oob="true" class="px-4">
+		if message != "" {
+			<div class="rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+				{ message }
+			</div>
+		}
+	</div>
 }

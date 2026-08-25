@@ -54,7 +54,7 @@ func ComputeNextFire(ctx context.Context, scheduleType string, params map[string
 		return &utc
 
 	case "weekly":
-		days := paramIntSlice(ctx, params, "days", []int{0})
+		days := paramIntSlice(params, "days", []int{0})
 		candidate := time.Date(afterLocal.Year(), afterLocal.Month(), afterLocal.Day(), hour, minute, 0, 0, tz)
 		if !candidate.After(afterLocal) {
 			candidate = candidate.AddDate(0, 0, 1)
@@ -70,35 +70,35 @@ func ComputeNextFire(ctx context.Context, scheduleType string, params map[string
 		return nil
 
 	case "monthly":
+		// Scan forward month by month so schedules like "every 31st" survive
+		// months without that day (cron semantics: skip to the next valid
+		// occurrence instead of deactivating the reminder forever).
 		dayOfMonth := paramInt(params, "day_of_month", 1)
-		candidate := safeDate(afterLocal.Year(), afterLocal.Month(), dayOfMonth, hour, minute, tz)
-		if candidate == nil || !candidate.After(afterLocal) {
-			// advance to next month
-			year, month := afterLocal.Year(), afterLocal.Month()+1
+		year, month := afterLocal.Year(), afterLocal.Month()
+		for range 12 {
+			if t := safeDate(year, month, dayOfMonth, hour, minute, tz); t != nil && t.After(afterLocal) {
+				utc := t.UTC()
+				return &utc
+			}
+			month++
 			if month > 12 {
 				month = 1
 				year++
 			}
-			candidate = safeDate(year, month, dayOfMonth, hour, minute, tz)
 		}
-		if candidate == nil {
-			return nil
-		}
-		utc := candidate.UTC()
-		return &utc
+		return nil
 
 	case "yearly":
+		// Same as monthly but scanning years, so Feb 29 survives non-leap years.
 		month := time.Month(paramInt(params, "month", 1))
 		day := paramInt(params, "day", 1)
-		candidate := safeDate(afterLocal.Year(), month, day, hour, minute, tz)
-		if candidate == nil || !candidate.After(afterLocal) {
-			candidate = safeDate(afterLocal.Year()+1, month, day, hour, minute, tz)
+		for i := range 100 {
+			if t := safeDate(afterLocal.Year()+i, month, day, hour, minute, tz); t != nil && t.After(afterLocal) {
+				utc := t.UTC()
+				return &utc
+			}
 		}
-		if candidate == nil {
-			return nil
-		}
-		utc := candidate.UTC()
-		return &utc
+		return nil
 
 	case "custom_days":
 		intervalDays := paramInt(params, "interval_days", 1)
@@ -114,9 +114,10 @@ func ComputeNextFire(ctx context.Context, scheduleType string, params map[string
 }
 
 func safeDate(year int, month time.Month, day, hour, minute int, loc *time.Location) *time.Time {
-	// Validate day in month
+	// Validate day in month. day < 1 would be silently normalized by
+	// time.Date into the previous month, which must never happen here.
 	daysInMonth := time.Date(year, month+1, 0, 0, 0, 0, 0, loc).Day()
-	if day > daysInMonth {
+	if day > daysInMonth || day < 1 || month < time.January || month > time.December {
 		return nil
 	}
 	t := time.Date(year, month, day, hour, minute, 0, 0, loc)
@@ -143,25 +144,54 @@ func paramInt(params map[string]any, key string, def int) int {
 	return def
 }
 
-func paramIntSlice(ctx context.Context, params map[string]any, key string, def []int) []int {
+// paramIntSlice extracts an int slice from params. Accepts []any (the JSONB
+// round-trip shape), as well as typed slices like []int / []int32 / []float64
+// that appear when the map was built in Go without a JSON round-trip.
+func paramIntSlice(params map[string]any, key string, def []int) []int {
 	v, ok := params[key]
 	if !ok {
 		return def
 	}
-	arr, ok := v.([]any)
-	if !ok {
-		return def
-	}
-	result := make([]int, 0, len(arr))
-	for _, item := range arr {
+	appendItem := func(result []int, item any) []int {
 		switch x := item.(type) {
 		case float64:
-			result = append(result, int(x))
+			return append(result, int(x))
 		case int:
-			result = append(result, x)
+			return append(result, x)
+		case int32:
+			return append(result, int(x))
+		case int64:
+			return append(result, int(x))
+		case json.Number:
+			if n, err := x.Int64(); err == nil {
+				return append(result, int(n))
+			}
 		}
+		return result
 	}
-	return result
+	switch arr := v.(type) {
+	case []any:
+		result := make([]int, 0, len(arr))
+		for _, item := range arr {
+			result = appendItem(result, item)
+		}
+		return result
+	case []int:
+		return arr
+	case []int32:
+		result := make([]int, 0, len(arr))
+		for _, item := range arr {
+			result = append(result, int(item))
+		}
+		return result
+	case []float64:
+		result := make([]int, 0, len(arr))
+		for _, item := range arr {
+			result = append(result, int(item))
+		}
+		return result
+	}
+	return def
 }
 
 type Scheduler struct {
@@ -176,7 +206,7 @@ type Scheduler struct {
 }
 
 func NewScheduler(ctx context.Context, pool *pgxpool.Pool, cfg *Config) *Scheduler {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	w := &kafka.Writer{
@@ -216,17 +246,6 @@ func (s *Scheduler) getCoreStub(ctx context.Context) pb.NotesServiceClient {
 	return s.coreStub
 }
 
-// Close closes the scheduler and releases all resources.
-// Must be called before the scheduler is discarded.
-func (s *Scheduler) Close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.coreConn != nil {
-		s.coreConn.Close()
-	}
-	s.producer.Close()
-}
-
 func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
@@ -245,10 +264,10 @@ func (s *Scheduler) getTodayDateStr(ctx context.Context) string {
 }
 
 func (s *Scheduler) localTodayDate(ctx context.Context) string {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	return timeutil.TodayDate(s.cfg.TimezoneOffsetHours, 0)
+	return timeutil.TodayDate(s.cfg.TimezoneOffsetHours, s.cfg.DayStartHour)
 }
 
 func (s *Scheduler) addTaskToToday(ctx context.Context, title, todayDate string) {
@@ -278,7 +297,10 @@ type reminderEvent struct {
 	IsActive   bool   `json:"is_active"`
 }
 
-func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
+// publishEvent publishes a reminder event to Kafka. Returns an error so the
+// caller can avoid advancing next_fire when delivery failed (at-least-once:
+// the reminder stays due and is retried on the next tick).
+func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) error {
 	ctx, span := otel.Tracer("notifications/scheduler").Start(ctx, "kafka.produce reminders_due",
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(
@@ -296,7 +318,7 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		log.Error("marshal event", zap.Error(err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return
+		return fmt.Errorf("marshal event: %w", err)
 	}
 
 	headers := make(kafkacarrier.HeaderCarrier, 0)
@@ -319,12 +341,13 @@ func (s *Scheduler) publishEvent(ctx context.Context, ev reminderEvent) {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		s.metrics.publishErrors.Add(ctx, 1)
-		return
+		return fmt.Errorf("write kafka message: %w", err)
 	}
 	log.Info("reminder event published to kafka",
 		zap.Int64("reminder_id", ev.ReminderID),
 		zap.Int64("user_id", ev.UserID),
 	)
+	return nil
 }
 
 func (s *Scheduler) tick(ctx context.Context) {
@@ -356,18 +379,27 @@ func (s *Scheduler) tick(ctx context.Context) {
 				return nil
 			}
 
-			if r.CreateTask {
-				s.addTaskToToday(gCtx, r.Title, todayDate)
-			}
-
-			s.publishEvent(gCtx, reminderEvent{
+			// Publish BEFORE advancing next_fire: if Kafka is unavailable the
+			// reminder stays due and fires again on the next tick
+			// (at-least-once delivery).
+			if err := s.publishEvent(gCtx, reminderEvent{
 				UserID:     r.UserID,
 				Title:      r.Title,
 				ReminderID: r.ID,
 				CreateTask: r.CreateTask,
 				TodayDate:  todayDate,
 				IsActive:   r.IsActive,
-			})
+			}); err != nil {
+				log.Error("publish failed, keeping reminder due for retry",
+					zap.Int64("id", r.ID),
+					zap.Error(err),
+				)
+				return nil
+			}
+
+			if r.CreateTask {
+				s.addTaskToToday(gCtx, r.Title, todayDate)
+			}
 
 			nextFire := ComputeNextFire(gCtx, r.ScheduleType, r.ScheduleParams, time.Now().UTC(), s.cfg.TimezoneOffsetHours)
 			if err := UpdateNextFire(gCtx, s.pool, r.ID, nextFire); err != nil {

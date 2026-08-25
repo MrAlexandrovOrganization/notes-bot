@@ -2,8 +2,8 @@ package notifications
 
 import (
 	"fmt"
-	"os"
-	"strconv"
+
+	"notes-bot/internal/env"
 )
 
 type Config struct {
@@ -17,38 +17,24 @@ type Config struct {
 	CoreGRPCHost          string
 	CoreGRPCPort          string
 	TimezoneOffsetHours   int
+	DayStartHour          int
 	SchedulerIntervalSecs int
-}
-
-func getEnvStr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func getEnvInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		DBHost:                getEnvStr("DB_HOST", "localhost"),
-		DBPort:                getEnvStr("DB_PORT", "5432"),
-		DBName:                getEnvStr("DB_NAME", "notifications"),
-		DBUser:                getEnvStr("DB_USER", "notif"),
-		DBPassword:            getEnvStr("DB_PASSWORD", ""),
-		GRPCPort:              getEnvStr("GRPC_PORT", "50052"),
-		KafkaBootstrapServers: getEnvStr("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-		CoreGRPCHost:          getEnvStr("CORE_GRPC_HOST", "localhost"),
-		CoreGRPCPort:          getEnvStr("CORE_GRPC_PORT", "50051"),
-		TimezoneOffsetHours:   getEnvInt("TIMEZONE_OFFSET_HOURS", 3),
-		SchedulerIntervalSecs: getEnvInt("SCHEDULER_INTERVAL_SECONDS", 60),
+		DBHost:                env.Str("DB_HOST", "localhost"),
+		DBPort:                env.Str("DB_PORT", "5432"),
+		DBName:                env.Str("DB_NAME", "notifications"),
+		DBUser:                env.Str("DB_USER", "notif"),
+		DBPassword:            env.Str("DB_PASSWORD", ""),
+		GRPCPort:              env.Str("GRPC_PORT", "50052"),
+		KafkaBootstrapServers: env.Str("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+		CoreGRPCHost:          env.Str("CORE_GRPC_HOST", "localhost"),
+		CoreGRPCPort:          env.Str("CORE_GRPC_PORT", "50051"),
+		TimezoneOffsetHours:   env.Int("TIMEZONE_OFFSET_HOURS", 3),
+		DayStartHour:          env.Int("DAY_START_HOUR", 7),
+		SchedulerIntervalSecs: env.Int("SCHEDULER_INTERVAL_SECONDS", 60),
 	}
 }
 
@@ -70,6 +56,9 @@ func (c *Config) Validate() error {
 	}
 	if c.TimezoneOffsetHours < -12 || c.TimezoneOffsetHours > 14 {
 		return fmt.Errorf("TIMEZONE_OFFSET_HOURS must be between -12 and 14, got %d", c.TimezoneOffsetHours)
+	}
+	if c.DayStartHour < 0 || c.DayStartHour > 23 {
+		return fmt.Errorf("DAY_START_HOUR must be between 0 and 23, got %d", c.DayStartHour)
 	}
 	return nil
 }

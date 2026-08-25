@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"notes-bot/internal/env"
 )
 
 type Config struct {
@@ -50,32 +52,35 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ROOT_ID is not a valid integer: %w", err)
 	}
+	if rootID <= 0 {
+		return nil, fmt.Errorf("ROOT_ID must be a positive Telegram user id, got %d", rootID)
+	}
 
 	return &Config{
 		BOTToken:              botToken,
 		RootID:                rootID,
-		TimezoneOffsetHours:   envInt("TIMEZONE_OFFSET_HOURS", 3),
-		DayStartHour:          envInt("DAY_START_HOUR", 7),
-		CoreGRPCHost:          envStr("CORE_GRPC_HOST", "localhost"),
-		CoreGRPCPort:          envStr("CORE_GRPC_PORT", "50051"),
-		NotificationsGRPCHost: envStr("NOTIFICATIONS_GRPC_HOST", "localhost"),
-		NotificationsGRPCPort: envStr("NOTIFICATIONS_GRPC_PORT", "50052"),
-		WhisperGRPCHost:       envStr("WHISPER_GRPC_HOST", "localhost"),
-		WhisperGRPCPort:       envStr("WHISPER_GRPC_PORT", "50053"),
-		SearchGRPCHost:        envStr("SEARCH_GRPC_HOST", "localhost"),
-		SearchGRPCPort:        envStr("SEARCH_GRPC_PORT", "50054"),
-		KafkaBootstrapServers: envStr("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-		RedisHost:             envStr("REDIS_HOST", "localhost"),
-		RedisPort:             envStr("REDIS_PORT", "6379"),
-		LLMHost:               envStr("LLM_HOST", "ollama"),
-		LLMPort:               envStr("LLM_PORT", "11434"),
-		LLMModel:              envStr("LLM_MODEL", "qwen2.5:7b"),
-		LocationHost:          envStr("LOCATION_HOST", "localhost"),
-		LocationPort:          envStr("LOCATION_PORT", "8080"),
-		LocalAPIURL:           envStr("TELEGRAM_LOCAL_API_URL", ""),
-		WebhookURL:            envStr("WEBHOOK_URL", ""),
-		WebhookListenAddr:     envStr("WEBHOOK_LISTEN_ADDR", ":8080"),
-		WebhookSecret:         envStr("TELEGRAM_WEBHOOK_SECRET", ""),
+		TimezoneOffsetHours:   env.Int("TIMEZONE_OFFSET_HOURS", 3),
+		DayStartHour:          env.Int("DAY_START_HOUR", 7),
+		CoreGRPCHost:          env.Str("CORE_GRPC_HOST", "localhost"),
+		CoreGRPCPort:          env.Str("CORE_GRPC_PORT", "50051"),
+		NotificationsGRPCHost: env.Str("NOTIFICATIONS_GRPC_HOST", "localhost"),
+		NotificationsGRPCPort: env.Str("NOTIFICATIONS_GRPC_PORT", "50052"),
+		WhisperGRPCHost:       env.Str("WHISPER_GRPC_HOST", "localhost"),
+		WhisperGRPCPort:       env.Str("WHISPER_GRPC_PORT", "50053"),
+		SearchGRPCHost:        env.Str("SEARCH_GRPC_HOST", "localhost"),
+		SearchGRPCPort:        env.Str("SEARCH_GRPC_PORT", "50054"),
+		KafkaBootstrapServers: env.Str("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+		RedisHost:             env.Str("REDIS_HOST", "localhost"),
+		RedisPort:             env.Str("REDIS_PORT", "6379"),
+		LLMHost:               env.Str("LLM_HOST", "ollama"),
+		LLMPort:               env.Str("LLM_PORT", "11434"),
+		LLMModel:              env.Str("LLM_MODEL", "qwen2.5:7b"),
+		LocationHost:          env.Str("LOCATION_HOST", "localhost"),
+		LocationPort:          env.Str("LOCATION_PORT", "8080"),
+		LocalAPIURL:           env.Str("TELEGRAM_LOCAL_API_URL", ""),
+		WebhookURL:            env.Str("WEBHOOK_URL", ""),
+		WebhookListenAddr:     env.Str("WEBHOOK_LISTEN_ADDR", ":8080"),
+		WebhookSecret:         env.Str("TELEGRAM_WEBHOOK_SECRET", ""),
 	}, nil
 }
 
@@ -100,20 +105,4 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
-}
-
-func envStr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

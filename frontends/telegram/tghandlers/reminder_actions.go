@@ -3,7 +3,6 @@ package tghandlers
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -100,7 +99,7 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 }
 
 func (a *App) getMainMenuKeyboard(ctx context.Context) tgbotapi.InlineKeyboardMarkup {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	return tgkeyboards.MainMenu("")
 }
@@ -177,7 +176,7 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	})
 	text := tgfmt.Join(
 		tgfmt.Escape("\n\n📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(fmt.Sprintf("%s", uc.ActiveDate))),
+		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
 		tgfmt.Escape("\n\nВыберите действие:"),
 	)
 	kb := a.getMainMenuKeyboard(ctx)

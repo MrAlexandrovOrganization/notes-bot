@@ -13,6 +13,7 @@ import (
 	pb "notes-bot/proto/notifications"
 
 	"notes-bot/frontends/web/views"
+	"notes-bot/internal/duration"
 	"notes-bot/internal/timeutil"
 )
 
@@ -261,8 +262,8 @@ func (a *App) handlePostponeReminder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var minutes int32
-	if duration := strings.TrimSpace(r.PostFormValue("duration")); duration != "" {
-		n, err := parseDuration(duration)
+	if durStr := strings.TrimSpace(r.PostFormValue("duration")); durStr != "" {
+		n, err := duration.Parse(durStr)
 		if err != nil {
 			a.renderReminders(w, r, err.Error(), views.ReminderFormData{ScheduleType: "daily"})
 			return
@@ -302,71 +303,4 @@ func (a *App) handlePostponeReminder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/reminders", http.StatusSeeOther)
-}
-
-// parseDuration parses a human-readable duration string into total minutes.
-// Copied from frontends/telegram/tghandlers/reminder_postpone.go (unexported
-// there) — supports m/h/d/w/M units (e.g. "2h30m", "1d12h") or a bare integer
-// of minutes.
-func parseDuration(s string) (int, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, fmt.Errorf("неверный формат. Примеры: 30m, 2h30m, 1d12h, 1w, 1M")
-	}
-
-	if n, err := strconv.Atoi(s); err == nil {
-		if n <= 0 {
-			return 0, fmt.Errorf("введите положительное значение")
-		}
-		return n, nil
-	}
-
-	s = strings.ReplaceAll(s, " ", "")
-
-	vals := make(map[byte]int)
-	i := 0
-	for i < len(s) {
-		j := i
-		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-			j++
-		}
-		if j == i {
-			return 0, fmt.Errorf("неверный формат — ожидается число перед единицей. Примеры: 30m, 2h30m, 1d12h")
-		}
-		if j >= len(s) {
-			return 0, fmt.Errorf("неверный формат — укажите единицу после числа. Доступные: m h d w M")
-		}
-		n, _ := strconv.Atoi(s[i:j])
-		unit := s[j]
-		switch unit {
-		case 'm', 'h', 'd', 'w', 'M':
-		default:
-			return 0, fmt.Errorf("неизвестная единица %q. Доступные: m (минуты), h (часы), d (дни), w (недели), M (месяцы)", string(unit))
-		}
-		if _, exists := vals[unit]; exists {
-			return 0, fmt.Errorf("единица %q указана дважды", string(unit))
-		}
-		vals[unit] = n
-		i = j + 1
-	}
-
-	if len(vals) == 0 {
-		return 0, fmt.Errorf("неверный формат. Примеры: 30m, 2h30m, 1d12h, 1w, 1M")
-	}
-
-	if m, ok := vals['m']; ok && m >= 60 {
-		return 0, fmt.Errorf("%dm — это больше часа; используйте h/d/w", m)
-	}
-	if h, ok := vals['h']; ok && h >= 24 {
-		return 0, fmt.Errorf("%dh — это больше суток; используйте d/w", h)
-	}
-	if d, ok := vals['d']; ok && d >= 7 {
-		return 0, fmt.Errorf("%dd — это больше недели; используйте w", d)
-	}
-
-	total := vals['m'] + vals['h']*60 + vals['d']*1440 + vals['w']*10080 + vals['M']*43200
-	if total <= 0 {
-		return 0, fmt.Errorf("введите положительное значение")
-	}
-	return total, nil
 }

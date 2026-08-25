@@ -76,7 +76,7 @@ func GetConfig(ctx context.Context) *Config {
 }
 
 func ValidateDir(ctx context.Context, path string) error {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	logger.Debug("ValidateDir")
@@ -95,7 +95,7 @@ func ValidateDir(ctx context.Context, path string) error {
 }
 
 func GetNotesDir(ctx context.Context) string {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	logger.Debug("GetNotesDir")

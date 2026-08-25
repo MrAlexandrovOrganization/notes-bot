@@ -2,6 +2,7 @@ package grpcutil
 
 import (
 	"net/http"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
@@ -11,6 +12,10 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
+
+// DefaultStopTimeout bounds GracefulStop: one long-running RPC (e.g. an LLM
+// call) must not block process shutdown indefinitely.
+const DefaultStopTimeout = 15 * time.Second
 
 // NewServer creates a gRPC server with OTel tracing instrumentation.
 func NewServer() *grpc.Server {
@@ -42,4 +47,20 @@ func StartMetricsServer(logger *zap.Logger, port string, metricsHandler http.Han
 			logger.Error("metrics server stopped", zap.Error(err))
 		}
 	}()
+}
+
+// StopWithTimeout gracefully stops srv. If in-flight RPCs do not finish within
+// timeout, the server is force-stopped so process shutdown cannot hang forever.
+func StopWithTimeout(logger *zap.Logger, srv *grpc.Server, timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		srv.GracefulStop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		logger.Warn("graceful stop timed out, forcing stop")
+		srv.Stop()
+	}
 }

@@ -70,7 +70,7 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID,
 		tgfmt.Join(
 			tgfmt.Escape("Название: "),
-			tgfmt.Blockquote(tgfmt.Escape(fmt.Sprintf("%s", text))),
+			tgfmt.Blockquote(tgfmt.Escape(text)),
 			tgfmt.Escape(("\n\nВыберите тип расписания:")),
 		),
 		&kb)
@@ -263,7 +263,9 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 	}
 }
 
-func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
+// finalizeReminderFromUpdate creates the reminder from the current draft.
+// Returns true when the reminder was created successfully.
+func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) bool {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -272,7 +274,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	if err != nil {
 		log.Error("get context", zap.Error(err))
 		replyToUpdate(ctx, tgBot, update, tgfmt.Escape("❌ Произошла ошибка."), nil)
-		return
+		return false
 	}
 	draft := uc.ReminderDraft
 
@@ -292,21 +294,34 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	result, err := a.Notifications.CreateReminder(ctx, userID, title, scheduleType, scheduleParams, draft.CreateTask)
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
+			if strings.Contains(st.Message(), "past") {
+				// Only the "time already passed" case retries the time input;
+				// other validation errors need different fixes.
+				a.updateState(ctx, userID, func(u *tgstates.UserContext) {
+					u.State = tgstates.StateReminderCreateTime
+				})
+				a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID,
+					tgfmt.Join(
+						tgfmt.Escape("❌ Выбранное время уже прошло.\nВведите другое время в формате "),
+						tgfmt.Code(tgfmt.Escape("ЧЧ:ММ")),
+						tgfmt.Escape(":"),
+					),
+					&cancelKb)
+				return false
+			}
 			a.updateState(ctx, userID, func(u *tgstates.UserContext) {
-				u.State = tgstates.StateReminderCreateTime
+				u.State = tgstates.StateReminderList
 			})
 			a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID,
 				tgfmt.Join(
-					tgfmt.Escape("❌ Выбранное время уже прошло.\nВведите другое время в формате "),
-					tgfmt.Code(tgfmt.Escape("ЧЧ:ММ")),
-					tgfmt.Escape(":"),
-				),
-				&cancelKb)
-			return
+					tgfmt.Escape("❌ Некорректные параметры напоминания: "),
+					tgfmt.Escape(st.Message()),
+				), nil)
+			return false
 		}
 		log.Error("create reminder", zap.Error(err))
 		a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, tgfmt.Escape("❌ Не удалось создать напоминание."), nil)
-		return
+		return false
 	}
 
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -336,6 +351,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 	}
 	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, msgText, &kb)
 	log.Info("created reminder", zap.Int64("user_id", userID), zap.String("title", title))
+	return result != nil
 }
 
 // ── Calendar navigation ────────────────────────────────────────────────────

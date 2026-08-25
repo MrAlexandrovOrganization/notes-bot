@@ -84,11 +84,11 @@ Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_p
 ### Notifications Service (`notifications/`)
 - `notifications/server.go` — `NotificationsServer`, 4 gRPC RPCs; `reminderToProto` with nil-guard
 - `notifications/db.go` — PostgreSQL CRUD via pgx/v5 (EnsureSchema, CreateReminder, ListReminders, DeleteReminder, GetDueReminders, UpdateNextFire, SetNextFireAt); `scanReminder` returns error on `ErrNoRows` (not nil,nil)
-- `notifications/scheduler.go` — `ComputeNextFire()` for 6 schedule types; `Scheduler.Run()` goroutine publishing to Kafka topic `reminders_due`
-- `notifications/config.go` — `LoadConfig()`, `Config` struct, `DSN()` helper
+- `notifications/scheduler.go` — `ComputeNextFire()` for 6 schedule types; `Scheduler.Run()` goroutine publishing to Kafka topic `reminders_due`. Publishes to Kafka BEFORE advancing next_fire (at-least-once delivery); monthly/yearly schedules scan forward past months without that day (cron semantics) instead of deactivating
+- `notifications/config.go` — `LoadConfig()`, `Config` struct (incl. `DAY_START_HOUR`), `DSN()` helper
 - `notifications/metrics.go` — Prometheus metrics
 - `notifications/scheduler_test.go` — unit tests for all schedule types
-- `notifications/server_test.go` — tests for `reminderToProto`, `scheduleParamsToMap`, `scanReminder`
+- `notifications/server_test.go` — does not exist (only `scheduler_test.go` covers ComputeNextFire, paramInt helpers, safeDate, validateReminderRequest)
 - `cmd/notifications/main.go` — entry point
 
 ### Search Service (`search/`)
@@ -171,7 +171,10 @@ Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwi
 - `internal/grpcutil/server.go` — `NewServer()` shared gRPC server setup with OTel stats handler
 - `internal/grpcutil/interceptors.go` — `TimeoutInterceptor` for unary RPCs
 - `internal/kafkacarrier/carrier.go` — `HeaderCarrier` for W3C trace context in Kafka message headers
-- `internal/timeutil/timeutil.go` — `FixedZone()`, `LocalNow()`, `TodayDate()`, `LogicalToday()`, `FormatLocalTime()` — shared across services
+- `internal/timeutil/timeutil.go` — `FixedZone()`, `LocalNow()`, `TodayDate()`, `TodayDateAt()`, `LogicalToday()`, `FormatLocalTime()` — shared across services
+- `internal/env/env.go` — typed env readers (`Str`/`Int`/`Bool`/`Required`) used by all config loaders
+- `internal/duration/duration.go` — human duration parsing (`Parse`: "2h30m", "1w"…) and Russian labels (`MinutesToLabel`) shared by both frontends
+- `internal/grpcutil/server.go` — also exposes `StopWithTimeout()` (GracefulStop bounded by a deadline → Stop)
 
 ### Proto / gRPC (`proto/`)
 - `proto/notes/notes.proto` — RPCs for notes (CRUD, tasks, ratings, directory)
@@ -367,9 +370,9 @@ make cover-html            # Coverage HTML report (opens in browser)
 
 Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, `./search/...`, `./frontends/telegram/tghandlers/...`, `./frontends/telegram/tgkeyboards/...`, `./frontends/telegram/tgstates/...`, `./frontends/telegram/clients/...`, `./frontends/telegram/bot/...`, `./frontends/web/...`
 
-Integration tests: `integration/core_test.go` — 22 tests (require running core service).
+Integration tests: `integration/core_test.go` — 22 self-contained tests (spin up their own core gRPC server on a temp NOTES_DIR; run in CI via `make test-integration-ci`).
 
-CI (`.github/workflows/ci-cd.yml`): runs `buf generate` + `make templ` (regenerates `frontends/web/views/*_templ.go`) before `make lint` + `make test` on every push/PR to main.
+CI (`.github/workflows/ci-cd.yml`): on every push/PR to main runs `buf lint` + `buf breaking` (against main), `buf generate`, `make templ`, `make lint` (gofmt+vet), golangci-lint (`.golangci.yml`), `make test` (race + coverage), `make test-integration-ci`, and `docker compose build` (images are never first built on the deploy VM). Deploy job has a concurrency group and pinned action version.
 
 ## Notes Volume Structure (expected)
 

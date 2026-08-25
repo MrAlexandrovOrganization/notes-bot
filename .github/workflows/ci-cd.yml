@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Lint & Test
@@ -13,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for buf breaking against main
 
       - uses: actions/setup-go@v5
         with:
@@ -24,27 +33,45 @@ jobs:
       - name: Lint proto
         run: make proto-lint
 
+      - name: Check proto breaking changes
+        run: buf breaking proto --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=proto" || true # TODO: remove `|| true` after the first run on main
+
       - name: Generate proto stubs
         run: buf generate
 
       - name: Generate templ views
         run: make templ
 
-      - name: Lint
+      - name: Lint (gofmt + vet)
         run: make lint
 
-      - name: Test
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: ./...
+
+      - name: Test (race + coverage)
         run: make test
+
+      - name: Integration tests
+        run: make test-integration-ci
+
+      - name: Build Docker images
+        run: docker compose build
 
   deploy:
     name: Deploy to VM
     needs: test
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.2.2 # pin minor; move to SHA when possible
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}

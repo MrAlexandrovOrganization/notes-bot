@@ -2,10 +2,13 @@ package webapp
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.uber.org/zap"
 	"notes-bot/frontends/web/views"
@@ -201,9 +204,24 @@ func (a *App) reloadDayFragment(w http.ResponseWriter, r *http.Request, date str
 
 func (a *App) serverError(w http.ResponseWriter, r *http.Request, err error) {
 	applog.With(r.Context(), a.Logger).Error("handler error", zap.Error(err))
+	if st, ok := status.FromError(errors.Unwrap(err)); ok && st.Code() == codes.Unavailable {
+		http.Error(w, "Сервис временно недоступен, попробуйте позже", http.StatusServiceUnavailable)
+		return
+	}
 	http.Error(w, "Внутренняя ошибка, попробуйте ещё раз", http.StatusInternalServerError)
 }
 
+// formError surfaces a validation problem. For htmx requests it must respond
+// with 200 + an out-of-band swap: htmx does not swap 4xx bodies, so a plain
+// 422 would be invisible to the user. Non-htmx callers still get a 422.
 func (a *App) formError(w http.ResponseWriter, r *http.Request, message string) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		if err := views.FormErrorOOB(message).Render(r.Context(), w); err != nil {
+			applog.With(r.Context(), a.Logger).Error("render form error", zap.Error(err))
+		}
+		return
+	}
 	http.Error(w, message, http.StatusUnprocessableEntity)
 }

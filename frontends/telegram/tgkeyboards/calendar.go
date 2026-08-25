@@ -23,7 +23,7 @@ func MonthName(month int) string {
 // Calendar builds the main calendar keyboard for date selection.
 // existingDates is a set of dates in DD-MMM-YYYY format that have notes.
 func Calendar(ctx context.Context, year, month int, activeDate string, existingDates map[string]bool) tgbotapi.InlineKeyboardMarkup {
-	ctx, span := telemetry.StartSpan(ctx)
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	var rows [][]tgbotapi.InlineKeyboardButton

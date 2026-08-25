@@ -91,7 +91,11 @@ func main() {
 
 	indexer := search.NewIndexer(cfg, pool, metrics, embedder, profileExtractor)
 	scheduler := search.NewScheduler(indexer, cfg)
-	go scheduler.Run(ctx)
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		scheduler.Run(ctx)
+	}()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
 	if err != nil {
@@ -112,7 +116,10 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")
-	grpcServer.GracefulStop()
+	grpcutil.StopWithTimeout(logger, grpcServer, grpcutil.DefaultStopTimeout)
+	// Stop the indexer before the deferred pool.Close() so it never queries a
+	// closed pool mid-pass.
+	<-schedulerDone
 }
 
 func registerIndexGauges(pool *pgxpool.Pool, cfg *search.Config) error {

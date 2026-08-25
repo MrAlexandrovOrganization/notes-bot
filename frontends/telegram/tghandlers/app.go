@@ -30,18 +30,39 @@ type App struct {
 	voiceCancels sync.Map
 
 	// voiceTexts stores completed transcription texts for pagination.
-	// Key: statusMsgID (int), Value: string.
+	// Key: statusMsgID (int), Value: string. Bounded via voiceTextsOrder.
 	voiceTexts sync.Map
+
+	// voiceTextsOrder tracks insertion order into voiceTexts for eviction.
+	voiceTextsOrderMu sync.Mutex
+	voiceTextsOrder   []int
 
 	// voiceBuffers holds per-user reorder buffers that ensure transcription
 	// results are delivered in Telegram MessageID order (= user send order).
 	// Key: userID (int64), Value: *voiceReorderBuffer.
 	voiceBuffers sync.Map
+
+	// userMu provides per-user mutexes that serialize FULL update handling
+	// (not just state writes). Without them two concurrent callbacks from
+	// the same user could both act on a stale state snapshot taken before
+	// either wrote its changes.
+	userMu sync.Map // map[int64]*sync.Mutex
+}
+
+// LockUser acquires the per-user handler mutex and returns the unlock func.
+// Exported: cmd/telegram serializes whole-update handling with it.
+func (a *App) LockUser(userID int64) func() {
+	v, _ := a.userMu.LoadOrStore(userID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // authorized returns true if the userID is allowed to use the bot.
+// RootID <= 0 must never grant access (config validation rejects it, but this
+// is the last line of defense for a personal bot).
 func (a *App) authorized(userID int64) bool {
-	return a.Cfg.RootID == 0 || userID == a.Cfg.RootID
+	return a.Cfg.RootID > 0 && userID == a.Cfg.RootID
 }
 
 // updateState wraps State.UpdateContext with error logging so that Redis

@@ -2,7 +2,6 @@ package tghandlers
 
 import (
 	"context"
-	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -19,7 +18,7 @@ func (a *App) MakeReminderHandler(tgBot *tgbotapi.BotAPI) func(context.Context, 
 		kb := tgkeyboards.ReminderNotification(ev.ReminderID, ev.CreateTask, ev.TodayDate)
 		text := tgfmt.Join(
 			tgfmt.Escape("🔔 Напоминание: "),
-			tgfmt.Blockquote(tgfmt.Escape(fmt.Sprintf("%s", ev.Title))),
+			tgfmt.Blockquote(tgfmt.Escape(ev.Title)),
 		)
 		if err := sendText(ctx, tgBot, ev.UserID, text, &kb, false); err != nil {
 			a.Logger.Error("failed to send reminder notification",
