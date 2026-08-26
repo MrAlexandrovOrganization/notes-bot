@@ -62,6 +62,13 @@ jobs:
 
       - name: Build Docker images
         run: docker compose build
+        env:
+          # Placeholders: compose interpolates these while parsing the file
+          # (e.g. "${NOTES_DIR}:/notes" volume specs), but building images
+          # requires no real secrets or paths.
+          NOTES_DIR: /tmp/notes
+          DB_PASSWORD: ci-placeholder
+          SEARCH_DB_PASSWORD: ci-placeholder
 
   deploy:
     name: Deploy to VM
