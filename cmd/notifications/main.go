@@ -22,7 +22,7 @@ import (
 var logger *zap.Logger
 
 func init() {
-	logger = applog.New()
+	logger = applog.New("notes-bot-notifications")
 }
 
 func main() {

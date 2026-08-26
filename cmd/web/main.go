@@ -20,7 +20,10 @@ import (
 )
 
 func main() {
-	logger := applog.New()
+	logger := applog.New("notes-bot-web",
+		os.Getenv("WEB_PASSWORD"),
+		os.Getenv("WEB_SESSION_SECRET"),
+	)
 
 	cfg, err := config.Load()
 	if err != nil {

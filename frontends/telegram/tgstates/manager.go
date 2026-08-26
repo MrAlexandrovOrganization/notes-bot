@@ -17,6 +17,14 @@ import (
 
 const ttl = 7 * 24 * time.Hour
 
+// logger is a nop until SetLogger is called by the service entry point.
+var logger = zap.NewNop()
+
+// SetLogger installs the package-level logger used by StateManager.
+func SetLogger(l *zap.Logger) {
+	logger = l
+}
+
 // StateStore is the interface used by handlers to read and write user session state.
 type StateStore interface {
 	GetContext(ctx context.Context, userID int64) (*UserContext, error)
@@ -65,7 +73,7 @@ func (m *StateManager) GetContext(ctx context.Context, userID int64) (*UserConte
 		if err := json.Unmarshal(data, &uc); err == nil {
 			return &uc, nil
 		}
-		applog.With(ctx, zap.L()).Warn("failed to unmarshal user context, creating fresh",
+		applog.With(ctx, logger).Warn("failed to unmarshal user context, creating fresh",
 			zap.Int64("user_id", userID), zap.Error(err))
 	}
 

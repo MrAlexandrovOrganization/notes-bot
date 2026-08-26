@@ -86,7 +86,11 @@ func maskedTelegramAPIURL(rawURL *url.URL, botToken string) string {
 var logger *zap.Logger
 
 func init() {
-	logger = applog.New()
+	logger = applog.New("notes-bot-telegram",
+		os.Getenv("BOT_TOKEN"),
+		os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
+	)
+	tgstates.SetLogger(logger)
 }
 
 func main() {

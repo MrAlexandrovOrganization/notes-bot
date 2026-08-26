@@ -164,7 +164,7 @@ Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwi
 - `frontends/web/Dockerfile` — 4 stages: `gobuilder` (proto+templ codegen, same as telegram's `buf generate`) → `twbuilder` (`node:20-alpine`, builds `tailwind.css` from the generated views — the standalone Bun-based Tailwind CLI is unreliable under some container runtimes, hence Node) → `finalbuilder` (copies `tailwind.css` back, runs `go build`) → `alpine:3.20` runtime
 
 ### Internal Packages (`internal/`)
-- `internal/applog/applog.go` — `New()` creates zap logger; `With(ctx, l)` enriches with OTel trace/span IDs
+- `internal/applog/applog.go` — `New(service, secrets...)` creates the standard production zap logger (JSON stdout, time/level/msg + service attr, LOG_LEVEL, secret masking); `With(ctx, l)` enriches with OTel trace/span IDs
 - `internal/telemetry/tracer.go` — `InitTracer(ctx, serviceName)` — no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` not set; `StartSpan` auto-resolves caller name
 - `internal/telemetry/metrics.go` — `InitMetrics()` creates Prometheus exporter + global MeterProvider, returns `/metrics` handler
 - `internal/grpcutil/dial.go` — `Dial(host, port, opts...)` shared gRPC client dial helper
@@ -273,6 +273,7 @@ WEB_SESSION_SECRET=<random_signing_secret> # e.g. `openssl rand -hex 32`; never 
 
 ### Optional (defaults shown)
 ```env
+LOG_LEVEL=info               # Log level for all services (debug|info|warn|error)
 TIMEZONE_OFFSET_HOURS=3     # UTC+3 Moscow
 DAY_START_HOUR=7             # Day "starts" at 7 AM
 TEMPLATE_SUBDIR=Templates    # Relative to NOTES_DIR
@@ -333,7 +334,7 @@ Always use `a.updateState(ctx, userID, func(u *tgstates.UserContext) { ... })` i
 Day boundary is at `DAY_START_HOUR` (7 AM), not midnight. Shared logic is in `internal/timeutil/timeutil.go`. Consistency across all services is important.
 
 ### Logging
-All Go services use `applog.New()` to create a production zap logger. Use `applog.With(ctx, logger)` inside handlers to get a child logger enriched with OTel trace/span IDs.
+All Go services use `applog.New("<service-name>", secrets...)` (internal/applog) to create a production zap logger that follows the ecosystem log standard: JSON on stdout with `time` (RFC3339, millisecond precision) / `level` (`DEBUG|INFO|WARN|ERROR`, matching slog) / `msg` keys, a `service` attribute on every record, and the level taken from `LOG_LEVEL` (debug|info|warn|error, default info). Secrets passed to `applog.New` are masked with `***` in every output line. Service names match docker-compose container names: `notes-bot-core`, `notes-bot-notifications`, `notes-bot-search`, `notes-bot-telegram` (masks `BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`; Telegram Bot API URLs are additionally sanitized via `maskedTelegramAPIURL`), `notes-bot-web` (masks `WEB_PASSWORD` and `WEB_SESSION_SECRET`). Use `applog.With(ctx, logger)` inside handlers to get a child logger enriched with OTel trace/span IDs. The telegram entry point installs the package logger for `tgstates` via `tgstates.SetLogger(logger)`.
 
 ### Metrics
 Each Go service calls `telemetry.InitMetrics()` at startup and exposes `/metrics` on its `METRICS_PORT`. Prometheus scrapes all services. Service-specific metric instruments are in `bot/metrics.go`, `notifications/metrics.go`, and `search/metrics.go`.
