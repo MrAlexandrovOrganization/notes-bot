@@ -36,18 +36,27 @@ type SyncStats struct {
 }
 
 type Indexer struct {
-	cfg      *Config
-	pool     *pgxpool.Pool
-	metrics  *searchMetrics
-	embedder *Embedder
-	profiles *ProfileExtractor
-	syncMu   sync.Mutex
+	cfg           *Config
+	pool          *pgxpool.Pool
+	metrics       *searchMetrics
+	embedder      *Embedder
+	profiles      *ProfileExtractor
+	materializers []Materializer
+	syncMu        sync.Mutex
 }
 
 type vaultFile struct{ path, relpath string }
 
 func NewIndexer(cfg *Config, pool *pgxpool.Pool, metrics *searchMetrics, embedder *Embedder, profiles *ProfileExtractor) *Indexer {
-	return &Indexer{cfg: cfg, pool: pool, metrics: metrics, embedder: embedder, profiles: profiles}
+	ix := &Indexer{
+		cfg:      cfg,
+		pool:     pool,
+		metrics:  metrics,
+		embedder: embedder,
+		profiles: profiles,
+	}
+	ix.materializers = ix.buildMaterializers()
+	return ix
 }
 
 // SyncOnce reconciles changed files and resumes any stale/missing chunk index.
@@ -88,9 +97,13 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 
 	log := applog.With(ctx, logger)
 	start := time.Now()
-	if force && ix.cfg.Features.Profiles {
-		if err := InvalidateNoteProfiles(ctx, ix.pool); err != nil {
-			return stats, err
+	if force {
+		for _, m := range ix.materializers {
+			if r, ok := m.(forceResetter); ok {
+				if err := r.InvalidateAll(ctx); err != nil {
+					return stats, err
+				}
+			}
 		}
 	}
 
@@ -123,18 +136,16 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 
 	ix.syncFiles(ctx, log, files, known, force, &stats)
 
-	if err := ix.backfillChunks(ctx); err != nil {
-		log.Warn("backfill chunks", zap.Error(err))
-		stats.Errors++
-	}
-	if ix.cfg.Features.Embeddings && ix.embedder != nil {
-		if n, err := ix.backfillEmbeddings(ctx); err != nil {
-			log.Warn("backfill chunks", zap.Error(err))
+	for _, m := range ix.materializers {
+		if !m.Enabled() {
+			continue
+		}
+		if err := m.Backfill(ctx, &stats); err != nil {
+			log.Warn("backfill "+m.Name(), zap.Error(err))
 			stats.Errors++
-		} else {
-			stats.Embedded += n
 		}
 	}
+
 	if len(files) == 0 && len(known) > 0 {
 		// An entirely empty listing against a non-empty index almost certainly
 		// means the volume is not mounted / not yet populated. Never purge.
@@ -156,23 +167,6 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 			continue
 		}
 		stats.Deleted++
-	}
-	if ix.cfg.Features.Profiles && ix.profiles != nil {
-		profiled, itemErrors, err := ix.backfillProfiles(ctx)
-		stats.Profiled += profiled
-		stats.Errors += itemErrors
-		if err != nil {
-			log.Warn("backfill profiles", zap.Error(err))
-			stats.Errors++
-		}
-	}
-	if ix.cfg.Features.ProfileEmbeddings && ix.embedder != nil {
-		if itemErrors, err := ix.backfillProfileEmbeddings(ctx); err != nil {
-			log.Warn("backfill profile embeddings", zap.Error(err))
-			stats.Errors++
-		} else {
-			stats.Errors += itemErrors
-		}
 	}
 
 	if ix.metrics != nil {
@@ -303,19 +297,13 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, exist
 		stats.Updated++
 	}
 
-	if err := ix.reindexChunks(ctx, noteID, doc); err != nil {
-		return fmt.Errorf("reindex chunks: %w", err)
-	}
-	if ix.cfg.Features.Embeddings && ix.embedder != nil {
-		source := "sync"
-		if force {
-			source = "force"
+	for _, m := range ix.materializers {
+		if !m.Enabled() {
+			continue
 		}
-		embedded, err := ix.reindexEmbeddings(ctx, noteID, name, doc.Metadata, force, source)
-		if err != nil {
-			return fmt.Errorf("reindex embeddings: %w", err)
+		if err := m.SyncNote(ctx, noteID, name, doc, force, stats); err != nil {
+			return fmt.Errorf("%s sync note: %w", m.Name(), err)
 		}
-		stats.Embedded += embedded
 	}
 	return nil
 }

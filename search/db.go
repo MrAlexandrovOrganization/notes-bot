@@ -330,6 +330,11 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool, features FeatureConfi
 			}
 		}
 	}
+	if features.Facts {
+		if _, err := pool.Exec(ctx, noteFactsSchemaSQL); err != nil {
+			return fmt.Errorf("ensure facts schema: %w", err)
+		}
+	}
 	logger.Info("database schema ensured")
 	return nil
 }

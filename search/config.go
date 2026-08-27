@@ -58,6 +58,7 @@ type FeatureConfig struct {
 	Profiles          bool
 	ProfileEmbeddings bool
 	LLMGeneration     bool
+	Facts             bool
 }
 
 // ProductConfig selects retrieval capabilities for user-facing operations.
@@ -146,6 +147,7 @@ func LoadConfig() *Config {
 		Embeddings:    getEnvBoolFallback("FEATURE_EMBEDDINGS", "ENABLE_EMBEDDINGS", false),
 		Profiles:      getEnvBoolFallback("FEATURE_PROFILES", "ENABLE_PROFILES", false),
 		LLMGeneration: getEnvBool("FEATURE_LLM_GENERATION", true),
+		Facts:         getEnvBool("FEATURE_FACTS", false),
 	}
 	features.VectorIndex = getEnvBool("FEATURE_VECTOR_INDEX", features.Embeddings)
 	features.ProfileEmbeddings = getEnvBool("FEATURE_PROFILE_EMBEDDINGS", features.Embeddings && features.Profiles)
