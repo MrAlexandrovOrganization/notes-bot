@@ -26,6 +26,22 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
+          cache: true
+          cache-dependency-path: go.sum
+
+      # Cache prebuilt dev tools (buf, protoc-gen-*, templ) and buf's own
+      # module cache so `make install` and `buf` don't recompile/download
+      # from scratch on every run. Keyed on go.sum + Makefile so a tool
+      # version bump (Makefile) busts the cache instead of serving stale bins.
+      - name: Cache installed tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/buf
+          key: tools-${{ runner.os }}-${{ hashFiles('go.sum', 'Makefile') }}
+          restore-keys: |
+            tools-${{ runner.os }}-
 
       - name: Install tools
         run: make install
@@ -60,6 +76,15 @@ jobs:
       - name: Integration tests
         run: make test-integration-ci
 
+  build:
+    name: Build Docker images
+    runs-on: ubuntu-24.04
+    # Runs in parallel with the `test` job: docker builds are self-contained
+    # (they generate proto/templ inside the Dockerfile), so they don't depend
+    # on the host-side checks. Overlaps the long image build with test/lint.
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Build Docker images
         run: docker compose build
         env:
@@ -72,7 +97,7 @@ jobs:
 
   deploy:
     name: Deploy to VM
-    needs: test
+    needs: [test, build]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     concurrency:
