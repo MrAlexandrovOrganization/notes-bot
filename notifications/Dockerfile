@@ -19,15 +19,8 @@ COPY cmd/ ./cmd/
 
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /notifications ./cmd/notifications/
 
-RUN apk add --no-cache curl && \
-    ARCH=$(uname -m) && \
-    case "$ARCH" in \
-        x86_64)        PROBE_ARCH=amd64 ;; \
-        aarch64|arm64) PROBE_ARCH=arm64 ;; \
-        *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
-    esac && \
-    curl -fsSL -o /grpc_health_probe \
-        "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.28/grpc_health_probe-linux-${PROBE_ARCH}" && \
+RUN go install github.com/grpc-ecosystem/grpc-health-probe@v0.4.28 && \
+    cp "$(go env GOPATH)/bin/grpc-health-probe" /grpc_health_probe && \
     chmod +x /grpc_health_probe
 
 
