@@ -23,14 +23,12 @@ func TestVoiceReorderBuffer_ConcurrentRegisterComplete(t *testing.T) {
 		msgID := i
 		r := &pendingVoiceResult{}
 		buf.register(msgID, r)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ready := buf.complete(msgID, "text", nil)
 			mu.Lock()
 			delivered = append(delivered, len(ready))
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 

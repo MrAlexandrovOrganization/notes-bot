@@ -5,6 +5,7 @@ package duration
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -154,9 +155,7 @@ func overflowDesc(val int, unit byte) string {
 // overflowing unit and carrying into higher units.
 func suggestion(vals map[byte]int, overflowUnit byte) string {
 	nv := make(map[byte]int, len(vals))
-	for k, v := range vals {
-		nv[k] = v
-	}
+	maps.Copy(nv, vals)
 
 	switch overflowUnit {
 	case 'm':
