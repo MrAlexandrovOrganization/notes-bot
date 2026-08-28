@@ -3,22 +3,30 @@ FROM golang:1.26-alpine AS gobuilder
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1 && \
     go install github.com/bufbuild/buf/cmd/buf@v1.67.0 && \
     go install github.com/a-h/templ/cmd/templ@v0.3.1020
 
 COPY buf.gen.yaml ./
 COPY proto/ ./proto/
-RUN buf generate
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    buf generate
 
 COPY internal/ ./internal/
 COPY frontends/ ./frontends/
 COPY cmd/ ./cmd/
 
-RUN templ generate ./frontends/web/views
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    templ generate ./frontends/web/views
 
 
 # Tailwind CLI needs Node — the standalone Bun-based binary is unreliable
@@ -30,7 +38,8 @@ FROM node:20-alpine AS twbuilder
 WORKDIR /css
 COPY --from=gobuilder /app/frontends/web/views ./views
 COPY --from=gobuilder /app/frontends/web/webapp/static/input.css ./input.css
-RUN npm install --no-save @tailwindcss/cli@4.3.3 && \
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-save @tailwindcss/cli@4.3.3 && \
     npx @tailwindcss/cli@4.3.3 -i ./input.css -o ./output.css --minify
 
 
@@ -38,7 +47,9 @@ FROM gobuilder AS finalbuilder
 
 COPY --from=twbuilder /css/output.css frontends/web/webapp/static/tailwind.css
 
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /web ./cmd/web/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /web ./cmd/web/
 
 
 FROM alpine:3.20
