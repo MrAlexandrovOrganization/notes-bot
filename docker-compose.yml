@@ -9,7 +9,9 @@ networks:
     external: true
   ollama-net:
     external: true
-  monitoring-net:
+  prometheus-net:
+    external: true
+  jaeger-net:
     external: true
   kafka-net:
     external: true
@@ -57,7 +59,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     networks:
       - default
-      - monitoring-net
+      - prometheus-net
+      - jaeger-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50051"]
       interval: 30s
@@ -90,7 +93,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     networks:
       - default
-      - monitoring-net
+      - prometheus-net
+      - jaeger-net
       - kafka-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
@@ -183,7 +187,8 @@ services:
     networks:
       - default
       - ollama-net
-      - monitoring-net
+      - prometheus-net
+      - jaeger-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50054"]
       interval: 30s
@@ -248,7 +253,8 @@ services:
       - caddy-net
       - whisper-net    # shared Whisper transcription service
       - ollama-net     # shared Ollama LLM service
-      - monitoring-net
+      - prometheus-net
+      - jaeger-net
       - kafka-net
       - redis-net
       - location-api-net  # location microservice (backends/location)
@@ -298,7 +304,8 @@ services:
       - default
       - caddy-net
       - ollama-net     # shared Ollama LLM service
-      - monitoring-net
+      - prometheus-net
+      - jaeger-net
     depends_on:
       core:
         condition: service_healthy
