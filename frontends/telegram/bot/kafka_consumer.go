@@ -138,6 +138,7 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				attribute.Int64("reminder_id", ev.ReminderID),
 			),
 		)
+		msgLog := applog.With(msgCtx, logger)
 		var lastErr error
 		for attempt := 1; attempt <= maxHandlerAttempts; attempt++ {
 			handlerErr := handler(msgCtx, ev)
@@ -174,10 +175,10 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 				zap.Int64("reminder_id", ev.ReminderID),
 			)
 			msgSpan.End()
-			commitMsg(ctx, r, msg, log)
+			commitMsg(ctx, r, msg, msgLog)
 			continue
 		}
-		commitMsg(ctx, r, msg, log)
+		commitMsg(ctx, r, msg, msgLog)
 		KafkaMessagesConsumed.Add(msgCtx, 1)
 		msgSpan.End()
 	}

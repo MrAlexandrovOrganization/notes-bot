@@ -1,6 +1,7 @@
 package grpcutil
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -8,9 +9,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+
+	"notes-bot/internal/applog"
 )
 
 // DefaultStopTimeout bounds GracefulStop: one long-running RPC (e.g. an LLM
@@ -18,12 +23,30 @@ import (
 const DefaultStopTimeout = 15 * time.Second
 
 // NewServer creates a gRPC server with OTel tracing instrumentation.
-func NewServer() *grpc.Server {
-	return grpc.NewServer(
+func NewServer(loggers ...*zap.Logger) *grpc.Server {
+	options := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler(
 			otelgrpc.WithFilter(filters.Not(filters.HealthCheck())),
 		)),
-	)
+	}
+	if len(loggers) > 0 && loggers[0] != nil {
+		options = append(options, grpc.ChainUnaryInterceptor(accessLogInterceptor(loggers[0])))
+	}
+	return grpc.NewServer(options...)
+}
+
+func accessLogInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		started := time.Now()
+		resp, err := handler(ctx, req)
+		fields := append(applog.Fields(ctx), zap.String("method", info.FullMethod), zap.String("code", status.Code(err).String()), zap.Duration("duration", time.Since(started)))
+		if err != nil && status.Code(err) != codes.Canceled {
+			logger.Error("grpc request", append(fields, zap.Error(err))...)
+		} else {
+			logger.Info("grpc request", fields...)
+		}
+		return resp, err
+	}
 }
 
 // RegisterHealth attaches a health server to srv and marks it as SERVING.

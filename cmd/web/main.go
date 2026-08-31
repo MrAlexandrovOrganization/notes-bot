@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
@@ -85,7 +86,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         cfg.WebListenAddr,
-		Handler:      app.NewRouter(),
+		Handler:      otelhttp.NewHandler(app.NewRouter(), "web"),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 5 * time.Minute,
 	}

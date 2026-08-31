@@ -52,14 +52,23 @@ func newLogger(w io.Writer, service string, level zapcore.Level, secrets ...stri
 // extracted from the OpenTelemetry span in ctx. If there is no valid span,
 // the original logger is returned unchanged.
 func With(ctx context.Context, l *zap.Logger) *zap.Logger {
-	sc := trace.SpanFromContext(ctx).SpanContext()
-	if !sc.IsValid() {
+	fields := Fields(ctx)
+	if len(fields) == 0 {
 		return l
 	}
-	return l.With(
+	return l.With(fields...)
+}
+
+// Fields returns trace fields for the active span in ctx.
+func Fields(ctx context.Context) []zap.Field {
+	sc := trace.SpanFromContext(ctx).SpanContext()
+	if !sc.IsValid() {
+		return nil
+	}
+	return []zap.Field{
 		zap.String("trace_id", sc.TraceID().String()),
 		zap.String("span_id", sc.SpanID().String()),
-	)
+	}
 }
 
 func nonEmpty(secrets []string) []string {

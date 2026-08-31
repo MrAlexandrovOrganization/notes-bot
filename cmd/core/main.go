@@ -52,7 +52,7 @@ func main() {
 		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
-	grpcServer := grpcutil.NewServer()
+	grpcServer := grpcutil.NewServer(logger)
 
 	notesServer := core.NewDefaultNotesServer()
 	pb.RegisterNotesServiceServer(grpcServer, notesServer)

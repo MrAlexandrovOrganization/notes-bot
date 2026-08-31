@@ -93,7 +93,7 @@ func main() {
 		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
-	grpcServer := grpcutil.NewServer()
+	grpcServer := grpcutil.NewServer(logger)
 	pb.RegisterNotificationsServiceServer(grpcServer, notifications.NewNotificationsServer(pool, cfg))
 	grpcutil.RegisterHealth(grpcServer)
 

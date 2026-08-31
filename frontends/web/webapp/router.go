@@ -3,6 +3,7 @@ package webapp
 import (
 	"embed"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -47,12 +48,37 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
+		started := time.Now()
+		writer := &responseWriter{ResponseWriter: w}
+		next.ServeHTTP(writer, r)
+		if writer.status == 0 {
+			writer.status = http.StatusOK
+		}
 		if r.URL.Path == "/healthz" {
 			return
 		}
 
 		applog.With(r.Context(), a.Logger).Info("http request",
-			zap.String("method", r.Method), zap.String("path", r.URL.Path))
+			zap.String("method", r.Method), zap.String("path", r.URL.Path), zap.Int("status", writer.status), zap.Duration("duration", time.Since(started)))
 	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *responseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
 }

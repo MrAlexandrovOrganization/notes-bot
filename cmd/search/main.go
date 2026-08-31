@@ -102,7 +102,7 @@ func main() {
 		logger.Fatal("failed to listen", zap.Error(err))
 	}
 
-	grpcServer := grpcutil.NewServer()
+	grpcServer := grpcutil.NewServer(logger)
 	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder, agent))
 	grpcutil.RegisterHealth(grpcServer)
 
