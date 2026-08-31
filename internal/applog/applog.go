@@ -1,10 +1,10 @@
 // Package applog provides the production logger shared by all services.
 //
-// It follows the ecosystem logging standard: JSON records on stdout with
-// time (RFC3339, millisecond precision) / level (DEBUG|INFO|WARN|ERROR,
-// matching slog) / msg keys, a "service" attribute on every record, the
-// level taken from LOG_LEVEL (debug|info|warn|error, default info) and
-// secrets masked with "***" wherever they appear in the output.
+// It follows the OpenTelemetry logging convention: JSON records on stdout
+// with timestamp (RFC3339, millisecond precision), severity_text,
+// severity_number, body and service.name fields. The level is taken from
+// LOG_LEVEL (debug|info|warn|error, default info) and secrets are masked with
+// "***" wherever they appear in the output.
 package applog
 
 import (
@@ -25,7 +25,7 @@ const masked = "***"
 
 // New creates a consistent production zap logger for all services.
 //
-// service is attached as the "service" attribute to every record.
+// service is attached as the "service.name" attribute to every record.
 // Secrets are masked with "***" in every line written to stdout.
 func New(service string, secrets ...string) *zap.Logger {
 	return newLogger(os.Stdout, service, levelFromEnv(), secrets...)
@@ -33,11 +33,11 @@ func New(service string, secrets ...string) *zap.Logger {
 
 func newLogger(w io.Writer, service string, level zapcore.Level, secrets ...string) *zap.Logger {
 	encoder := zapcore.NewJSONEncoder(zapcore.EncoderConfig{
-		TimeKey:        "time",
-		LevelKey:       "level",
+		TimeKey:        "timestamp",
+		LevelKey:       "severity_text",
 		NameKey:        "",
 		CallerKey:      "",
-		MessageKey:     "msg",
+		MessageKey:     "body",
 		StacktraceKey:  "",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.CapitalLevelEncoder,
@@ -45,12 +45,49 @@ func newLogger(w io.Writer, service string, level zapcore.Level, secrets ...stri
 		EncodeDuration: zapcore.SecondsDurationEncoder,
 	})
 	core := zapcore.NewCore(encoder, zapcore.AddSync(&maskWriter{w: w, secrets: nonEmpty(secrets)}), level)
-	return zap.New(core, zap.Fields(zap.String("service", service)))
+	core = severityCore{Core: core}
+	return zap.New(core, zap.Fields(zap.String("service.name", service)))
 }
 
-// With returns a child logger enriched with trace_id and span_id fields
-// extracted from the OpenTelemetry span in ctx. If there is no valid span,
-// the original logger is returned unchanged.
+// severityCore adds the numeric OpenTelemetry severity without replacing the
+// standard zap encoder or changing zap's level filtering.
+type severityCore struct {
+	zapcore.Core
+}
+
+func (c severityCore) With(fields []zapcore.Field) zapcore.Core {
+	return severityCore{Core: c.Core.With(fields)}
+}
+
+func (c severityCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if c.Enabled(ent.Level) {
+		return ce.AddCore(ent, c)
+	}
+	return ce
+}
+
+func (c severityCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
+	return c.Core.Write(ent, append(fields, zap.Int("severity_number", severityNumber(ent.Level))))
+}
+
+func severityNumber(level zapcore.Level) int {
+	switch level {
+	case zapcore.DebugLevel:
+		return 5
+	case zapcore.InfoLevel:
+		return 9
+	case zapcore.WarnLevel:
+		return 13
+	case zapcore.ErrorLevel:
+		return 17
+	default:
+		return 21
+	}
+}
+
+// With returns a child logger enriched with OpenTelemetry trace fields
+// extracted from the span in ctx. If there is no valid span, the original
+// logger is returned unchanged.
 func With(ctx context.Context, l *zap.Logger) *zap.Logger {
 	fields := Fields(ctx)
 	if len(fields) == 0 {
@@ -68,6 +105,7 @@ func Fields(ctx context.Context) []zap.Field {
 	return []zap.Field{
 		zap.String("trace_id", sc.TraceID().String()),
 		zap.String("span_id", sc.SpanID().String()),
+		zap.String("trace_flags", sc.TraceFlags().String()),
 	}
 }
 

@@ -1,11 +1,13 @@
 package applog
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -34,25 +36,28 @@ func TestLoggerFormat(t *testing.T) {
 		l.Info("hello world", zap.String("key", "value"))
 	})
 
-	if got := record["service"]; got != "notes-bot-test" {
-		t.Errorf("service = %v, want notes-bot-test", got)
+	if got := record["service.name"]; got != "notes-bot-test" {
+		t.Errorf("service.name = %v, want notes-bot-test", got)
 	}
-	if got := record["level"]; got != "INFO" {
-		t.Errorf("level = %v, want INFO", got)
+	if got := record["severity_text"]; got != "INFO" {
+		t.Errorf("severity_text = %v, want INFO", got)
 	}
-	if got := record["msg"]; got != "hello world" {
-		t.Errorf("msg = %v, want hello world", got)
+	if got := record["severity_number"]; got != float64(9) {
+		t.Errorf("severity_number = %v, want 9", got)
+	}
+	if got := record["body"]; got != "hello world" {
+		t.Errorf("body = %v, want hello world", got)
 	}
 	if got := record["key"]; got != "value" {
 		t.Errorf("key = %v, want value", got)
 	}
-	ts, err := time.Parse("2006-01-02T15:04:05.000Z07:00", record["time"].(string))
+	ts, err := time.Parse("2006-01-02T15:04:05.000Z07:00", record["timestamp"].(string))
 	if err != nil {
-		t.Errorf("time %v is not RFC3339 with milliseconds: %v", record["time"], err)
+		t.Errorf("timestamp %v is not RFC3339 with milliseconds: %v", record["timestamp"], err)
 	} else if ts.IsZero() {
-		t.Error("time is zero")
+		t.Error("timestamp is zero")
 	}
-	for _, unwanted := range []string{"caller", "stacktrace", "logger", "ts"} {
+	for _, unwanted := range []string{"time", "level", "msg", "service", "caller", "stacktrace", "logger", "ts"} {
 		if _, ok := record[unwanted]; ok {
 			t.Errorf("unexpected key %q in record", unwanted)
 		}
@@ -65,8 +70,8 @@ func TestLoggerMasking(t *testing.T) {
 			l.Warn("token leaked", zap.String("token", "supersecret123"))
 		})
 
-	if msg, _ := record["msg"].(string); strings.Contains(msg, "secret") && msg != "*** leaked" {
-		t.Errorf("message not masked: %v", record["msg"])
+	if msg, _ := record["body"].(string); strings.Contains(msg, "secret") && msg != "*** leaked" {
+		t.Errorf("message not masked: %v", record["body"])
 	}
 	if got := record["token"]; got != "***" {
 		t.Errorf("attribute not masked: %v", got)
@@ -93,11 +98,31 @@ func TestLevelFromEnv(t *testing.T) {
 	}
 }
 
-func TestWithAddsTraceIDs(t *testing.T) {
+func TestWithAddsTraceContext(t *testing.T) {
 	record := captureLog(t, zapcore.InfoLevel, "notes-bot-test", nil, func(l *zap.Logger) {
 		l.Info("no span here")
 	})
 	if _, ok := record["trace_id"]; ok {
 		t.Error("trace_id present without a span")
+	}
+
+	traceID, _ := trace.TraceIDFromHex("0123456789abcdef0123456789abcdef")
+	spanID, _ := trace.SpanIDFromHex("0123456789abcdef")
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	}))
+	withTrace := captureLog(t, zapcore.InfoLevel, "notes-bot-test", nil, func(l *zap.Logger) {
+		With(ctx, l).Info("with trace")
+	})
+	if got := withTrace["trace_id"]; got != traceID.String() {
+		t.Errorf("trace_id = %v, want %s", got, traceID)
+	}
+	if got := withTrace["span_id"]; got != spanID.String() {
+		t.Errorf("span_id = %v, want %s", got, spanID)
+	}
+	if got := withTrace["trace_flags"]; got != "01" {
+		t.Errorf("trace_flags = %v, want 01", got)
 	}
 }
