@@ -3,6 +3,7 @@ package grpcutil
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -42,11 +43,17 @@ func accessLogInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 		fields := append(applog.Fields(ctx), zap.String("method", info.FullMethod), zap.String("code", status.Code(err).String()), zap.Duration("duration", time.Since(started)))
 		if err != nil && status.Code(err) != codes.Canceled {
 			logger.Error("grpc request", append(fields, zap.Error(err))...)
+		} else if isHealthCheck(info.FullMethod) {
+			logger.Debug("grpc request", fields...)
 		} else {
 			logger.Info("grpc request", fields...)
 		}
 		return resp, err
 	}
+}
+
+func isHealthCheck(method string) bool {
+	return strings.HasPrefix(method, "/grpc.health.v1.Health/")
 }
 
 // RegisterHealth attaches a health server to srv and marks it as SERVING.

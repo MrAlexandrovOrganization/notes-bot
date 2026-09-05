@@ -115,6 +115,9 @@ services:
     image: pgvector/pgvector:0.8.5-pg16
     container_name: notes-bot-postgres-search
     restart: unless-stopped
+    # Checkpoint progress is routine PostgreSQL noise; keep failures and other
+    # server messages visible while disabling these periodic LOG records.
+    command: ["postgres", "-c", "log_checkpoints=off"]
     environment:
       - POSTGRES_DB=${SEARCH_DB_NAME:-search}
       - POSTGRES_USER=${SEARCH_DB_USER:-search}
