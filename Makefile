@@ -26,14 +26,18 @@ templ:
 
 # All Go unit test packages (no integration)
 GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
-		       ./internal/searchquery/... \
+		       ./internal/... \
                ./frontends/telegram/tghandlers/... \
                ./frontends/telegram/tgkeyboards/... \
                ./frontends/telegram/tgstates/... \
+		       ./frontends/telegram/clients/... \
+		       ./frontends/telegram/bot/... \
+		       ./frontends/telegram/config/... \
+		       ./frontends/telegram/tgfmt/... \
                ./frontends/web/...
 
 # All packages to instrument for coverage
-TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates
+TELEGRAM_COVERPKGS = notes-bot/frontends/telegram/tghandlers,notes-bot/frontends/telegram/tgkeyboards,notes-bot/frontends/telegram/tgstates,notes-bot/frontends/telegram/clients,notes-bot/frontends/telegram/bot,notes-bot/frontends/telegram/config,notes-bot/frontends/telegram/tgfmt
 WEB_COVERPKGS = notes-bot/frontends/web/webapp
 GO_COVERPKGS_UNIT = notes-bot/core,notes-bot/core/features,notes-bot/notifications,notes-bot/search,notes-bot/internal/searchquery,$(TELEGRAM_COVERPKGS),$(WEB_COVERPKGS)
 
@@ -99,18 +103,20 @@ build-web:
 test-search:
 	go test ./search/... -v
 
-format:
-	gofmt -w ./core/ ./notifications/ ./search/ ./internal/ ./integration/ ./frontends/telegram/ ./frontends/web/ ./cmd/
+GO_DIRS = ./core/ ./notifications/ ./search/ ./internal/ ./integration/ ./frontends/telegram/ ./frontends/web/ ./cmd/
 
-lint-dirs = ./core/ ./notifications/ ./search/ ./internal/ ./integration/ ./frontends/telegram/ ./frontends/web/ ./cmd/
+fmt:
+	gofmt -w $(GO_DIRS)
+
+fmt-check:
+	@files=$$(gofmt -l $(GO_DIRS)); status=$$?; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if [ -n "$$files" ]; then echo "gofmt found unformatted files:"; printf '%s\n' "$$files"; exit 1; fi
+
+format: fmt
 
 lint:
-	@diff=$$(gofmt -l $(lint-dirs)); \
-	if [ -n "$$diff" ]; then \
-		echo "gofmt found unformatted files:"; \
-		echo "$$diff"; \
-		exit 1; \
-	fi
+	$(MAKE) fmt-check
 	go vet ./...
 
 # Full static analysis (staticcheck, unused, ineffassign, …).
@@ -120,7 +126,7 @@ lint-golangci:
 
 install-linters:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
-	go install golang.org/x/vuln/cmd/govulncheck@latest
+	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
 vulncheck:
 	govulncheck ./...
@@ -194,4 +200,4 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister
+.PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint fmt fmt-check format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

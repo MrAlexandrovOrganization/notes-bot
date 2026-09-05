@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -445,7 +446,16 @@ func telegramWebhookHandler(secret string, updates chan<- tgbotapi.Update) http.
 			http.Error(w, "invalid update", http.StatusBadRequest)
 			return
 		}
-		updates <- update
+		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			http.Error(w, "invalid update", http.StatusBadRequest)
+			return
+		}
+		select {
+		case updates <- update:
+		case <-r.Context().Done():
+			http.Error(w, "request cancelled", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 }

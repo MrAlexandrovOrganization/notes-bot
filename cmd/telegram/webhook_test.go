@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,30 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		require.Len(t, updates, 1)
 		assert.Equal(t, 42, (<-updates).UpdateID)
 	})
+}
+
+func TestTelegramWebhookHandler_CancelledRequestDoesNotBlock(t *testing.T) {
+	updates := make(chan tgbotapi.Update)
+	handler := telegramWebhookHandler("expected-secret", updates)
+	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"update_id":1}`))
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "expected-secret")
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+
+	resp := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(resp, req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("webhook handler blocked after request cancellation")
+	}
+	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 }
 
 func TestTelegramTracingTransportRedactsToken(t *testing.T) {

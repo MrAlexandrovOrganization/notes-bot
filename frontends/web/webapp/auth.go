@@ -91,10 +91,14 @@ func cookieSecure(r *http.Request) bool {
 }
 
 func (a *App) setSessionCookie(w http.ResponseWriter, r *http.Request) {
+	a.setSessionCookieForID(w, r, newSessionID())
+}
+
+func (a *App) setSessionCookieForID(w http.ResponseWriter, r *http.Request, id string) {
 	expiry := time.Now().Add(sessionTTL)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    a.signSession(newSessionID(), expiry),
+		Value:    a.signSession(id, expiry),
 		Path:     "/",
 		Expires:  expiry,
 		HttpOnly: true,
@@ -178,7 +182,8 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		a.setSessionCookie(w, r)
+		tok, _ := a.parseSession(cookie.Value)
+		a.setSessionCookieForID(w, r, tok.ID)
 		next.ServeHTTP(w, r)
 	})
 }

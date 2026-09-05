@@ -25,6 +25,13 @@ import (
 //
 // Returns a shutdown function that must be called on service exit.
 func InitTracer(ctx context.Context, serviceName string) (func(context.Context) error, error) {
+	// Propagation remains enabled even when exporting is disabled, so a service
+	// can preserve trace causality for downstream services.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
 		return func(context.Context) error { return nil }, nil
@@ -58,12 +65,14 @@ func InitTracer(ctx context.Context, serviceName string) (func(context.Context) 
 	)
 
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
-
-	return tp.Shutdown, nil
+	return func(shutdownCtx context.Context) error {
+		shutdownErr := tp.Shutdown(shutdownCtx)
+		connErr := conn.Close()
+		if shutdownErr != nil {
+			return shutdownErr
+		}
+		return connErr
+	}, nil
 }
 
 // StartSpan starts a new span, automatically resolving the tracer name and span name

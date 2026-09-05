@@ -91,6 +91,26 @@ func TestRequireAuth_AllowsValidCookie(t *testing.T) {
 	assert.True(t, called)
 }
 
+func TestRequireAuth_SlidingRefreshKeepsSessionID(t *testing.T) {
+	a := testApp(t)
+	id := newSessionID()
+	value := a.signSession(id, time.Now().Add(time.Hour))
+	handler := a.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	req := httptest.NewRequest(http.MethodGet, "/day", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: value})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	refreshed := rec.Result().Cookies()[0].Value
+	tok, ok := a.parseSession(refreshed)
+	require.True(t, ok)
+	assert.Equal(t, id, tok.ID)
+
+	a.revokeSession(req)
+	assert.False(t, a.verifySession(refreshed), "logout must revoke refreshed cookies")
+}
+
 func TestHandleLoginSubmit_WrongPassword(t *testing.T) {
 	a := testApp(t)
 	req := httptest.NewRequest(http.MethodPost, "/login", nil)

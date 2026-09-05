@@ -110,7 +110,7 @@ func consume(ctx context.Context, r *kafka.Reader, handler func(context.Context,
 		if err := json.Unmarshal(msg.Value, &ev); err != nil {
 			log.Error("failed to parse reminder event",
 				zap.Error(err),
-				zap.String("raw_value", string(msg.Value)),
+				zap.Int("value_len", len(msg.Value)),
 			)
 			commitMsg(ctx, r, msg, log)
 			continue

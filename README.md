@@ -241,7 +241,9 @@ make cover            # Суммарное покрытие (unit + integration)
 make cover-html       # Coverage HTML отчёт (открывает браузер)
 make test-integration # Integration тесты
 make proto            # Регенерация gRPC stubs
-make format           # gofmt + ruff
+make fmt              # применить gofmt ко всему Go-коду
+make fmt-check        # проверить форматирование без изменений
+make format           # алиас make fmt
 make up               # docker-compose build + up
 make down             # docker-compose down
 make logs             # docker-compose logs -f
