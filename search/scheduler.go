@@ -13,6 +13,8 @@ type indexSyncer interface {
 	SyncOnce(context.Context) (SyncStats, error)
 }
 
+type scheduledSyncKey struct{}
+
 type Scheduler struct {
 	indexer indexSyncer
 	cfg     *Config
@@ -29,6 +31,7 @@ func newScheduler(indexer indexSyncer, cfg *Config) *Scheduler {
 // Run runs the initial sync (best-effort, logs but does not return errors) and
 // then loops on a ticker until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) {
+	ctx = context.WithValue(ctx, scheduledSyncKey{}, true)
 	log := applog.With(ctx, logger)
 
 	if _, err := s.indexer.SyncOnce(ctx); err != nil {

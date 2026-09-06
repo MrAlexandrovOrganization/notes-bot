@@ -11,14 +11,14 @@ import (
 )
 
 type tracingSyncer struct {
-	calls chan struct{}
+	calls chan context.Context
 }
 
 func (s *tracingSyncer) SyncOnce(ctx context.Context) (SyncStats, error) {
 	_, span := otel.Tracer("search-scheduler-test").Start(ctx, "syncOnce")
 	span.End()
 	select {
-	case s.calls <- struct{}{}:
+	case s.calls <- ctx:
 	default:
 	}
 	return SyncStats{}, nil
@@ -36,7 +36,7 @@ func TestSchedulerStartsEachSyncInADistinctTrace(t *testing.T) {
 		}
 	})
 
-	syncer := &tracingSyncer{calls: make(chan struct{}, 8)}
+	syncer := &tracingSyncer{calls: make(chan context.Context, 8)}
 	scheduler := newScheduler(syncer, &Config{IndexInterval: time.Millisecond})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -47,7 +47,10 @@ func TestSchedulerStartsEachSyncInADistinctTrace(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		select {
-		case <-syncer.calls:
+		case syncCtx := <-syncer.calls:
+			if scheduled, _ := syncCtx.Value(scheduledSyncKey{}).(bool); !scheduled {
+				t.Error("startup/tick sync is missing scheduled origin")
+			}
 		case <-time.After(time.Second):
 			cancel()
 			t.Fatal("timed out waiting for scheduled sync")

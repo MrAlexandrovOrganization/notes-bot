@@ -172,7 +172,20 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 	if ix.metrics != nil {
 		ix.metrics.recordSync(ctx, stats, time.Since(start))
 	}
-	log.Info("sync done",
+	logSyncSummary(ctx, log, stats, time.Since(start))
+	return stats, nil
+}
+
+func logSyncSummary(ctx context.Context, log *zap.Logger, stats SyncStats, took time.Duration) {
+	write := log.Info
+	scheduled, _ := ctx.Value(scheduledSyncKey{}).(bool)
+	if stats.Errors > 0 {
+		write = log.Warn
+	} else if scheduled && stats.Added == 0 && stats.Updated == 0 && stats.Touched == 0 &&
+		stats.Deleted == 0 && stats.Embedded == 0 && stats.Profiled == 0 {
+		write = log.Debug
+	}
+	write("sync done",
 		zap.Int("seen", stats.Seen),
 		zap.Int("added", stats.Added),
 		zap.Int("updated", stats.Updated),
@@ -181,9 +194,8 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		zap.Int("embedded", stats.Embedded),
 		zap.Int("profiled", stats.Profiled),
 		zap.Int("errors", stats.Errors),
-		zap.Duration("took", time.Since(start)),
+		zap.Duration("took", took),
 	)
-	return stats, nil
 }
 
 func (ix *Indexer) syncFiles(ctx context.Context, log *zap.Logger, files []vaultFile, known map[string]*NoteRow, force bool, stats *SyncStats) {
