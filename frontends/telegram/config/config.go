@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"notes-bot/internal/env"
 )
@@ -32,7 +34,8 @@ type Config struct {
 	LocalAPIURL           string
 
 	// Webhook mode: if WebhookURL is set, bot runs in webhook mode instead of polling.
-	// WebhookURL must be an HTTPS URL reachable by Telegram (e.g. https://bot.example.com/webhook).
+	// WebhookURL must use HTTPS, or HTTP with a configured trusted LocalAPIURL.
+	// The URL must be reachable by the selected Telegram Bot API server.
 	WebhookURL        string
 	WebhookListenAddr string
 	WebhookSecret     string
@@ -92,6 +95,29 @@ func (c *Config) Validate() error {
 	}
 	if c.DayStartHour < 0 || c.DayStartHour > 23 {
 		return fmt.Errorf("DAY_START_HOUR must be between 0 and 23, got %d", c.DayStartHour)
+	}
+	for _, endpoint := range []struct {
+		name string
+		raw  string
+	}{
+		{"TELEGRAM_LOCAL_API_URL", c.LocalAPIURL},
+		{"WEBHOOK_URL", c.WebhookURL},
+	} {
+		if endpoint.raw == "" {
+			continue
+		}
+		u, err := url.Parse(endpoint.raw)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || strings.Contains(endpoint.raw, "#") {
+			// Do not include URLs or parse errors: they may contain credentials.
+			return fmt.Errorf("%s must be an HTTP(S) URL with a host and no credentials or fragment", endpoint.name)
+		}
+		if endpoint.name == "TELEGRAM_LOCAL_API_URL" {
+			if (u.EscapedPath() != "" && u.EscapedPath() != "/") || u.RawQuery != "" || u.ForceQuery {
+				return fmt.Errorf("TELEGRAM_LOCAL_API_URL must be an origin without an API path or query")
+			}
+		} else if u.Scheme == "http" && c.LocalAPIURL == "" {
+			return fmt.Errorf("WEBHOOK_URL must use HTTPS unless TELEGRAM_LOCAL_API_URL is configured")
+		}
 	}
 	if c.WebhookURL != "" && c.WebhookSecret == "" {
 		return fmt.Errorf("TELEGRAM_WEBHOOK_SECRET must be set when WEBHOOK_URL is configured")

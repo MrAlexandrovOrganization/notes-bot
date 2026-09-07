@@ -39,6 +39,15 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		require.Len(t, updates, 1)
 		assert.Equal(t, 42, (<-updates).UpdateID)
 	})
+
+	t.Run("rejects incorrect secret", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"update_id":1}`))
+		req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "incorrect-secret")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusUnauthorized, resp.Code)
+		assert.Empty(t, updates)
+	})
 }
 
 func TestTelegramWebhookHandler_CancelledRequestDoesNotBlock(t *testing.T) {

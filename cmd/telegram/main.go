@@ -191,7 +191,7 @@ func main() {
 	}
 	apiEndpoint := tgbotapi.APIEndpoint
 	if cfg.LocalAPIURL != "" {
-		apiEndpoint = cfg.LocalAPIURL + "/bot%s/%s"
+		apiEndpoint = strings.TrimSuffix(cfg.LocalAPIURL, "/") + "/bot%s/%s"
 	}
 	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, apiEndpoint, httpClient)
 	if err != nil {
@@ -348,10 +348,8 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 }
 
 func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
-	parsedURL, err := url.Parse(cfg.WebhookURL)
-	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
-		log.Fatal("invalid WEBHOOK_URL", zap.Error(err))
-	}
+	// Config.Validate checks the URL and secret before any clients are created.
+	parsedURL, _ := url.Parse(cfg.WebhookURL)
 
 	// telegram-bot-api/v5 v5.5.1 predates SecretToken on WebhookConfig,
 	// so call setWebhook directly with Telegram's official secret_token parameter.

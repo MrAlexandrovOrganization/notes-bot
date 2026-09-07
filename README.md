@@ -58,6 +58,25 @@
 
 Подробная документация для разработки — в `CLAUDE.md`.
 
+## Webhook (Opt-In)
+
+По умолчанию `WEBHOOK_URL` пустой и бот использует polling. Для публичного Telegram Bot API webhook должен использовать HTTPS. HTTP разрешён только при явно заданном `TELEGRAM_LOCAL_API_URL`, указывающем на доверенный локальный Bot API server, работающий в local mode.
+
+Пример конфигурации для отдельного, согласованного оператором включения (это не настройки по умолчанию):
+
+```env
+TELEGRAM_LOCAL_API_URL=http://telegram-bot-api:8081
+WEBHOOK_URL=http://notes-bot-telegram:8080/webhook
+WEBHOOK_LISTEN_ADDR=:8080
+TELEGRAM_WEBHOOK_SECRET=<random_secret>
+```
+
+`TELEGRAM_LOCAL_API_URL` должен быть HTTP(S) origin без credentials, query, fragment и API path; завершающий `/` допустим и убирается при построении API endpoint. Оба webhook-протокола запрещают credentials и fragment. Секрет обязателен: 1–256 символов из `A-Z`, `a-z`, `0-9`, `_`, `-`; он проверяется в заголовке `X-Telegram-Bot-Api-Secret-Token`.
+
+Local API получает токен бота. Доверенность адреса обеспечивает оператор, валидация URL её не доказывает. HTTP допустим только в доверенной приватной сети с контролем proxy и логов. Bot API server должен иметь сетевой доступ к `notes-bot-telegram:8080`; публикация порта наружу не требуется при общей Docker-сети.
+
+Запуск с непустым `WEBHOOK_URL` регистрирует webhook, остановка удаляет его согласно существующему lifecycle. Не применяйте пример без отдельного согласования переключения polling/webhook и cloud/local API. Само изменение кода или документации ничего не активирует.
+
 ## Быстрый старт
 
 ### 1. Создайте бота
