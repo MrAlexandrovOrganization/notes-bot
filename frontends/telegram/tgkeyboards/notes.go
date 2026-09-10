@@ -65,9 +65,7 @@ func BrowseFilePagination(content string, currentPage int) (string, *tgbotapi.In
 	if nav := noteNavigation(currentPage, totalPages, "browse:file_page", "browse:noop"); nav != nil {
 		rows = append(rows, nav)
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "browse:file_back"),
-	))
+	rows = append(rows, BrowseNoteView().InlineKeyboard...)
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	return pageContent, &keyboard
 }

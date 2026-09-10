@@ -21,6 +21,8 @@ func TestBrowseFilePaginationKeepsAllContent(t *testing.T) {
 	firstCallbacks := callbacksFromKeyboard(firstKeyboard)
 	secondCallbacks := callbacksFromKeyboard(secondKeyboard)
 	assert.Contains(t, firstCallbacks, "browse:file_page:1")
+	assert.Contains(t, firstCallbacks, "note:append")
+	assert.Contains(t, secondCallbacks, "note:append")
 	assert.Contains(t, secondCallbacks, "browse:file_page:0")
 	assert.Contains(t, secondCallbacks, "browse:file_back")
 }

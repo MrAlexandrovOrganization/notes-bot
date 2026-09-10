@@ -279,9 +279,14 @@ func (a *App) handleNoteAppendAction(ctx context.Context, tgBot *tgbotapi.BotAPI
 		return err
 	}
 	if uc.ActiveRelpath == "" {
-		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Сначала откройте заметку через поиск."), nil)
+		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Сначала откройте заметку через поиск или дерево папок."), nil)
 	}
-	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateAppendToNoteInput })
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
+		if u.State != tgstates.StateAppendToNoteInput {
+			u.AppendReturnState = u.State
+		}
+		u.State = tgstates.StateAppendToNoteInput
+	})
 	text := tgfmt.Join(
 		tgfmt.Escape("✏️ Что добавить в "),
 		tgfmt.Code(tgfmt.Escape(uc.ActiveRelpath)),
@@ -297,7 +302,7 @@ func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *tgbotapi.BotAP
 
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil || uc.ActiveRelpath == "" {
-		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Контекст потерян, начните поиск заново."), nil, true)
+		sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Контекст потерян, откройте заметку заново через поиск или дерево папок."), nil, true)
 		return
 	}
 	ok, err := a.Core.AppendToNoteByPath(ctx, uc.ActiveRelpath, text)
@@ -307,7 +312,11 @@ func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *tgbotapi.BotAP
 		return
 	}
 
-	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateViewNote })
+	returnState := tgstates.StateViewNote
+	if uc.AppendReturnState == tgstates.StateBrowseFile {
+		returnState = tgstates.StateBrowseFile
+	}
+	a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = returnState })
 
 	confirm := tgfmt.Join(
 		tgfmt.Escape("✅ Добавлено в "),
@@ -315,6 +324,9 @@ func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *tgbotapi.BotAP
 	)
 	hasResults := len(uc.FindResults) > 0
 	kb := tgkeyboards.NoteView(hasResults)
+	if returnState == tgstates.StateBrowseFile {
+		kb = tgkeyboards.BrowseNoteView()
+	}
 	sendText(ctx, tgBot, chatID, confirm, &kb, true)
 	log.Info("appended to note", zap.String("relpath", uc.ActiveRelpath))
 }

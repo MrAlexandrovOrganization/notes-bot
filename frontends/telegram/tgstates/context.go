@@ -59,11 +59,12 @@ type UserContext struct {
 	SmartDraft                SmartDraft    `json:"smart_draft"`
 
 	// Find/view/append flow state.
-	FindQuery       string      `json:"find_query"`
-	FindResults     []SearchHit `json:"find_results"`
-	FindResultsPage int         `json:"find_results_page"`
-	ActiveRelpath   string      `json:"active_relpath"`
-	ActiveNoteID    int64       `json:"active_note_id"`
+	FindQuery         string      `json:"find_query"`
+	FindResults       []SearchHit `json:"find_results"`
+	FindResultsPage   int         `json:"find_results_page"`
+	ActiveRelpath     string      `json:"active_relpath"`
+	ActiveNoteID      int64       `json:"active_note_id"`
+	AppendReturnState UserState   `json:"append_return_state,omitempty"`
 
 	// Vault browse state.
 	BrowsePath string `json:"browse_path"`

@@ -10,6 +10,14 @@ import (
 
 const browsePageSize = 30
 
+// BrowseNoteView keeps note actions within the vault browser.
+func BrowseNoteView() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("✏️ Дописать", "note:append")),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "browse:file_back")),
+	)
+}
+
 func BrowseFolder(entries []clients.DirEntry, currentPath string, page int) tgbotapi.InlineKeyboardMarkup {
 	rows := [][]tgbotapi.InlineKeyboardButton{}
 

@@ -235,6 +235,7 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateBrowseFile
 		u.ActiveRelpath = relpath
+		u.ActiveNoteID = 0
 	})
 
 	return replyToCallback(ctx, tgBot, query, text, kb)
