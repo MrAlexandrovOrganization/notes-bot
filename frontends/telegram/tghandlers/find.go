@@ -138,7 +138,7 @@ func (a *App) showFindResults(ctx context.Context, tgBot *tgbotapi.BotAPI, chatI
 		parts = append(parts,
 			tgfmt.Bold(tgfmt.Escape(fmt.Sprintf("%d. %s", i+1, h.Name))),
 			tgfmt.Raw("\n"),
-			tgfmt.Italic(tgfmt.Escape(h.Relpath)),
+			tgfmt.Code(tgfmt.Escape(h.Relpath)),
 			tgfmt.Raw("\n"),
 		)
 		if h.Snippet != "" {
@@ -265,7 +265,7 @@ func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 	text := tgfmt.Join(
 		tgfmt.Bold(tgfmt.Escape("📄 "+note.Name)),
 		tgfmt.Raw("\n"),
-		tgfmt.Italic(tgfmt.Escape(note.Relpath)),
+		tgfmt.Code(tgfmt.Escape(note.Relpath)),
 		tgfmt.Raw("\n\n"),
 		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)

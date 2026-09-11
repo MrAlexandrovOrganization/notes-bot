@@ -189,19 +189,22 @@ func (a *App) showBrowseFolderAtPage(ctx context.Context, tgBot *tgbotapi.BotAPI
 		return replyToCallback(ctx, tgBot, query, tgfmt.Escape("❌ Ошибка при загрузке содержимого."), nil)
 	}
 
-	var headerText string
+	var headerText tgfmt.HTML
 	if relpath == "" {
 		headerText = "📂 Корень хранилища"
 	} else {
-		headerText = fmt.Sprintf("📂 %s", relpath)
+		headerText = tgfmt.Join(
+			tgfmt.Escape("📂 "),
+			tgfmt.Code(tgfmt.Escape(relpath)),
+		)
 	}
 
 	kb := tgkeyboards.BrowseFolder(entries, relpath, page)
-	text := tgfmt.Escape(headerText)
+	text := headerText
 
 	if len(entries) == 0 {
 		text = tgfmt.Join(
-			tgfmt.Escape(headerText),
+			headerText,
 			tgfmt.Escape("\n\nПапка пуста."),
 		)
 	}
