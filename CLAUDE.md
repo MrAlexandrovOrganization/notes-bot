@@ -66,7 +66,7 @@ This repo (`notes-bot`) runs **5 Go services** in Docker. All infrastructure (Ka
 | telegram | `cmd/telegram/main.go` | — | 9102 | User-facing Telegram bot, Kafka consumer, LLM smart router |
 | web | `cmd/web/main.go` | — | 9105 | Server-rendered web frontend (templ + htmx + Tailwind), password-gated |
 | postgres | docker image | 5432 | — | Reminders storage (notifications) |
-| postgres-search | `pgvector/pgvector:0.8.5-pg16` | 5432 | — | Search storage with pgvector extension |
+| postgres-search | `pgvector/pgvector` (tag in `makefiles/versions.mk`) | 5432 | — | Search storage with pgvector extension |
 
 Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_probe` binary. Telegram and web use HTTP wget checks (`/metrics`, `/healthz` respectively). All containers run as non-root user `app` (UID 10001).
 
@@ -161,7 +161,7 @@ Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwi
 - `frontends/web/webapp/fakes_test.go` — fake `CoreService`/`NotificationsService`/`SearchService`/`LLMService` implementations for handler tests
 - `frontends/web/views/*.templ` — templ components; compiled to `*_templ.go` via `templ generate` (gitignored, like `*.pb.go` — regenerate with `make templ`)
 - `frontends/web/webapp/static/` — `htmx.min.js` (vendored) + `input.css` (Tailwind source, checked in) + `tailwind.css` (built at Docker-image-build time via a Node-based `@tailwindcss/cli` stage, gitignored)
-- `frontends/web/Dockerfile` — 4 stages: `gobuilder` (proto+templ codegen, same as telegram's `buf generate`) → `twbuilder` (`node:20-alpine`, builds `tailwind.css` from the generated views — the standalone Bun-based Tailwind CLI is unreliable under some container runtimes, hence Node) → `finalbuilder` (copies `tailwind.css` back, runs `go build`) → `alpine:3.20` runtime
+- `frontends/web/Dockerfile` — 4 stages: `gobuilder` (proto+templ codegen) → `twbuilder` (Node, builds `tailwind.css` from the generated views — the standalone Bun-based Tailwind CLI is unreliable under some container runtimes, hence Node) → `finalbuilder` (copies `tailwind.css` back, runs `go build`) → Alpine runtime. Image/tool versions come from `makefiles/versions.mk` and `go.mod`.
 
 ### Internal Packages (`internal/`)
 - `internal/applog/applog.go` — `New(service, secrets...)` creates the standard production zap logger (JSON stdout, time/level/msg + service attr, LOG_LEVEL, secret masking); `With(ctx, l)` enriches with OTel trace/span IDs
@@ -181,7 +181,7 @@ Server-rendered HTML (Go `templ` components + `htmx` for partial updates, Tailwi
 - `proto/notifications/notifications.proto` — 4 RPCs for reminders
 - `proto/search/search.proto` — RPCs for search
 - `proto/whisper/whisper.proto` — synced from `backends/transcriber/proto/whisper.proto` via `make proto`
-- `proto/*/*.pb.go`, `proto/*/*_grpc.pb.go` — generated Go stubs (gitignored, regenerated via `buf generate`)
+- `proto/*/*.pb.go`, `proto/*/*_grpc.pb.go` — generated Go stubs (gitignored, regenerated via `make proto-generate`)
 
 ## Note File Format
 
@@ -305,7 +305,7 @@ WEB_LISTEN_ADDR=:8090        # web frontend listen address
 
 ### Adding a new gRPC method (Go)
 1. Add to the relevant `proto/*.proto` file
-2. Run `make proto` (or `buf generate` if proto stubs already synced)
+2. Run `make proto` (or `make proto-generate` if proto stubs already synced)
 3. Implement in the service's `server.go`
 4. Add method to the corresponding interface in `frontends/telegram/clients/interfaces.go`
 5. Implement in the corresponding client in `frontends/telegram/clients/`
@@ -327,7 +327,7 @@ Telegram bot sub-packages use prefixed names to avoid conflicts:
 - `tgfmt` — HTML formatting helpers for Telegram
 
 ### HTML formatting
-Telegram uses `github.com/mymmrac/telego` v1.12.1 with the standard `net/http`
+Telegram uses `github.com/mymmrac/telego` (version in `go.mod`) with the standard `net/http`
 client (timeouts and `telegramTracingTransport`). Pass the active context to
 Bot API methods. Callback messages are `MaybeInaccessibleMessage`:
 message-based flows accept only `*telego.Message`. `SendMessage` returns a
@@ -383,7 +383,7 @@ Unit test packages: `./core/...`, `./core/features/...`, `./notifications/...`, 
 
 Integration tests: `integration/core_test.go` — 22 self-contained tests (spin up their own core gRPC server on a temp NOTES_DIR; run in CI via `make test-integration-ci`).
 
-CI (`.github/workflows/ci-cd.yml`): on every push/PR to main runs `buf lint` + `buf breaking` (against main), `buf generate`, `make templ`, `make lint` (gofmt+vet), golangci-lint (`.golangci.yml`), `make test` (race + coverage), `make test-integration-ci`, and `docker compose build` (images are never first built on the deploy VM). Deploy job has a concurrency group and pinned action version.
+CI (`.github/workflows/ci-cd.yml`): on every push/PR to main runs `make proto-lint`, `make proto-breaking` (against main), `make proto-generate`, `make templ`, `make lint` (gofmt+vet), `make install-golangci-lint` + `make lint-golangci`, `make test` (race + coverage), `make test-integration-ci`, and `make build` (images are never first built on the deploy VM). Deploy job has a concurrency group and pinned action version.
 
 ## Notes Volume Structure (expected)
 
@@ -398,9 +398,9 @@ $NOTES_DIR/
 
 ## Docker
 
-- All Dockerfiles use multi-stage builds: `golang:1.26.7-alpine` builder → `alpine:3.20` runtime (`frontends/web/Dockerfile` adds a `node:20-alpine` stage to build Tailwind CSS — see Web Frontend section above). Local and CI Go version comes from `go.mod` (1.26.7).
+- All Dockerfiles use multi-stage builds: Go builder → Alpine runtime (web adds a Node stage for Tailwind). Go, templ and protoc-gen-go versions come from `go.mod`; other build tool/image versions live in `makefiles/versions.mk`. Run `make versions` to inspect them. Always use make targets for Compose operations: Make exports required versions, Compose passes them as build args. No fallback versions in Dockerfiles. GitHub Actions refs stay static in the workflow.
 - Binaries built with `CGO_ENABLED=0 -ldflags="-s -w"` (static, stripped)
 - Containers run as non-root user `app` (UID 10001)
-- `grpc_health_probe` downloaded at build time (v0.4.28)
+- `grpc_health_probe` installed at build time (version in `makefiles/versions.mk`)
 - `.dockerignore` excludes `.git`, `docs/`, `notes/`, `third_party/`, test artifacts, env files
 - `docker-compose.base.yml` defines shared logging + resource limits

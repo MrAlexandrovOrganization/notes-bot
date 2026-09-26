@@ -31,15 +31,14 @@ jobs:
 
       # Cache prebuilt dev tools (buf, protoc-gen-*, templ) and buf's own
       # module cache so `make install` and `buf` don't recompile/download
-      # from scratch on every run. Keyed on go.sum + Makefile so a tool
-      # version bump (Makefile) busts the cache instead of serving stale bins.
+      # from scratch on every run. Include both canonical version sources.
       - name: Cache installed tools
         uses: actions/cache@v4
         with:
           path: |
             ~/go/bin
             ~/.cache/buf
-          key: tools-${{ runner.os }}-${{ hashFiles('go.sum', 'Makefile') }}
+          key: tools-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'Makefile', 'makefiles/versions.mk') }}
           restore-keys: |
             tools-${{ runner.os }}-
 
@@ -50,10 +49,10 @@ jobs:
         run: make proto-lint
 
       - name: Check proto breaking changes
-        run: buf breaking proto --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=proto"
+        run: make proto-breaking PROTO_BREAKING_AGAINST="https://github.com/${{ github.repository }}.git#branch=main,subdir=proto"
 
       - name: Generate proto stubs
-        run: buf generate
+        run: make proto-generate
 
       - name: Generate templ views
         run: make templ
@@ -61,14 +60,11 @@ jobs:
       - name: Lint (gofmt + vet)
         run: make lint
 
+      - name: Install golangci-lint
+        run: make install-golangci-lint
+
       - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v9
-        with:
-          # Pin a v2 release built with Go >= our go.mod directive.
-          # golangci-lint refuses to lint modules targeting a newer Go than
-          # it was built with, so both sides must stay in sync.
-          version: v2.13.1
-          args: ./...
+        run: make lint-golangci
 
       - name: Test (race + coverage)
         run: make test
@@ -86,7 +82,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build Docker images
-        run: docker compose build
+        run: make build
         env:
           # Placeholders: compose interpolates these while parsing the file
           # (e.g. "${NOTES_DIR}:/notes" volume specs), but building images

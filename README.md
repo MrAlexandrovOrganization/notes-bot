@@ -254,21 +254,26 @@ tags:
 
 ## Команды разработки
 
-Для локальной разработки используется Go **1.26.7** (`go.mod`; при включённом
-`GOTOOLCHAIN=auto` Go скачает подходящий toolchain). Все пять Docker-сборок
-закреплены на `golang:1.26.7-alpine`, GitHub Actions берёт версию из `go.mod`.
-Telegram-клиент — `github.com/mymmrac/telego` **v1.12.1**; поддерживаются polling,
+Версия Go задаётся в `go.mod` (при включённом `GOTOOLCHAIN=auto` Go скачает
+подходящий toolchain). Все пять Docker-сборок и GitHub Actions используют её.
+Telegram-клиент — `github.com/mymmrac/telego` (версия в `go.mod`); поддерживаются polling,
 webhook, локальный Bot API и HTML-форматирование.
 Тесты используют fake HTTP transport и локальные HTTP-серверы без обращения
 к Telegram. В `make test` включены проверки точки входа `cmd/telegram`.
 
 ```bash
+make versions         # Показать версии инструментов и образов
+make install          # Установить buf, protobuf-генераторы и templ
+make install-linters  # Установить golangci-lint и govulncheck
+make build            # Собрать все пять образов без запуска сервисов
 make test-go          # Go unit тесты (core + notifications + telegram handlers)
 make test-go-cover    # Unit тесты + coverage
 make cover            # Суммарное покрытие (unit + integration)
 make cover-html       # Coverage HTML отчёт (открывает браузер)
 make test-integration # Integration тесты
 make proto            # Регенерация gRPC stubs
+make proto-generate   # Генерация из proto в репозитории, без синхронизации Whisper
+make proto-breaking   # Проверка совместимости proto с main
 make fmt              # применить gofmt ко всему Go-коду
 make fmt-check        # проверить форматирование без изменений
 make format           # алиас make fmt
@@ -280,6 +285,22 @@ make build-core       # Пересборка core образа
 make build-notifications # Пересборка notifications образа
 make build-telegram   # Пересборка telegram образа
 ```
+
+### Обновление версий
+
+- **Go, templ и protobuf:** изменить соответствующую версию в `go.mod`;
+  Makefile автоматически получает версию Go, templ CLI и protoc-gen-go оттуда.
+- **Остальные инструменты и образы:** изменить `makefiles/versions.mk`.
+  Версии записываются без префикса `v`; версии модулей из `go.mod` уже содержат его.
+- **GitHub Actions:** ссылки `uses: …@…` остаются в workflow, поскольку GitHub
+  требует статические ссылки на actions.
+
+Сборку и управление контейнерами запускать через `make`: он экспортирует версии
+в Compose, который передаёт их в Dockerfile через build args. Числовых fallback-версий
+в Dockerfile и Compose нет. CI использует те же make-цели; ключ кеша инструментов
+учитывает `go.mod`, `go.sum`, `Makefile` и `makefiles/versions.mk`.
+После обновления версий переустановить локальные инструменты через `make install`
+и, если менялись линтеры, `make install-linters`.
 
 ## Переменные окружения
 
@@ -316,11 +337,11 @@ make build-telegram   # Пересборка telegram образа
 
 ## Технологии
 
-- **Go 1.26.7** — core, notifications, search, telegram, web
-- **telego 1.12.1** — Telegram Bot API
+- **Go** (версия в `go.mod`) — core, notifications, search, telegram, web
+- **telego** (версия в `go.mod`) — Telegram Bot API
 - **Python 3.11** — whisper (faster-whisper, нет Go-альтернативы)
 - **gRPC** (grpcio / google.golang.org/grpc) — межсервисное взаимодействие
-- **PostgreSQL 16** + pgx/v5 — напоминания
+- **PostgreSQL** (образ в `makefiles/versions.mk`) + pgx/v5 — напоминания
 - **faster-whisper** — транскрибация речи
 - **Kafka 4.0** (confluentinc/cp-kafka, KRaft) + segmentio/kafka-go — очередь напоминаний
 - **Redis 7** + go-redis/v9 — состояние пользователей

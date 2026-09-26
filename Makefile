@@ -1,5 +1,6 @@
 DOCKER_COMPOSE = docker compose
 MONITORING_DATA_DIR ?= $(HOME)/.monitoring
+include makefiles/versions.mk
 
 # Per-service targets live in makefiles/ to keep this file focused on
 # top-level workflows (build, test, deploy).
@@ -14,10 +15,10 @@ WHISPER_PROTO_SRC ?= ../../backends/transcriber/proto/whisper.proto
 # buf install: https://buf.build/docs/installation
 #   macOS: brew install bufbuild/buf/buf
 install:
-	go install github.com/bufbuild/buf/cmd/buf@v1.67.0
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
-	go install github.com/a-h/templ/cmd/templ@v0.3.1020
+	go install github.com/bufbuild/buf/cmd/buf@v$(BUF_VERSION)
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v$(PROTOC_GEN_GO_GRPC_VERSION)
+	go install github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
 
 # Regenerate *_templ.go from frontends/web/views/*.templ (gitignored, like the
 # proto stubs — run this after checkout or after editing a .templ file).
@@ -124,14 +125,22 @@ lint:
 lint-golangci:
 	golangci-lint run ./...
 
-install-linters:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
-	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+install-linters: install-golangci-lint
+	go install golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION)
+
+install-golangci-lint:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
 
 vulncheck:
 	govulncheck ./...
 
 # Print helpers for CI / scripts
+versions:
+	@$(foreach var,$(VERSION_VARS),printf '%s=%s\n' '$(var)' '$($(var))';)
+
+build:
+	$(DOCKER_COMPOSE) build
+
 print-unit-pkgs:
 	@echo $(GO_UNIT_PKGS)
 
@@ -175,14 +184,21 @@ proto:
 	else \
 		cp "$(WHISPER_PROTO_SRC)" proto/whisper/whisper.proto; \
 	fi
+	$(MAKE) proto-generate
+
+proto-generate:
 	buf generate
+
+PROTO_BREAKING_AGAINST ?= .git\#branch=main,subdir=proto
+proto-breaking:
+	buf breaking proto --against "$(PROTO_BREAKING_AGAINST)"
 
 # Same as proto but runs buf inside Docker — no local buf installation required.
 proto-docker:
 	docker run --rm \
 		-v $(PWD):/workspace \
 		-w /workspace \
-		bufbuild/buf:1.67.0 \
+		bufbuild/buf:$(BUF_VERSION) \
 		generate
 
 proto-lint:
@@ -199,5 +215,7 @@ monitoring-unregister:
 	rm -f $(MONITORING_DATA_DIR)/prometheus-targets/notes-bot.yml
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
+
+.PHONY: versions build install-golangci-lint proto-generate proto-breaking test-integration-ci
 
 .PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint fmt fmt-check format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

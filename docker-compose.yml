@@ -1,3 +1,11 @@
+x-build-args: &build-args
+  GO_VERSION: ${GO_VERSION:?Run via make}
+  ALPINE_VERSION: ${ALPINE_VERSION:?Run via make}
+  BUF_VERSION: ${BUF_VERSION:?Run via make}
+  PROTOC_GEN_GO_VERSION: ${PROTOC_GEN_GO_VERSION:?Run via make}
+  PROTOC_GEN_GO_GRPC_VERSION: ${PROTOC_GEN_GO_GRPC_VERSION:?Run via make}
+  GRPC_HEALTH_PROBE_VERSION: ${GRPC_HEALTH_PROBE_VERSION:?Run via make}
+
 networks:
   default:
     driver: bridge
@@ -24,7 +32,7 @@ networks:
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_VERSION:?Run via make}
     container_name: notes-bot-postgres
     restart: unless-stopped
     environment:
@@ -49,6 +57,7 @@ services:
     build:
       context: .
       dockerfile: core/Dockerfile
+      args: *build-args
     restart: unless-stopped
     volumes:
       - ${NOTES_DIR}:/notes:rw
@@ -76,6 +85,7 @@ services:
     build:
       context: .
       dockerfile: notifications/Dockerfile
+      args: *build-args
     restart: unless-stopped
     env_file:
       - .env
@@ -112,7 +122,7 @@ services:
       service: base
 
   postgres-search:
-    image: pgvector/pgvector:0.8.5-pg16
+    image: pgvector/pgvector:${PGVECTOR_VERSION:?Run via make}
     container_name: notes-bot-postgres-search
     restart: unless-stopped
     # Checkpoint progress is routine PostgreSQL noise; keep failures and other
@@ -146,6 +156,7 @@ services:
     build:
       context: .
       dockerfile: search/Dockerfile
+      args: *build-args
     restart: unless-stopped
     env_file:
       - .env
@@ -212,6 +223,7 @@ services:
     build:
       context: .
       dockerfile: frontends/telegram/Dockerfile
+      args: *build-args
     restart: unless-stopped
     env_file:
       - .env
@@ -285,6 +297,11 @@ services:
     build:
       context: .
       dockerfile: frontends/web/Dockerfile
+      args:
+        <<: *build-args
+        TEMPL_VERSION: ${TEMPL_VERSION:?Run via make}
+        NODE_VERSION: ${NODE_VERSION:?Run via make}
+        TAILWIND_VERSION: ${TAILWIND_VERSION:?Run via make}
     restart: unless-stopped
     env_file:
       - .env
