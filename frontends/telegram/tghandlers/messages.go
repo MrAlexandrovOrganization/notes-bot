@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -17,12 +17,12 @@ import (
 	"notes-bot/internal/telemetry"
 )
 
-type stateTextHandler func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext)
+type stateTextHandler func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, chatID, userID int64, text string, uc *tgstates.UserContext)
 
 // replyToStateMessage keeps wizard prompts in one Telegram message. This
 // removes obsolete buttons (especially the cancel button) as soon as the user
 // advances to the next step.
-func (a *App) replyToStateMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func (a *App) replyToStateMessage(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text tgfmt.HTML, keyboard *telego.InlineKeyboardMarkup) error {
 	uc, err := a.State.GetContext(ctx, userID)
 	if err == nil && uc.LastMessageID != 0 {
 		if err := editText(ctx, tgBot, chatID, uc.LastMessageID, text, keyboard); err == nil {
@@ -36,51 +36,51 @@ func (a *App) replyToStateMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, c
 // To add a new state: define the constant in tgstates/context.go, then add an entry here.
 // States not listed fall through to handleAppendNote (default note-append behaviour).
 var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
-	tgstates.StateWaitingRating: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
+	tgstates.StateWaitingRating: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
 		a.handleRatingInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
 	},
-	tgstates.StateReminderCreateTitle: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateTitle: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderTitleInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateReminderCreateTime: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateTime: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateReminderCreateDay: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateDay: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateReminderCreateInterval: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateInterval: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateReminderCreateDate: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateDate: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderParamInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateWaitingNewTask: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
+	tgstates.StateWaitingNewTask: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
 		a.handleAddTaskInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
 	},
-	tgstates.StateReminderCreateNL: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderCreateNL: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderNLInput(ctx, tgBot, chatID, userID, text)
 	},
-	tgstates.StateReminderPostponeInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderPostponeInput: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderPostponeTextInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateReminderPostponeTime: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, _, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateReminderPostponeTime: func(a *App, ctx context.Context, tgBot *telego.Bot, update *telego.Update, _, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleReminderPostponeTimeInput(ctx, tgBot, update, userID, text)
 	},
-	tgstates.StateSmartInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateSmartInput: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleSmartInput(ctx, tgBot, chatID, userID, text)
 	},
-	tgstates.StateFindNoteInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateFindNoteInput: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleFindInput(ctx, tgBot, chatID, userID, text)
 	},
-	tgstates.StateAppendToNoteInput: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateAppendToNoteInput: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleAppendToNoteInput(ctx, tgBot, chatID, userID, text)
 	},
-	tgstates.StateAskQuestion: func(a *App, ctx context.Context, tgBot *tgbotapi.BotAPI, _ *tgbotapi.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
+	tgstates.StateAskQuestion: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, _ *tgstates.UserContext) {
 		a.handleAskInput(ctx, tgBot, chatID, userID, text)
 	},
 }
 
-func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func (a *App) HandleTextMessage(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {
 	if update.Message == nil || update.Message.From == nil || update.Message.Text == "" {
 		return
 	}
@@ -120,7 +120,7 @@ func (a *App) HandleTextMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, upd
 	}
 }
 
-func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+func (a *App) handleRatingInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text, activeDate string) {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 
@@ -145,7 +145,7 @@ func (a *App) handleRatingInput(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 	log.Info("user set rating", zap.Int64("user_id", userID), zap.Int("rating", rating))
 }
 
-func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+func (a *App) handleAddTaskInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text, activeDate string) {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 
@@ -170,7 +170,7 @@ func (a *App) handleAddTaskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, ch
 	log.Info("user added task", zap.Int64("user_id", userID))
 }
 
-func (a *App) handleAppendNote(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text, activeDate string) {
+func (a *App) handleAppendNote(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text, activeDate string) {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", activeDate))
 	defer span.End()
 

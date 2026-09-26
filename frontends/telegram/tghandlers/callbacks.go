@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
@@ -24,7 +24,7 @@ import (
 	"notes-bot/internal/timeutil"
 )
 
-var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.BotAPI, *tgbotapi.CallbackQuery, int64, []string) error{
+var callbackActionHandlers = map[string]func(*App, context.Context, *telego.Bot, *telego.CallbackQuery, int64, []string) error{
 	"menu":     (*App).handleMenuAction,
 	"task":     (*App).handleTaskAction,
 	"cal":      (*App).handleCalAction,
@@ -36,9 +36,9 @@ var callbackActionHandlers = map[string]func(*App, context.Context, *tgbotapi.Bo
 	"browse":   (*App).handleBrowseAction,
 }
 
-func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func (a *App) HandleCallback(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {
 	query := update.CallbackQuery
-	if query == nil || query.Data == "" || query.From == nil {
+	if query == nil || query.Data == "" || query.From.ID == 0 {
 		return
 	}
 
@@ -46,7 +46,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 	defer span.End()
 
 	log := applog.With(ctx, a.Logger)
-	go tgBot.Request(tgbotapi.NewCallback(query.ID, ""))
+	go tgBot.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: query.ID})
 
 	userID := query.From.ID
 	if !a.authorized(userID) {
@@ -54,11 +54,16 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 		log.Warn("unauthorized callback", zap.Int64("user_id", userID))
 		return
 	}
+	// Inline-mode callbacks and inaccessible messages cannot drive our
+	// message-based flows. Acknowledge them without changing user state.
+	if message, ok := query.Message.(*telego.Message); !ok || message == nil {
+		return
+	}
 	// Remember the message containing the current flow. Text replies can then
 	// edit it in place instead of leaving stale inline buttons in the chat.
 	if query.Message != nil {
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
-			u.LastMessageID = query.Message.MessageID
+			u.LastMessageID = query.Message.GetMessageID()
 		})
 	}
 
@@ -98,7 +103,7 @@ func (a *App) HandleCallback(ctx context.Context, tgBot *tgbotapi.BotAPI, update
 
 // ── Menu ──────────────────────────────────────────────────────────────────
 
-func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleMenuAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -163,7 +168,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 // ── Smart router ──────────────────────────────────────────────────────────
 
-func (a *App) handleSmartAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleSmartAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -187,7 +192,7 @@ func (a *App) handleSmartAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
 
-func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleTaskAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -210,7 +215,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 		if ok, _ := a.Core.ToggleTask(ctx, uc.ActiveDate, idx); ok {
 			return a.showTasks(ctx, tgBot, query, userID)
 		}
-		go tgBot.Request(tgbotapi.NewCallbackWithAlert(query.ID, "❌ Ошибка при переключении задачи"))
+		go tgBot.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "❌ Ошибка при переключении задачи", ShowAlert: true})
 
 	case "add":
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })
@@ -240,7 +245,7 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 // ── Calendar ──────────────────────────────────────────────────────────────
 
-func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleCalAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -314,7 +319,7 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query
 
 // ── Note ───────────────────────────────────────────────────────────────────
 
-func (a *App) handleNoteAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleNoteAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -344,7 +349,7 @@ func (a *App) handleNoteAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 // ── Reminder ──────────────────────────────────────────────────────────────
 
-func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleReminderAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -450,7 +455,7 @@ func (a *App) handleReminderAction(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 
 // ── Shared display helpers ─────────────────────────────────────────────────
 
-func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) showMainMenu(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -467,7 +472,7 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) showTasks(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -501,7 +506,7 @@ func (a *App) showTasks(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbo
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) showCalendar(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -525,7 +530,7 @@ func (a *App) showCalendar(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) showNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) showNote(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

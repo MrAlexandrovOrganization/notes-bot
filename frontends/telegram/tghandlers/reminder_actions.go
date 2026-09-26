@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
@@ -17,7 +17,7 @@ import (
 
 // ── List & Navigation ──────────────────────────────────────────────────────
 
-func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -50,7 +50,7 @@ func (a *App) HandleMenuNotifications(ctx context.Context, tgBot *tgbotapi.BotAP
 	log.Info("user opened reminders", zap.Int64("user_id", userID))
 }
 
-func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, page int) {
+func (a *App) HandleReminderPage(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, page int) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)
@@ -69,7 +69,7 @@ func (a *App) HandleReminderPage(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 // ── Delete, Done, Reject, Back, Cancel ────────────────────────────────────
 
-func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+func (a *App) HandleReminderDelete(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -98,13 +98,13 @@ func (a *App) HandleReminderDelete(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	log.Info("deleted reminder", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
-func (a *App) getMainMenuKeyboard(ctx context.Context) tgbotapi.InlineKeyboardMarkup {
+func (a *App) getMainMenuKeyboard(ctx context.Context) telego.InlineKeyboardMarkup {
 	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	return tgkeyboards.MainMenu("")
 }
 
-func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64, createTaskFlag int, dateStr string) {
+func (a *App) HandleReminderDone(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, reminderID int64, createTaskFlag int, dateStr string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -133,7 +133,7 @@ func (a *App) HandleReminderDone(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 
 	// Preserve the fired reminder in place and remove its buttons. This
 	// makes repeated clicks impossible without creating extra messages.
-	_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
+	_ = editText(ctx, tgBot, query.Message.GetChat().ID, query.Message.GetMessageID(),
 		acknowledgedReminderText(reminder.Title), nil)
 	log.Info("reminder acknowledged", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
@@ -147,20 +147,20 @@ func acknowledgedReminderText(title string) tgfmt.HTML {
 }
 
 // HandleReminderReject dismisses the current reminder firing without affecting the schedule.
-func (a *App) HandleReminderReject(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+func (a *App) HandleReminderReject(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	original := ""
-	if query.Message != nil {
-		original = query.Message.Text
-		_ = editText(ctx, tgBot, query.Message.Chat.ID, query.Message.MessageID,
+	if message, ok := query.Message.(*telego.Message); ok {
+		original = message.Text
+		_ = editText(ctx, tgBot, message.Chat.ID, message.MessageID,
 			tgfmt.Escape(original+"\n\n❌ Отклонено."), nil)
 	}
 	applog.With(ctx, a.Logger).Info("reminder rejected", zap.Int64("user_id", userID), zap.Int64("reminder_id", reminderID))
 }
 
-func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleReminderBack(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	uc, err := a.State.GetContext(ctx, userID)
@@ -183,7 +183,7 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) HandleReminderCancel(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleReminderCancel(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

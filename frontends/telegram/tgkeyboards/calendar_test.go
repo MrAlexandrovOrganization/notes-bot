@@ -105,8 +105,8 @@ func TestCalendar_DayCallbackFormat(t *testing.T) {
 			}
 			// Day buttons should have callback "cal:select:DD-MMM-YYYY".
 			cb := ""
-			if btn.CallbackData != nil {
-				cb = *btn.CallbackData
+			if btn.CallbackData != "" {
+				cb = btn.CallbackData
 			}
 			assert.True(t,
 				strings.HasPrefix(cb, "cal:select:"),
@@ -122,7 +122,7 @@ func TestCalendar_AllDaysPresent(t *testing.T) {
 	dayCount := 0
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil && strings.HasPrefix(*btn.CallbackData, "cal:select:") {
+			if strings.HasPrefix(btn.CallbackData, "cal:select:") {
 				dayCount++
 			}
 		}
@@ -133,10 +133,10 @@ func TestCalendar_AllDaysPresent(t *testing.T) {
 func TestCalendar_NavigationCallbacks(t *testing.T) {
 	kb := Calendar(t.Context(), 2025, 5, "", nil)
 	header := kb.InlineKeyboard[0]
-	require.NotNil(t, header[0].CallbackData)
-	require.NotNil(t, header[2].CallbackData)
-	assert.Equal(t, "cal:prev", *header[0].CallbackData)
-	assert.Equal(t, "cal:next", *header[2].CallbackData)
+	require.NotEmpty(t, header[0].CallbackData)
+	require.NotEmpty(t, header[2].CallbackData)
+	assert.Equal(t, "cal:prev", header[0].CallbackData)
+	assert.Equal(t, "cal:next", header[2].CallbackData)
 }
 
 func TestCalendar_HeaderContainsMonthYear(t *testing.T) {

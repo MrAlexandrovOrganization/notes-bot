@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -28,23 +28,26 @@ func isRetriableNetworkError(err error) bool {
 }
 
 // sendText sends a new text message to a chat with optional keyboard, using HTML parse mode.
-func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup, disableNotification bool) error {
-	_, span := telemetry.StartSpan(ctx)
+func sendText(ctx context.Context, bot *telego.Bot, chatID int64, text tgfmt.HTML, keyboard *telego.InlineKeyboardMarkup, disableNotification bool) error {
+	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	msg := tgbotapi.NewMessage(chatID, text.String())
+	msg := &telego.SendMessageParams{ChatID: telego.ChatID{ID: chatID}, Text: text.String()}
 	msg.ParseMode = "HTML"
 	msg.DisableNotification = disableNotification
 	if keyboard != nil {
-		msg.ReplyMarkup = *keyboard
+		msg.ReplyMarkup = keyboard
 	}
 	var err error
-	for range 2 {
-		_, err = bot.Send(msg)
-		if err == nil || !isRetriableNetworkError(err) {
+	for attempt := range 2 {
+		_, err = bot.SendMessage(ctx, msg)
+		if err == nil || !isRetriableNetworkError(err) || attempt == 1 {
 			break
 		}
-		time.Sleep(500 * time.Millisecond)
+		if waitErr := waitTelegramRetry(ctx); waitErr != nil {
+			err = waitErr
+			break
+		}
 	}
 	if err != nil {
 		span.RecordError(err)
@@ -54,28 +57,31 @@ func sendText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text tgfm
 }
 
 // editText edits an existing message with optional keyboard, using HTML parse mode.
-func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func editText(ctx context.Context, bot *telego.Bot, chatID int64, messageID int, text tgfmt.HTML, keyboard *telego.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.Int64("chat_id", chatID), attribute.Int("message_id", messageID))
 	defer span.End()
 
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, text.String())
+	edit := &telego.EditMessageTextParams{ChatID: telego.ChatID{ID: chatID}, MessageID: messageID, Text: text.String()}
 	edit.ParseMode = "HTML"
 	if keyboard != nil {
 		edit.ReplyMarkup = keyboard
 	}
 	var err error
-	for range 2 {
-		_, sendSpan := telemetry.StartSpan(ctx)
-		_, err = bot.Send(edit)
+	for attempt := range 2 {
+		sendCtx, sendSpan := telemetry.StartSpan(ctx)
+		_, err = bot.EditMessageText(sendCtx, edit)
 		if err != nil {
 			sendSpan.RecordError(err)
 			sendSpan.SetStatus(codes.Error, err.Error())
 		}
 		sendSpan.End()
-		if err == nil || !isRetriableNetworkError(err) {
+		if err == nil || !isRetriableNetworkError(err) || attempt == 1 {
 			break
 		}
-		time.Sleep(500 * time.Millisecond)
+		if waitErr := waitTelegramRetry(ctx); waitErr != nil {
+			err = waitErr
+			break
+		}
 	}
 
 	if err != nil {
@@ -89,8 +95,19 @@ func editText(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID
 	return err
 }
 
+func waitTelegramRetry(ctx context.Context) error {
+	timer := time.NewTimer(500 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 // replyToUpdate sends a reply to a message update.
-func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToUpdate(ctx context.Context, bot *telego.Bot, update *telego.Update, text tgfmt.HTML, keyboard *telego.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -101,12 +118,12 @@ func replyToUpdate(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.U
 }
 
 // replyToCallback edits the message of a callback query.
-func replyToCallback(ctx context.Context, bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, text tgfmt.HTML, keyboard *tgbotapi.InlineKeyboardMarkup) error {
+func replyToCallback(ctx context.Context, bot *telego.Bot, query *telego.CallbackQuery, text tgfmt.HTML, keyboard *telego.InlineKeyboardMarkup) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	if query.Message == nil {
 		return fmt.Errorf("callback has no message")
 	}
-	return editText(ctx, bot, query.Message.Chat.ID, query.Message.MessageID, text, keyboard)
+	return editText(ctx, bot, query.Message.GetChat().ID, query.Message.GetMessageID(), text, keyboard)
 }

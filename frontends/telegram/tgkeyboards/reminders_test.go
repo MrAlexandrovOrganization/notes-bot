@@ -18,8 +18,8 @@ func TestMainMenu_ContainsExpectedCallbacks(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -41,8 +41,8 @@ func TestReminderNotification_WithTask(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -56,8 +56,8 @@ func TestReminderNotification_WithoutTask(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -73,8 +73,8 @@ func TestReminderNotification_CreateTaskFalseEmptyDate(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -88,8 +88,8 @@ func TestRemindersList_Empty(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -107,8 +107,8 @@ func TestRemindersList_WithReminders(t *testing.T) {
 	var deleteCbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil && strings.HasPrefix(*btn.CallbackData, "reminder:delete:") {
-				deleteCbs = append(deleteCbs, *btn.CallbackData)
+			if strings.HasPrefix(btn.CallbackData, "reminder:delete:") {
+				deleteCbs = append(deleteCbs, btn.CallbackData)
 			}
 		}
 	}
@@ -139,8 +139,8 @@ func TestRemindersList_Pagination(t *testing.T) {
 	var nextCbs []string
 	for _, row := range kb0.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil && strings.HasPrefix(*btn.CallbackData, "reminder:page:") {
-				nextCbs = append(nextCbs, *btn.CallbackData)
+			if strings.HasPrefix(btn.CallbackData, "reminder:page:") {
+				nextCbs = append(nextCbs, btn.CallbackData)
 			}
 		}
 	}
@@ -157,8 +157,8 @@ func TestRemindersList_SecondPage(t *testing.T) {
 	var prevCbs []string
 	for _, row := range kb1.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil && strings.HasPrefix(*btn.CallbackData, "reminder:page:") {
-				prevCbs = append(prevCbs, *btn.CallbackData)
+			if strings.HasPrefix(btn.CallbackData, "reminder:page:") {
+				prevCbs = append(prevCbs, btn.CallbackData)
 			}
 		}
 	}
@@ -173,8 +173,8 @@ func TestNLReminderConfirm_Buttons(t *testing.T) {
 	require.Len(t, kb.InlineKeyboard[0], 3)
 	var cbs []string
 	for _, btn := range kb.InlineKeyboard[0] {
-		if btn.CallbackData != nil {
-			cbs = append(cbs, *btn.CallbackData)
+		if btn.CallbackData != "" {
+			cbs = append(cbs, btn.CallbackData)
 		}
 	}
 	assert.Contains(t, cbs, "reminder:nl_confirm")
@@ -189,8 +189,8 @@ func TestTaskConfirm_Buttons(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -206,8 +206,8 @@ func TestScheduleType_HasAllTypes(t *testing.T) {
 	var cbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil {
-				cbs = append(cbs, *btn.CallbackData)
+			if btn.CallbackData != "" {
+				cbs = append(cbs, btn.CallbackData)
 			}
 		}
 	}
@@ -223,9 +223,9 @@ func TestReminderCancel_HasCancelAndBack(t *testing.T) {
 	kb := ReminderCancel()
 	require.Len(t, kb.InlineKeyboard, 2)
 	require.Len(t, kb.InlineKeyboard[0], 1)
-	require.NotNil(t, kb.InlineKeyboard[0][0].CallbackData)
-	assert.Equal(t, "reminder:cancel", *kb.InlineKeyboard[0][0].CallbackData)
-	assert.Equal(t, "reminder:back", *kb.InlineKeyboard[1][0].CallbackData)
+	require.NotEmpty(t, kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "reminder:cancel", kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "reminder:back", kb.InlineKeyboard[1][0].CallbackData)
 }
 
 // --- ReminderCalendar ---
@@ -237,10 +237,10 @@ func TestReminderCalendar_HeaderRow(t *testing.T) {
 
 	// Row 0: prev / month+year / next
 	require.Len(t, rows[0], 3)
-	require.NotNil(t, rows[0][0].CallbackData)
-	assert.Equal(t, "reminder:cal:prev:once", *rows[0][0].CallbackData)
-	require.NotNil(t, rows[0][2].CallbackData)
-	assert.Equal(t, "reminder:cal:next:once", *rows[0][2].CallbackData)
+	require.NotEmpty(t, rows[0][0].CallbackData)
+	assert.Equal(t, "reminder:cal:prev:once", rows[0][0].CallbackData)
+	require.NotEmpty(t, rows[0][2].CallbackData)
+	assert.Equal(t, "reminder:cal:next:once", rows[0][2].CallbackData)
 }
 
 func TestReminderCalendar_WeekdayRow(t *testing.T) {
@@ -256,8 +256,8 @@ func TestReminderCalendar_FooterRow(t *testing.T) {
 	lastRow := rows[len(rows)-1]
 	var cbs []string
 	for _, btn := range lastRow {
-		if btn.CallbackData != nil {
-			cbs = append(cbs, *btn.CallbackData)
+		if btn.CallbackData != "" {
+			cbs = append(cbs, btn.CallbackData)
 		}
 	}
 	assert.Contains(t, cbs, "reminder:cal:today:yr")
@@ -271,8 +271,8 @@ func TestReminderCalendar_SelectCallbackFormat(t *testing.T) {
 	var selectCbs []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {
-			if btn.CallbackData != nil && strings.HasPrefix(*btn.CallbackData, "reminder:cal:select:") {
-				selectCbs = append(selectCbs, *btn.CallbackData)
+			if strings.HasPrefix(btn.CallbackData, "reminder:cal:select:") {
+				selectCbs = append(selectCbs, btn.CallbackData)
 			}
 		}
 	}

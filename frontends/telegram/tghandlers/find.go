@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -26,7 +26,7 @@ const (
 
 // HandleMenuFind opens the find-note prompt — user types a query, we search by
 // name first and fall back to content search if name has too few hits.
-func (a *App) HandleMenuFind(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) HandleMenuFind(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -43,7 +43,7 @@ func (a *App) HandleMenuFind(ctx context.Context, tgBot *tgbotapi.BotAPI, query 
 		tgfmt.Escape("🔎 Введите имя заметки или фразу для поиска:"), &kb)
 }
 
-func (a *App) handleFindInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {
+func (a *App) handleFindInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)
@@ -109,7 +109,7 @@ func truncateSnippet(s string) string {
 
 // showFindResults renders the results list. If query is non-nil edits it,
 // otherwise sends a new message.
-func (a *App) showFindResults(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, page int, q string, hits []tgstates.SearchHit, query *tgbotapi.CallbackQuery) {
+func (a *App) showFindResults(ctx context.Context, tgBot *telego.Bot, chatID int64, page int, q string, hits []tgstates.SearchHit, query *telego.CallbackQuery) {
 	if len(hits) == 0 {
 		body := tgfmt.Join(
 			tgfmt.Escape("Ничего не нашлось по запросу "),
@@ -160,7 +160,7 @@ func (a *App) showFindResults(ctx context.Context, tgBot *tgbotapi.BotAPI, chatI
 }
 
 // HandleFindAction dispatches find:* callbacks.
-func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleFindAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -208,7 +208,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			return err
 		}
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.FindResultsPage = page })
-		a.showFindResults(ctx, tgBot, query.Message.Chat.ID, page, uc.FindQuery, uc.FindResults, query)
+		a.showFindResults(ctx, tgBot, query.Message.GetChat().ID, page, uc.FindQuery, uc.FindResults, query)
 		return nil
 
 	case "back":
@@ -221,7 +221,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 			u.ActiveRelpath = ""
 			u.ActiveNoteID = 0
 		})
-		a.showFindResults(ctx, tgBot, query.Message.Chat.ID, uc.FindResultsPage, uc.FindQuery, uc.FindResults, query)
+		a.showFindResults(ctx, tgBot, query.Message.GetChat().ID, uc.FindResultsPage, uc.FindQuery, uc.FindResults, query)
 		return nil
 
 	case "retry":
@@ -236,7 +236,7 @@ func (a *App) handleFindAction(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	return nil
 }
 
-func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, id int64, page int) error {
+func (a *App) openFoundNote(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, id int64, page int) error {
 	log := applog.With(ctx, a.Logger)
 	note, err := a.Search.GetNoteByID(ctx, id)
 	if err != nil {
@@ -273,7 +273,7 @@ func (a *App) openFoundNote(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 }
 
 // handleNoteAppendAction handles the "note:append" callback shown on an opened note.
-func (a *App) handleNoteAppendAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) handleNoteAppendAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	uc, err := a.State.GetContext(ctx, userID)
 	if err != nil {
 		return err
@@ -295,7 +295,7 @@ func (a *App) handleNoteAppendAction(ctx context.Context, tgBot *tgbotapi.BotAPI
 	return replyToCallback(ctx, tgBot, query, text, nil)
 }
 
-func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {
+func (a *App) handleAppendToNoteInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)

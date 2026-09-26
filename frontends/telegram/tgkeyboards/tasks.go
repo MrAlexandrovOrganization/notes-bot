@@ -3,15 +3,16 @@ package tgkeyboards
 import (
 	"fmt"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 
 	"notes-bot/frontends/telegram/clients"
 )
 
 const tasksPerPage = 5
 
-func Tasks(tasks []*clients.Task, currentPage int) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
+func Tasks(tasks []*clients.Task, currentPage int) telego.InlineKeyboardMarkup {
+	var rows [][]telego.InlineKeyboardButton
 
 	totalPages := (len(tasks) + tasksPerPage - 1) / tasksPerPage
 	if totalPages == 0 {
@@ -29,41 +30,41 @@ func Tasks(tasks []*clients.Task, currentPage int) tgbotapi.InlineKeyboardMarkup
 			checkbox = "✅"
 		}
 		label := fmt.Sprintf("%s %s", checkbox, task.Text)
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("task:toggle:%d", task.Index)),
+		rows = append(rows, tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(label).WithCallbackData(fmt.Sprintf("task:toggle:%d", task.Index)),
 		))
 	}
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("➕ Добавить задачу", "task:add"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("➕ Добавить задачу").WithCallbackData("task:add"),
 	))
 
 	if totalPages > 1 {
-		var nav []tgbotapi.InlineKeyboardButton
+		var nav []telego.InlineKeyboardButton
 		if currentPage > 0 {
-			nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("◀", fmt.Sprintf("task:page:%d", currentPage-1)))
+			nav = append(nav, tu.InlineKeyboardButton("◀").WithCallbackData(fmt.Sprintf("task:page:%d", currentPage-1)))
 		}
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", currentPage+1, totalPages), "task:noop"))
+		nav = append(nav, tu.InlineKeyboardButton(fmt.Sprintf("%d/%d", currentPage+1, totalPages)).WithCallbackData("task:noop"))
 		if currentPage < totalPages-1 {
-			nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("▶", fmt.Sprintf("task:page:%d", currentPage+1)))
+			nav = append(nav, tu.InlineKeyboardButton("▶").WithCallbackData(fmt.Sprintf("task:page:%d", currentPage+1)))
 		}
 		rows = append(rows, nav)
 	}
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "task:back"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("◀ Назад").WithCallbackData("task:back"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return *tu.InlineKeyboard(rows...)
 }
 
-func TaskAdd() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "task:cancel"),
+func TaskAdd() telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("❌ Отмена").WithCallbackData("task:cancel"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "task:cancel"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("◀ Назад").WithCallbackData("task:cancel"),
 		),
 	)
 }

@@ -254,6 +254,14 @@ tags:
 
 ## Команды разработки
 
+Для локальной разработки используется Go **1.26.7** (`go.mod`; при включённом
+`GOTOOLCHAIN=auto` Go скачает подходящий toolchain). Все пять Docker-сборок
+закреплены на `golang:1.26.7-alpine`, GitHub Actions берёт версию из `go.mod`.
+Telegram-клиент — `github.com/mymmrac/telego` **v1.12.1**; поддерживаются polling,
+webhook, локальный Bot API и HTML-форматирование.
+Тесты используют fake HTTP transport и локальные HTTP-серверы без обращения
+к Telegram. В `make test` включены проверки точки входа `cmd/telegram`.
+
 ```bash
 make test-go          # Go unit тесты (core + notifications + telegram handlers)
 make test-go-cover    # Unit тесты + coverage
@@ -308,7 +316,8 @@ make build-telegram   # Пересборка telegram образа
 
 ## Технологии
 
-- **Go 1.26** — core, notifications, telegram
+- **Go 1.26.7** — core, notifications, search, telegram, web
+- **telego 1.12.1** — Telegram Bot API
 - **Python 3.11** — whisper (faster-whisper, нет Go-альтернативы)
 - **gRPC** (grpcio / google.golang.org/grpc) — межсервисное взаимодействие
 - **PostgreSQL 16** + pgx/v5 — напоминания

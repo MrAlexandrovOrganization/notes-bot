@@ -3,7 +3,7 @@ package tghandlers
 import (
 	"context"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/bot"
@@ -13,7 +13,7 @@ import (
 
 // MakeReminderHandler returns a Kafka event handler that sends a Telegram notification
 // for each fired reminder. The returned func is safe to pass to bot.RunKafkaConsumer.
-func (a *App) MakeReminderHandler(tgBot *tgbotapi.BotAPI) func(context.Context, bot.ReminderEvent) error {
+func (a *App) MakeReminderHandler(tgBot *telego.Bot) func(context.Context, bot.ReminderEvent) error {
 	return func(ctx context.Context, ev bot.ReminderEvent) error {
 		kb := tgkeyboards.ReminderNotification(ev.ReminderID, ev.CreateTask, ev.TodayDate)
 		text := tgfmt.Join(

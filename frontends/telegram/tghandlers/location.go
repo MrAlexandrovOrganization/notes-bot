@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -19,11 +19,11 @@ import (
 // HandleLocationMessage handles both one-time and live location messages.
 // For initial location shares it saves and confirms to the user.
 // For live location updates (EditedMessage) it saves silently.
-func (a *App) HandleLocationMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func (a *App) HandleLocationMessage(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	var msg *tgbotapi.Message
+	var msg *telego.Message
 	isLiveUpdate := false
 
 	switch {

@@ -6,7 +6,8 @@ import (
 	"notes-bot/internal/telemetry"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 var monthNames = map[int]string{
@@ -22,28 +23,28 @@ func MonthName(month int) string {
 
 // Calendar builds the main calendar keyboard for date selection.
 // existingDates is a set of dates in DD-MMM-YYYY format that have notes.
-func Calendar(ctx context.Context, year, month int, activeDate string, existingDates map[string]bool) tgbotapi.InlineKeyboardMarkup {
+func Calendar(ctx context.Context, year, month int, activeDate string, existingDates map[string]bool) telego.InlineKeyboardMarkup {
 	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	var rows [][]tgbotapi.InlineKeyboardButton
+	var rows [][]telego.InlineKeyboardButton
 
 	// Header row: prev / month+year / next
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("◀", "cal:prev"),
-		tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("◀ %s %d ▶", monthNames[month], year), "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("▶", "cal:next"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("◀").WithCallbackData("cal:prev"),
+		tu.InlineKeyboardButton(fmt.Sprintf("◀ %s %d ▶", monthNames[month], year)).WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("▶").WithCallbackData("cal:next"),
 	))
 
 	// Weekday headers
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Пн", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Вт", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Ср", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Чт", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Пт", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Сб", "cal:noop"),
-		tgbotapi.NewInlineKeyboardButtonData("Вс", "cal:noop"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("Пн").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Вт").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Ср").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Чт").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Пт").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Сб").WithCallbackData("cal:noop"),
+		tu.InlineKeyboardButton("Вс").WithCallbackData("cal:noop"),
 	))
 
 	// Day cells
@@ -54,10 +55,10 @@ func Calendar(ctx context.Context, year, month int, activeDate string, existingD
 
 	day := 1
 	for row := 0; row < 6 && day <= daysInMonth; row++ {
-		var weekRow []tgbotapi.InlineKeyboardButton
+		var weekRow []telego.InlineKeyboardButton
 		for col := 0; col < 7; col++ {
 			if (row == 0 && col < startOffset) || day > daysInMonth {
-				weekRow = append(weekRow, tgbotapi.NewInlineKeyboardButtonData(" ", "cal:noop"))
+				weekRow = append(weekRow, tu.InlineKeyboardButton(" ").WithCallbackData("cal:noop"))
 			} else {
 				dateStr := fmt.Sprintf("%02d-%s-%d", day, time.Month(month).String()[:3], year)
 				label := fmt.Sprintf("%d", day)
@@ -66,7 +67,7 @@ func Calendar(ctx context.Context, year, month int, activeDate string, existingD
 				} else if existingDates[dateStr] {
 					label = fmt.Sprintf("*%d*", day)
 				}
-				weekRow = append(weekRow, tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("cal:select:%s", dateStr)))
+				weekRow = append(weekRow, tu.InlineKeyboardButton(label).WithCallbackData(fmt.Sprintf("cal:select:%s", dateStr)))
 				day++
 			}
 		}
@@ -76,10 +77,10 @@ func Calendar(ctx context.Context, year, month int, activeDate string, existingD
 		}
 	}
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("📅 Сегодня", "cal:today"),
-		tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "cal:back"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("📅 Сегодня").WithCallbackData("cal:today"),
+		tu.InlineKeyboardButton("◀ Назад").WithCallbackData("cal:back"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return *tu.InlineKeyboard(rows...)
 }

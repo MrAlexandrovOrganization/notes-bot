@@ -327,6 +327,14 @@ Telegram bot sub-packages use prefixed names to avoid conflicts:
 - `tgfmt` — HTML formatting helpers for Telegram
 
 ### HTML formatting
+Telegram uses `github.com/mymmrac/telego` v1.12.1 with the standard `net/http`
+client (timeouts and `telegramTracingTransport`). Pass the active context to
+Bot API methods. Callback messages are `MaybeInaccessibleMessage`:
+message-based flows accept only `*telego.Message`. `SendMessage` returns a
+pointer; check errors before accessing `MessageID`. Keyboard builders use
+telego/telegoutil; callback data strings remain stable. `cmd/telegram` tests
+are included in the Makefile unit package list.
+
 All Telegram messages use **HTML parse mode** (`msg.ParseMode = "HTML"`). Always wrap user-provided text in `tgfmt.Escape()` from `frontends/telegram/tgfmt/tgfmt.go` to escape `&`, `<`, `>`. Use `tgfmt.Join()`, `tgfmt.Bold()`, `tgfmt.Code()`, `tgfmt.Blockquote()` etc. to compose messages safely.
 
 ### State updates
@@ -390,7 +398,7 @@ $NOTES_DIR/
 
 ## Docker
 
-- All Dockerfiles use multi-stage builds: `golang:1.26-alpine` builder → `alpine:3.20` runtime (`frontends/web/Dockerfile` adds a `node:20-alpine` stage to build Tailwind CSS — see Web Frontend section above)
+- All Dockerfiles use multi-stage builds: `golang:1.26.7-alpine` builder → `alpine:3.20` runtime (`frontends/web/Dockerfile` adds a `node:20-alpine` stage to build Tailwind CSS — see Web Frontend section above). Local and CI Go version comes from `go.mod` (1.26.7).
 - Binaries built with `CGO_ENABLED=0 -ldflags="-s -w"` (static, stripped)
 - Containers run as non-root user `app` (UID 10001)
 - `grpc_health_probe` downloaded at build time (v0.4.28)

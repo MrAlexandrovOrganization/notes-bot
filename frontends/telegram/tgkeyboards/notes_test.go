@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -48,12 +48,12 @@ func TestDailyNotePaginationKeepsExistingCallbacks(t *testing.T) {
 	assert.Contains(t, callbacks, "note:back")
 }
 
-func callbacksFromKeyboard(keyboard *tgbotapi.InlineKeyboardMarkup) []string {
+func callbacksFromKeyboard(keyboard *telego.InlineKeyboardMarkup) []string {
 	var callbacks []string
 	for _, row := range keyboard.InlineKeyboard {
 		for _, button := range row {
-			if button.CallbackData != nil {
-				callbacks = append(callbacks, *button.CallbackData)
+			if button.CallbackData != "" {
+				callbacks = append(callbacks, button.CallbackData)
 			}
 		}
 	}

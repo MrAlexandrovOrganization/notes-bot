@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,7 +22,7 @@ import (
 
 // scheduleTypeHandlers maps each schedule type to the handler that sets up the next
 // wizard step. Types not listed (e.g. "daily") fall through to changeStateToTaskConfirm.
-var scheduleTypeHandlers = map[string]func(*App, context.Context, *tgbotapi.BotAPI, *tgbotapi.CallbackQuery, int64){
+var scheduleTypeHandlers = map[string]func(*App, context.Context, *telego.Bot, *telego.CallbackQuery, int64){
 	"weekly":      (*App).handleScheduleTypeWeekly,
 	"monthly":     (*App).handleScheduleTypeMonthly,
 	"custom_days": (*App).handleScheduleTypeCustomDays,
@@ -45,7 +45,7 @@ func reminderProgress(uc *tgstates.UserContext, prompt tgfmt.HTML) tgfmt.HTML {
 	return tgfmt.Join(parts...)
 }
 
-func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleReminderCreate(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
@@ -59,7 +59,7 @@ func (a *App) HandleReminderCreate(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 	replyToCallback(ctx, tgBot, query, tgfmt.Escape("🔔 Введите название напоминания:"), &kb)
 }
 
-func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -76,7 +76,7 @@ func (a *App) handleReminderTitleInput(ctx context.Context, tgBot *tgbotapi.BotA
 		&kb)
 }
 
-func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, scheduleType string) {
+func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, scheduleType string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -91,7 +91,7 @@ func (a *App) HandleReminderTypeSelect(ctx context.Context, tgBot *tgbotapi.BotA
 	}
 }
 
-func (a *App) handleScheduleTypeWeekly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) handleScheduleTypeWeekly(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -105,7 +105,7 @@ func (a *App) handleScheduleTypeWeekly(ctx context.Context, tgBot *tgbotapi.BotA
 		&cancelKb)
 }
 
-func (a *App) handleScheduleTypeMonthly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) handleScheduleTypeMonthly(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -114,7 +114,7 @@ func (a *App) handleScheduleTypeMonthly(ctx context.Context, tgBot *tgbotapi.Bot
 	replyToCallback(ctx, tgBot, query, reminderProgress(uc, tgfmt.Escape("Введите число месяца (1–31):")), &cancelKb)
 }
 
-func (a *App) handleScheduleTypeCustomDays(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) handleScheduleTypeCustomDays(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	uc, _ := a.State.GetContext(ctx, userID)
 	cancelKb := tgkeyboards.ReminderCancel()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -129,15 +129,15 @@ func (a *App) handleScheduleTypeCustomDays(ctx context.Context, tgBot *tgbotapi.
 		&cancelKb)
 }
 
-func (a *App) handleScheduleTypeOnce(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) handleScheduleTypeOnce(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	a.startReminderDatePicker(ctx, tgBot, query, userID, "once", tgfmt.Escape("📅 Выберите дату:"))
 }
 
-func (a *App) handleScheduleTypeYearly(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) handleScheduleTypeYearly(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	a.startReminderDatePicker(ctx, tgBot, query, userID, "yr", tgfmt.Escape("📅 Выберите день года:"))
 }
 
-func (a *App) startReminderDatePicker(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, calCtx string, prompt tgfmt.HTML) {
+func (a *App) startReminderDatePicker(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, calCtx string, prompt tgfmt.HTML) {
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 		u.State = tgstates.StateReminderCreateDate
@@ -149,7 +149,7 @@ func (a *App) startReminderDatePicker(ctx context.Context, tgBot *tgbotapi.BotAP
 	replyToCallback(ctx, tgBot, query, reminderProgress(uc, prompt), &kb)
 }
 
-func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -160,7 +160,7 @@ func (a *App) changeStateToTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotA
 	replyToCallback(ctx, tgBot, query, reminderProgress(uc, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?")), &kb)
 }
 
-func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) {
+func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -171,7 +171,7 @@ func (a *App) changeStateToTaskConfirmFromUpdate(ctx context.Context, tgBot *tgb
 	a.replyToStateMessage(ctx, tgBot, update.Message.Chat.ID, userID, reminderProgress(uc, tgfmt.Escape("➕ Создавать задачу в заметке при срабатывании напоминания?")), &kb)
 }
 
-func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, createTask bool) {
+func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, createTask bool) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -191,7 +191,7 @@ func (a *App) HandleReminderTaskConfirm(ctx context.Context, tgBot *tgbotapi.Bot
 		&kb)
 }
 
-func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+func (a *App) handleReminderParamInput(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)
@@ -265,7 +265,7 @@ func (a *App) handleReminderParamInput(ctx context.Context, tgBot *tgbotapi.BotA
 
 // finalizeReminderFromUpdate creates the reminder from the current draft.
 // Returns true when the reminder was created successfully.
-func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64) bool {
+func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64) bool {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -356,7 +356,7 @@ func (a *App) finalizeReminderFromUpdate(ctx context.Context, tgBot *tgbotapi.Bo
 
 // ── Calendar navigation ────────────────────────────────────────────────────
 
-func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
+func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, contextName string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	uc, err := a.State.GetContext(ctx, userID)
@@ -375,7 +375,7 @@ func (a *App) HandleReminderCalPrev(ctx context.Context, tgBot *tgbotapi.BotAPI,
 	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
-func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
+func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, contextName string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	uc, err := a.State.GetContext(ctx, userID)
@@ -394,7 +394,7 @@ func (a *App) HandleReminderCalNext(ctx context.Context, tgBot *tgbotapi.BotAPI,
 	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
-func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, contextName string) {
+func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, contextName string) {
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
 	month, year := int(now.Month()), now.Year()
 	a.updateState(ctx, userID, func(u *tgstates.UserContext) {
@@ -405,7 +405,7 @@ func (a *App) HandleReminderCalToday(ctx context.Context, tgBot *tgbotapi.BotAPI
 	replyToCallback(ctx, tgBot, query, calPrompt(contextName), &kb)
 }
 
-func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, dateStr, contextName string) {
+func (a *App) HandleReminderCalSelect(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, dateStr, contextName string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	cancelKb := tgkeyboards.ReminderCancel()

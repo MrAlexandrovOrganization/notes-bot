@@ -3,81 +3,82 @@ package tgkeyboards
 import (
 	"fmt"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func RatingPrompt(hasRating bool, currentRating int) tgbotapi.InlineKeyboardMarkup {
+func RatingPrompt(hasRating bool, currentRating int) telego.InlineKeyboardMarkup {
 	var label string
 	if hasRating {
 		label = fmt.Sprintf("Текущая оценка: %d", currentRating)
 	} else {
 		label = "Оценка не установлена"
 	}
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(label, "menu:noop"),
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(label).WithCallbackData("menu:noop"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("← Назад", "menu:back"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("← Назад").WithCallbackData("menu:back"),
 		),
 	)
 }
 
-func MainMenu(_ string) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Оценка", "menu:rating"),
-			tgbotapi.NewInlineKeyboardButtonData("✅ Задачи", "menu:tasks"),
+func MainMenu(_ string) telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("📊 Оценка").WithCallbackData("menu:rating"),
+			tu.InlineKeyboardButton("✅ Задачи").WithCallbackData("menu:tasks"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📝 Заметка", "menu:note"),
-			tgbotapi.NewInlineKeyboardButtonData("📅 Календарь", "menu:calendar"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("📝 Заметка").WithCallbackData("menu:note"),
+			tu.InlineKeyboardButton("📅 Календарь").WithCallbackData("menu:calendar"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔔 Уведомления", "menu:notifications"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("🔔 Уведомления").WithCallbackData("menu:notifications"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✨ Понять и сделать", "menu:smart"),
-			tgbotapi.NewInlineKeyboardButtonData("🔎 Найти заметку", "menu:find"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("✨ Понять и сделать").WithCallbackData("menu:smart"),
+			tu.InlineKeyboardButton("🔎 Найти заметку").WithCallbackData("menu:find"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🧠 Спросить", "menu:ask"),
-			tgbotapi.NewInlineKeyboardButtonData("📂 Обзор хранилища", "menu:browse"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("🧠 Спросить").WithCallbackData("menu:ask"),
+			tu.InlineKeyboardButton("📂 Обзор хранилища").WithCallbackData("menu:browse"),
 		),
 	)
 }
 
 // SmartConfirm — Да/Нет для подтверждения гипотезы LLM-классификатора.
-func SmartConfirm() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Да", "smart:yes"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Нет", "smart:no"),
+func SmartConfirm() telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("✅ Да").WithCallbackData("smart:yes"),
+			tu.InlineKeyboardButton("❌ Нет").WithCallbackData("smart:no"),
 		),
 	)
 }
 
-func SmartInput() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("◀ Назад", "smart:back"),
+func SmartInput() telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("◀ Назад").WithCallbackData("smart:back"),
 		),
 	)
 }
 
 // SmartIntentPicker показывается, когда LLM не уверена или не поняла —
 // пользователь выбирает intent вручную.
-func SmartIntentPicker() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📝 Заметка", "smart:pick:note"),
-			tgbotapi.NewInlineKeyboardButtonData("✅ Задача", "smart:pick:task"),
+func SmartIntentPicker() telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("📝 Заметка").WithCallbackData("smart:pick:note"),
+			tu.InlineKeyboardButton("✅ Задача").WithCallbackData("smart:pick:task"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⏰ Напоминание", "smart:pick:reminder"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("⏰ Напоминание").WithCallbackData("smart:pick:reminder"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "smart:no"),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("❌ Отмена").WithCallbackData("smart:no"),
 		),
 	)
 }

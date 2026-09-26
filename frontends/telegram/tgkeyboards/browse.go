@@ -3,7 +3,8 @@ package tgkeyboards
 import (
 	"fmt"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 
 	"notes-bot/frontends/telegram/clients"
 )
@@ -11,15 +12,15 @@ import (
 const browsePageSize = 30
 
 // BrowseNoteView keeps note actions within the vault browser.
-func BrowseNoteView() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("✏️ Дописать", "note:append")),
-		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "browse:file_back")),
+func BrowseNoteView() telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton("✏️ Дописать").WithCallbackData("note:append")),
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton("🔙 Назад").WithCallbackData("browse:file_back")),
 	)
 }
 
-func BrowseFolder(entries []clients.DirEntry, currentPath string, page int) tgbotapi.InlineKeyboardMarkup {
-	rows := [][]tgbotapi.InlineKeyboardButton{}
+func BrowseFolder(entries []clients.DirEntry, currentPath string, page int) telego.InlineKeyboardMarkup {
+	rows := [][]telego.InlineKeyboardButton{}
 
 	start := page * browsePageSize
 	end := start + browsePageSize
@@ -34,19 +35,19 @@ func BrowseFolder(entries []clients.DirEntry, currentPath string, page int) tgbo
 			icon = "📁"
 		}
 		idx := start + i
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(
-				fmt.Sprintf("%s %s", icon, entry.Name),
+		rows = append(rows, tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(
+				fmt.Sprintf("%s %s", icon, entry.Name)).WithCallbackData(
 				fmt.Sprintf("browse:open:%d", idx),
 			),
 		))
 	}
 
-	navRow := []tgbotapi.InlineKeyboardButton{}
+	navRow := []telego.InlineKeyboardButton{}
 	if currentPath != "" {
-		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "browse:up"))
+		navRow = append(navRow, tu.InlineKeyboardButton("🔙 Назад").WithCallbackData("browse:up"))
 	}
-	navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("🏠 Корень", "browse:root"))
+	navRow = append(navRow, tu.InlineKeyboardButton("🏠 Корень").WithCallbackData("browse:root"))
 
 	if len(navRow) > 0 {
 		rows = append(rows, navRow)
@@ -54,26 +55,26 @@ func BrowseFolder(entries []clients.DirEntry, currentPath string, page int) tgbo
 
 	totalPages := (len(entries) + browsePageSize - 1) / browsePageSize
 	if totalPages > 1 {
-		paginationRow := []tgbotapi.InlineKeyboardButton{}
+		paginationRow := []telego.InlineKeyboardButton{}
 		if page > 0 {
 			paginationRow = append(paginationRow,
-				tgbotapi.NewInlineKeyboardButtonData("◀", fmt.Sprintf("browse:page:%d", page-1)),
+				tu.InlineKeyboardButton("◀").WithCallbackData(fmt.Sprintf("browse:page:%d", page-1)),
 			)
 		}
 		paginationRow = append(paginationRow,
-			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", page+1, totalPages), "browse:noop"),
+			tu.InlineKeyboardButton(fmt.Sprintf("%d/%d", page+1, totalPages)).WithCallbackData("browse:noop"),
 		)
 		if page < totalPages-1 {
 			paginationRow = append(paginationRow,
-				tgbotapi.NewInlineKeyboardButtonData("▶", fmt.Sprintf("browse:page:%d", page+1)),
+				tu.InlineKeyboardButton("▶").WithCallbackData(fmt.Sprintf("browse:page:%d", page+1)),
 			)
 		}
 		rows = append(rows, paginationRow)
 	}
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("◀ В меню", "menu:back"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("◀ В меню").WithCallbackData("menu:back"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return *tu.InlineKeyboard(rows...)
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
@@ -59,7 +59,7 @@ func formatNLReminderPreview(r *clients.LLMReminderResult) tgfmt.HTML {
 	))
 }
 
-func (a *App) HandleReminderCreateNL(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleReminderCreateNL(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
@@ -76,7 +76,7 @@ func (a *App) HandleReminderCreateNL(ctx context.Context, tgBot *tgbotapi.BotAPI
 }
 
 // handleReminderNLInput processes a natural-language reminder description (from text or voice).
-func (a *App) handleReminderNLInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {
+func (a *App) handleReminderNLInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -84,7 +84,11 @@ func (a *App) handleReminderNLInput(ctx context.Context, tgBot *tgbotapi.BotAPI,
 
 	currentDateTime, today, tomorrow, dayAfter := a.llmDateContext()
 
-	processingMsg, _ := tgBot.Send(tgbotapi.NewMessage(chatID, "🧠 Обрабатываю..."))
+	processingMsg, err := tgBot.SendMessage(ctx, &telego.SendMessageParams{ChatID: telego.ChatID{ID: chatID}, Text: "🧠 Обрабатываю...", ParseMode: telego.ModeHTML})
+	if err != nil {
+		log.Error("send processing message", zap.Error(err))
+		return
+	}
 
 	result, err := a.LLM.ParseReminder(ctx, text, currentDateTime, today, tomorrow, dayAfter)
 	if err != nil {
@@ -121,11 +125,15 @@ func (a *App) handleReminderNLInput(ctx context.Context, tgBot *tgbotapi.BotAPI,
 }
 
 // HandleReminderNLConfirm finalizes a reminder that was parsed from natural language.
-func (a *App) HandleReminderNLConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleReminderNLConfirm(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	// Build a fake Update so we can reuse finalizeReminderFromUpdate.
-	fakeUpdate := &tgbotapi.Update{Message: query.Message}
+	message, ok := query.Message.(*telego.Message)
+	if !ok {
+		return
+	}
+	fakeUpdate := &telego.Update{Message: message}
 	a.finalizeReminderFromUpdate(ctx, tgBot, fakeUpdate, userID)
 }

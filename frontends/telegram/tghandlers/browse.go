@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
@@ -20,7 +20,7 @@ import (
 	"notes-bot/internal/telemetry"
 )
 
-func (a *App) HandleMenuBrowse(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) HandleMenuBrowse(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -31,7 +31,7 @@ func (a *App) HandleMenuBrowse(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 	return a.showBrowseFolder(ctx, tgBot, query, userID, "")
 }
 
-func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleBrowseAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -126,7 +126,7 @@ func (a *App) handleBrowseAction(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 	return nil
 }
 
-func (a *App) handleBrowseOpenByIndex(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, idx int) error {
+func (a *App) handleBrowseOpenByIndex(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, idx int) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.Int("browse.idx", idx))
 	defer span.End()
 
@@ -171,11 +171,11 @@ func (a *App) handleBrowseOpenByIndex(ctx context.Context, tgBot *tgbotapi.BotAP
 	return a.showBrowseFolder(ctx, tgBot, query, userID, relpath)
 }
 
-func (a *App) showBrowseFolder(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, relpath string) error {
+func (a *App) showBrowseFolder(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, relpath string) error {
 	return a.showBrowseFolderAtPage(ctx, tgBot, query, userID, relpath, 0)
 }
 
-func (a *App) showBrowseFolderAtPage(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, relpath string, page int) error {
+func (a *App) showBrowseFolderAtPage(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, relpath string, page int) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("browse.path", relpath))
 	defer span.End()
 
@@ -212,7 +212,7 @@ func (a *App) showBrowseFolderAtPage(ctx context.Context, tgBot *tgbotapi.BotAPI
 	return replyToCallback(ctx, tgBot, query, text, &kb)
 }
 
-func (a *App) showBrowseFile(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, relpath string, content string, page int) error {
+func (a *App) showBrowseFile(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, relpath string, content string, page int) error {
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("browse.file", relpath))
 	defer span.End()
 

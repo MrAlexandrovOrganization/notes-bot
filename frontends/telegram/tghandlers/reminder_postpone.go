@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/tgfmt"
@@ -20,7 +20,7 @@ import (
 )
 
 // HandleReminderPostponeInput handles "⏰ Перенести" — asks user to enter a duration.
-func (a *App) HandleReminderPostponeInput(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+func (a *App) HandleReminderPostponeInput(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -55,7 +55,7 @@ func (a *App) HandleReminderPostponeInput(ctx context.Context, tgBot *tgbotapi.B
 
 // handleReminderPostponeTextInput parses a duration string and postpones the reminder.
 // Accepts formats like 30m, 2h30m, 1d12h, 1w, 1M, or a plain integer (minutes).
-func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -102,7 +102,7 @@ func (a *App) handleReminderPostponeTextInput(ctx context.Context, tgBot *tgbota
 }
 
 // HandleReminderPostponeDate handles "📅 На дату" — opens calendar for date selection.
-func (a *App) HandleReminderPostponeDate(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, reminderID int64) {
+func (a *App) HandleReminderPostponeDate(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, reminderID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	now := timeutil.LocalNow(a.Cfg.TimezoneOffsetHours)
@@ -119,7 +119,7 @@ func (a *App) HandleReminderPostponeDate(ctx context.Context, tgBot *tgbotapi.Bo
 
 // handleReminderPostponeTimeInput parses HH:MM, computes minutes to the pending date+time,
 // and calls PostponeReminder.
-func (a *App) handleReminderPostponeTimeInput(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update, userID int64, text string) {
+func (a *App) handleReminderPostponeTimeInput(ctx context.Context, tgBot *telego.Bot, update *telego.Update, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

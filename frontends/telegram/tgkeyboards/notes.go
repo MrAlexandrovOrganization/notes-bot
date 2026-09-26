@@ -3,7 +3,8 @@ package tgkeyboards
 import (
 	"fmt"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 const noteCharsPerPage = 3500
@@ -27,67 +28,64 @@ func notePage(content string, currentPage int) (string, int, int) {
 	return pageContent, currentPage, totalPages
 }
 
-func noteNavigation(currentPage, totalPages int, callbackPrefix, noopCallback string) []tgbotapi.InlineKeyboardButton {
+func noteNavigation(currentPage, totalPages int, callbackPrefix, noopCallback string) []telego.InlineKeyboardButton {
 	if totalPages <= 1 {
 		return nil
 	}
 
-	nav := make([]tgbotapi.InlineKeyboardButton, 0, 3)
+	nav := make([]telego.InlineKeyboardButton, 0, 3)
 	if currentPage > 0 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("◀ Назад", fmt.Sprintf("%s:%d", callbackPrefix, currentPage-1)))
+		nav = append(nav, tu.InlineKeyboardButton("◀ Назад").WithCallbackData(fmt.Sprintf("%s:%d", callbackPrefix, currentPage-1)))
 	}
-	nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", currentPage+1, totalPages), noopCallback))
+	nav = append(nav, tu.InlineKeyboardButton(fmt.Sprintf("%d/%d", currentPage+1, totalPages)).WithCallbackData(noopCallback))
 	if currentPage < totalPages-1 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("Далее ▶", fmt.Sprintf("%s:%d", callbackPrefix, currentPage+1)))
+		nav = append(nav, tu.InlineKeyboardButton("Далее ▶").WithCallbackData(fmt.Sprintf("%s:%d", callbackPrefix, currentPage+1)))
 	}
 	return nav
 }
 
 // NotePagination создает клавиатуру с пагинацией для заметки.
 // Возвращает текст заметки (разбитый на страницы) и клавиатуру с навигацией.
-func NotePagination(content string, currentPage int) (string, *tgbotapi.InlineKeyboardMarkup) {
+func NotePagination(content string, currentPage int) (string, *telego.InlineKeyboardMarkup) {
 	pageContent, currentPage, totalPages := notePage(content, currentPage)
-	var rows [][]tgbotapi.InlineKeyboardButton
+	var rows [][]telego.InlineKeyboardButton
 	if nav := noteNavigation(currentPage, totalPages, "note:page", "note:noop"); nav != nil {
 		rows = append(rows, nav)
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("◀ В меню", "note:back"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("◀ В меню").WithCallbackData("note:back"),
 	))
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	return pageContent, &keyboard
+	return pageContent, tu.InlineKeyboard(rows...)
 }
 
 // BrowseFilePagination paginates a note opened through the vault browser.
-func BrowseFilePagination(content string, currentPage int) (string, *tgbotapi.InlineKeyboardMarkup) {
+func BrowseFilePagination(content string, currentPage int) (string, *telego.InlineKeyboardMarkup) {
 	pageContent, currentPage, totalPages := notePage(content, currentPage)
-	var rows [][]tgbotapi.InlineKeyboardButton
+	var rows [][]telego.InlineKeyboardButton
 	if nav := noteNavigation(currentPage, totalPages, "browse:file_page", "browse:noop"); nav != nil {
 		rows = append(rows, nav)
 	}
 	rows = append(rows, BrowseNoteView().InlineKeyboard...)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	return pageContent, &keyboard
+	return pageContent, tu.InlineKeyboard(rows...)
 }
 
 // FoundNotePagination paginates a note opened from search results.
-func FoundNotePagination(content string, currentPage int, hasResults bool) (string, *tgbotapi.InlineKeyboardMarkup) {
+func FoundNotePagination(content string, currentPage int, hasResults bool) (string, *telego.InlineKeyboardMarkup) {
 	pageContent, currentPage, totalPages := notePage(content, currentPage)
-	var rows [][]tgbotapi.InlineKeyboardButton
+	var rows [][]telego.InlineKeyboardButton
 	if nav := noteNavigation(currentPage, totalPages, "find:note_page", "find:noop"); nav != nil {
 		rows = append(rows, nav)
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("✏️ Дописать", "note:append"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("✏️ Дописать").WithCallbackData("note:append"),
 	))
 	if hasResults {
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("↩️ К результатам", "find:back"),
+		rows = append(rows, tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("↩️ К результатам").WithCallbackData("find:back"),
 		))
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🏠 Меню", "menu:back"),
+	rows = append(rows, tu.InlineKeyboardRow(
+		tu.InlineKeyboardButton("🏠 Меню").WithCallbackData("menu:back"),
 	))
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	return pageContent, &keyboard
+	return pageContent, tu.InlineKeyboard(rows...)
 }

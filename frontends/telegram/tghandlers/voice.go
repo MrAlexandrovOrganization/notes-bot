@@ -14,7 +14,8 @@ import (
 	"sync"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -42,7 +43,7 @@ const (
 // that fills it starts, so that the ordering slot exists immediately.
 type pendingVoiceResult struct {
 	// Input — set at registration time.
-	tgBot        *tgbotapi.BotAPI
+	tgBot        *telego.Bot
 	chatID       int64
 	userID       int64
 	statusMsgID  int
@@ -118,7 +119,7 @@ func (a *App) getVoiceBuffer(userID int64) *voiceReorderBuffer {
 	return actual.(*voiceReorderBuffer)
 }
 
-func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -159,9 +160,11 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 	isSmart := uc.State == tgstates.StateSmartInput
 
 	// Reply with initial status — the goroutine will update it with progress.
-	replyMsg := tgbotapi.NewMessage(chatID, "⏳ Принято...")
-	replyMsg.ReplyToMessageID = update.Message.MessageID
-	statusMsg, err := tgBot.Send(replyMsg)
+	replyMsg := &telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: chatID}, Text: "⏳ Принято...", ParseMode: telego.ModeHTML,
+		ReplyParameters: &telego.ReplyParameters{MessageID: update.Message.MessageID},
+	}
+	statusMsg, err := tgBot.SendMessage(ctx, replyMsg)
 	if err != nil {
 		log.Error("send status message", zap.Error(err))
 		return
@@ -229,20 +232,19 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *tgbotapi.BotAPI, up
 // until transcription completes or fails. It keeps the Telegram status message
 // updated throughout. Returns the recognised text (empty if nothing was heard)
 // and any fatal error. All user-visible error messages are sent here.
-func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID int, fileID, format string, log *zap.Logger) (string, error) {
+func (a *App) transcribeVoice(tgBot *telego.Bot, chatID int64, statusMsgID int, fileID, format string, log *zap.Logger) (string, error) {
 	ctx := context.Background()
 
 	// Download the file.
 	editStatus(ctx, tgBot, chatID, statusMsgID, "⏳ Скачиваю аудио...")
-	fileConfig := tgbotapi.FileConfig{FileID: fileID}
-	tgFile, err := tgBot.GetFile(fileConfig)
+	tgFile, err := tgBot.GetFile(ctx, &telego.GetFileParams{FileID: fileID})
 	if err != nil {
 		log.Error("get file", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при загрузке файла.")
 		return "", err
 	}
 
-	rc, err := a.downloadTelegramFile(ctx, tgBot, tgFile, log)
+	rc, err := a.downloadTelegramFile(ctx, tgBot, *tgFile, log)
 	if err != nil {
 		log.Error("download file", zap.Error(err))
 		editStatus(ctx, tgBot, chatID, statusMsgID, "❌ Ошибка при загрузке файла.")
@@ -310,7 +312,7 @@ func (a *App) transcribeVoice(tgBot *tgbotapi.BotAPI, chatID int64, statusMsgID 
 // GetFile returns a path in the shared volume, which is read directly. The
 // telegram container therefore intentionally runs with a user that can read
 // that volume.
-func (a *App) downloadTelegramFile(ctx context.Context, tgBot *tgbotapi.BotAPI, file tgbotapi.File, log *zap.Logger) (io.ReadCloser, error) {
+func (a *App) downloadTelegramFile(ctx context.Context, tgBot *telego.Bot, file telego.File, log *zap.Logger) (io.ReadCloser, error) {
 	if a.Cfg.LocalAPIURL != "" {
 		log.Info("reading telegram file from local api volume", zap.String("path", file.FilePath))
 		f, err := os.Open(file.FilePath)
@@ -319,7 +321,7 @@ func (a *App) downloadTelegramFile(ctx context.Context, tgBot *tgbotapi.BotAPI, 
 		}
 		return f, nil
 	}
-	return downloadFile(ctx, file.Link(tgBot.Token))
+	return downloadFile(ctx, tgBot.FileDownloadURL(file.FilePath))
 }
 
 // deliverVoiceResult appends text to the note and updates the status message.
@@ -347,14 +349,14 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 
 	// If user was in NL reminder creation state, route to the NL handler.
 	if r.isNLReminder {
-		r.tgBot.Request(tgbotapi.NewDeleteMessage(r.chatID, r.statusMsgID)) //nolint:errcheck
+		r.tgBot.DeleteMessage(ctx, &telego.DeleteMessageParams{ChatID: telego.ChatID{ID: r.chatID}, MessageID: r.statusMsgID}) //nolint:errcheck
 		a.handleReminderNLInput(ctx, r.tgBot, r.chatID, r.userID, r.text)
 		return
 	}
 
 	// Smart router: транскрипт идёт через классификатор намерения.
 	if r.isSmart {
-		r.tgBot.Request(tgbotapi.NewDeleteMessage(r.chatID, r.statusMsgID)) //nolint:errcheck
+		r.tgBot.DeleteMessage(ctx, &telego.DeleteMessageParams{ChatID: telego.ChatID{ID: r.chatID}, MessageID: r.statusMsgID}) //nolint:errcheck
 		a.handleSmartInput(ctx, r.tgBot, r.chatID, r.userID, r.text)
 		return
 	}
@@ -411,7 +413,7 @@ func (a *App) storeVoiceText(msgID int, text string) {
 }
 
 // showVoicePage renders a specific page of the transcription result.
-func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, fullText string, page int) error {
+func (a *App) showVoicePage(ctx context.Context, tgBot *telego.Bot, chatID int64, msgID int, fullText string, page int) error {
 	runes := []rune(fullText)
 	totalPages := (len(runes) + voiceCharsPerPage - 1) / voiceCharsPerPage
 	if totalPages == 0 {
@@ -436,7 +438,7 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 	}
 	msg := tgfmt.Join(header, tgfmt.Raw("\n\n"), tgfmt.Blockquote(tgfmt.Escape(pageText)))
 
-	var kb *tgbotapi.InlineKeyboardMarkup
+	var kb *telego.InlineKeyboardMarkup
 	if totalPages > 1 {
 		keyboard := voicePaginationKeyboard(msgID, page, totalPages)
 		kb = &keyboard
@@ -445,19 +447,19 @@ func (a *App) showVoicePage(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID 
 	return editText(ctx, tgBot, chatID, msgID, msg, kb)
 }
 
-func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.InlineKeyboardMarkup {
-	var nav []tgbotapi.InlineKeyboardButton
+func voicePaginationKeyboard(msgID, currentPage, totalPages int) telego.InlineKeyboardMarkup {
+	var nav []telego.InlineKeyboardButton
 	if currentPage > 0 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("◀ Назад",
+		nav = append(nav, tu.InlineKeyboardButton("◀ Назад").WithCallbackData(
 			fmt.Sprintf("voice:page:%d:%d", msgID, currentPage-1)))
 	}
-	nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(
-		fmt.Sprintf("%d/%d", currentPage+1, totalPages), "voice:noop"))
+	nav = append(nav, tu.InlineKeyboardButton(
+		fmt.Sprintf("%d/%d", currentPage+1, totalPages)).WithCallbackData("voice:noop"))
 	if currentPage < totalPages-1 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("Далее ▶",
+		nav = append(nav, tu.InlineKeyboardButton("Далее ▶").WithCallbackData(
 			fmt.Sprintf("voice:page:%d:%d", msgID, currentPage+1)))
 	}
-	return tgbotapi.NewInlineKeyboardMarkup(nav)
+	return *tu.InlineKeyboard(nav)
 }
 
 // pollTranscription polls whisper service for job completion, updating the status message with progress.
@@ -465,7 +467,7 @@ func voicePaginationKeyboard(msgID, currentPage, totalPages int) tgbotapi.Inline
 // unnecessary duplicate edit on the first tick.
 // whisperQueuePos is the position returned by Submit (1 = running, 2+ = waiting); kept visible
 // while the job is queued since StatusResponse does not include a live position field.
-func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, jobID string, initialStatusText tgfmt.HTML, whisperQueuePos int, log *zap.Logger) (string, error) {
+func (a *App) pollTranscription(ctx context.Context, tgBot *telego.Bot, chatID int64, msgID int, jobID string, initialStatusText tgfmt.HTML, whisperQueuePos int, log *zap.Logger) (string, error) {
 	ticker := time.NewTicker(voicePollInterval)
 	defer ticker.Stop()
 	deadline := time.After(voicePollDeadline)
@@ -531,16 +533,16 @@ func (a *App) pollTranscription(ctx context.Context, tgBot *tgbotapi.BotAPI, cha
 	}
 }
 
-func voiceCancelKeyboard(jobID string) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отменить", fmt.Sprintf("voice:cancel:%s", jobID)),
+func voiceCancelKeyboard(jobID string) telego.InlineKeyboardMarkup {
+	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton("❌ Отменить").WithCallbackData(fmt.Sprintf("voice:cancel:%s", jobID)),
 		),
 	)
 }
 
 // handleVoiceAction handles voice-related callback actions (cancel, page, noop).
-func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, parts []string) error {
+func (a *App) handleVoiceAction(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, parts []string) error {
 	if len(parts) < 2 {
 		return nil
 	}
@@ -574,7 +576,7 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 		if !ok {
 			return nil
 		}
-		chatID := query.Message.Chat.ID
+		chatID := query.Message.GetChat().ID
 		//nolint:errcheck — pagination errors on callback are non-critical
 		a.showVoicePage(ctx, tgBot, chatID, msgID, text, page)
 
@@ -584,7 +586,7 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 	return nil
 }
 
-func editStatus(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID int64, msgID int, text string) {
+func editStatus(ctx context.Context, tgBot *telego.Bot, chatID int64, msgID int, text string) {
 	editText(ctx, tgBot, chatID, msgID, tgfmt.Escape(text), nil)
 }
 

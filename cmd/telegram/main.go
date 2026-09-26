@@ -17,7 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoapi"
+	tu "github.com/mymmrac/telego/telegoutil"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -189,15 +191,15 @@ func main() {
 		},
 		Timeout: 120 * time.Second,
 	}
-	apiEndpoint := tgbotapi.APIEndpoint
-	if cfg.LocalAPIURL != "" {
-		apiEndpoint = strings.TrimSuffix(cfg.LocalAPIURL, "/") + "/bot%s/%s"
-	}
-	tgBot, err := tgbotapi.NewBotAPIWithClient(cfg.BOTToken, apiEndpoint, httpClient)
+	tgBot, err := newTelegramBot(cfg, httpClient, logger)
 	if err != nil {
 		logger.Fatal("failed to create telegram bot", zap.Error(err))
 	}
-	logger.Info("bot authorized", zap.String("username", tgBot.Self.UserName))
+	me, err := tgBot.GetMe(ctx)
+	if err != nil {
+		logger.Fatal("failed to authorize telegram bot", zap.Error(err))
+	}
+	logger.Info("bot authorized", zap.String("username", me.Username))
 
 	// Start Kafka consumer in background.
 	// Offsets are committed to Kafka via consumer group — no external store needed.
@@ -213,7 +215,41 @@ func main() {
 	}
 }
 
-func handleUpdateTraced(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func newTelegramBot(cfg *config.Config, client *http.Client, log *zap.Logger) (*telego.Bot, error) {
+	options := []telego.BotOption{
+		telego.WithAPICaller(telegramAPICaller{caller: telegoapi.HTTPCaller{Client: client}, token: cfg.BOTToken}),
+		telego.WithLogger(telegramLogger{log}),
+	}
+	if cfg.LocalAPIURL != "" {
+		options = append(options, telego.WithAPIServer(strings.TrimSuffix(cfg.LocalAPIURL, "/")))
+	}
+	return telego.NewBot(cfg.BOTToken, options...)
+}
+
+// net/http includes the request URL in errors. Redact it before telego logs
+// the error or a handler records it in a span, preserving errors.Is semantics.
+type telegramAPICaller struct {
+	caller telegoapi.Caller
+	token  string
+}
+
+type telegramAPIError struct {
+	err     error
+	message string
+}
+
+func (e telegramAPIError) Error() string { return e.message }
+func (e telegramAPIError) Unwrap() error { return e.err }
+
+func (c telegramAPICaller) Call(ctx context.Context, endpoint string, data *telegoapi.RequestData) (*telegoapi.Response, error) {
+	response, err := c.caller.Call(ctx, endpoint, data)
+	if err != nil {
+		return nil, telegramAPIError{err: err, message: strings.ReplaceAll(err.Error(), c.token, "REDACTED")}
+	}
+	return response, nil
+}
+
+func handleUpdateTraced(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 	updateType, userID := classifyUpdate(update)
 	ctx, span := otel.Tracer("telegram").Start(ctx, "telegram.update "+updateType,
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -233,9 +269,9 @@ func handleUpdateTraced(ctx context.Context, app *tghandlers.App, tgBot *tgbotap
 	)
 }
 
-func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
+func classifyUpdate(update *telego.Update) (updateType string, userID int64) {
 	switch {
-	case update.Message != nil && update.Message.IsCommand():
+	case messageCommand(update.Message) != "":
 		if update.Message.From != nil {
 			userID = update.Message.From.ID
 		}
@@ -270,35 +306,52 @@ func classifyUpdate(update *tgbotapi.Update) (updateType string, userID int64) {
 	}
 }
 
-type updateHandler func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update)
+// Only a bot_command entity at the beginning of the message is a command.
+func messageCommand(message *telego.Message) string {
+	if message == nil || len(message.Entities) == 0 || message.Entities[0].Type != "bot_command" || message.Entities[0].Offset != 0 {
+		return ""
+	}
+	command, _, _ := tu.ParseCommand(message.Text)
+	return command
+}
+
+// Debug requests/responses may contain note content. Keep them out of logs.
+type telegramLogger struct{ log *zap.Logger }
+
+func (l telegramLogger) Debugf(string, ...any) {}
+func (l telegramLogger) Errorf(format string, args ...any) {
+	l.log.Error(fmt.Sprintf(format, args...))
+}
+
+type updateHandler func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update)
 
 var commandHandlers = map[string]updateHandler{
-	"start": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	"start": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 		app.HandleStart(ctx, tgBot, update)
 	},
 }
 
 var updateHandlers = map[string]updateHandler{
-	"command": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
-		if h, ok := commandHandlers[update.Message.Command()]; ok {
+	"command": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
+		if h, ok := commandHandlers[messageCommand(update.Message)]; ok {
 			h(ctx, app, tgBot, update)
 		}
 	},
-	"voice": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	"voice": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 		app.HandleVoiceMessage(ctx, tgBot, update)
 	},
-	"location": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	"location": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 		app.HandleLocationMessage(ctx, tgBot, update)
 	},
-	"text": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	"text": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 		app.HandleTextMessage(ctx, tgBot, update)
 	},
-	"callback": func(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+	"callback": func(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 		app.HandleCallback(ctx, tgBot, update)
 	},
 }
 
-func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, update *telego.Update) {
 	updateType, userID := classifyUpdate(update)
 	// Serialize full handler execution per user: handlers follow a
 	// snapshot → decision → write pattern, so two concurrent updates from
@@ -312,13 +365,17 @@ func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *tgbotapi.BotA
 	}
 }
 
-func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := tgBot.GetUpdatesChan(u)
+func runPolling(ctx context.Context, tgBot *telego.Bot, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
+	updates, err := tgBot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 60})
+	if err != nil {
+		log.Error("failed to start polling", zap.Error(err))
+		return
+	}
 
 	sem := semaphore.NewWeighted(maxConcurrentUpdates)
 	var handlers sync.WaitGroup
+	defer wg.Wait()
+	defer handlers.Wait()
 
 	log.Info("bot started (polling mode)")
 
@@ -326,9 +383,6 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 		select {
 		case <-ctx.Done():
 			log.Info("shutting down bot")
-			tgBot.StopReceivingUpdates()
-			handlers.Wait()
-			wg.Wait()
 			return
 		case update, ok := <-updates:
 			if !ok {
@@ -347,15 +401,13 @@ func runPolling(ctx context.Context, tgBot *tgbotapi.BotAPI, app *tghandlers.App
 	}
 }
 
-func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
+func runWebhook(ctx context.Context, cfg *config.Config, tgBot *telego.Bot, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
 	// Config.Validate checks the URL and secret before any clients are created.
 	parsedURL, _ := url.Parse(cfg.WebhookURL)
 
-	// telegram-bot-api/v5 v5.5.1 predates SecretToken on WebhookConfig,
-	// so call setWebhook directly with Telegram's official secret_token parameter.
-	if _, err := tgBot.MakeRequest("setWebhook", tgbotapi.Params{
-		"url":          parsedURL.String(),
-		"secret_token": cfg.WebhookSecret,
+	if err := tgBot.SetWebhook(ctx, &telego.SetWebhookParams{
+		URL:         parsedURL.String(),
+		SecretToken: cfg.WebhookSecret,
 	}); err != nil {
 		log.Fatal("failed to set webhook", zap.Error(err))
 	}
@@ -365,7 +417,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 	if path == "" {
 		path = "/"
 	}
-	updates := make(chan tgbotapi.Update, tgBot.Buffer)
+	updates := make(chan telego.Update, 100)
 	mux := http.NewServeMux()
 	mux.Handle(path, telegramWebhookHandler(cfg.WebhookSecret, updates))
 
@@ -393,12 +445,11 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 		case <-ctx.Done():
 			log.Info("shutting down bot")
 
-			if _, err := tgBot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}); err != nil {
-				log.Warn("failed to delete webhook", zap.Error(err))
-			}
-
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
+			if err := tgBot.DeleteWebhook(shutdownCtx, &telego.DeleteWebhookParams{DropPendingUpdates: false}); err != nil {
+				log.Warn("failed to delete webhook", zap.Error(err))
+			}
 			if err := srv.Shutdown(shutdownCtx); err != nil {
 				log.Warn("webhook server shutdown error", zap.Error(err))
 			}
@@ -423,7 +474,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *tgbotapi.BotAPI,
 	}
 }
 
-func telegramWebhookHandler(secret string, updates chan<- tgbotapi.Update) http.Handler {
+func telegramWebhookHandler(secret string, updates chan<- telego.Update) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -438,7 +489,7 @@ func telegramWebhookHandler(secret string, updates chan<- tgbotapi.Update) http.
 
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		defer r.Body.Close()
-		var update tgbotapi.Update
+		var update telego.Update
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&update); err != nil {
 			http.Error(w, "invalid update", http.StatusBadRequest)

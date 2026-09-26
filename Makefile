@@ -25,7 +25,7 @@ templ:
 	templ generate ./frontends/web/views
 
 # All Go unit test packages (no integration)
-GO_UNIT_PKGS = ./core/... ./core/features/... ./notifications/... ./search/... \
+GO_UNIT_PKGS = ./cmd/... ./core/... ./core/features/... ./notifications/... ./search/... \
 		       ./internal/... \
                ./frontends/telegram/tghandlers/... \
                ./frontends/telegram/tgkeyboards/... \

@@ -3,14 +3,14 @@ package tghandlers
 import (
 	"context"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/internal/telemetry"
 )
 
-func (a *App) HandleStart(ctx context.Context, tgBot *tgbotapi.BotAPI, update *tgbotapi.Update) {
+func (a *App) HandleStart(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

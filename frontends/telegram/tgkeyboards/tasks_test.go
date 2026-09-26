@@ -49,8 +49,8 @@ func TestTasks_TaskToggleCallback(t *testing.T) {
 	kb := Tasks(tasks, 0)
 	// First row is the task button.
 	btn := kb.InlineKeyboard[0][0]
-	require.NotNil(t, btn.CallbackData)
-	assert.Equal(t, "task:toggle:2", *btn.CallbackData)
+	require.NotEmpty(t, btn.CallbackData)
+	assert.Equal(t, "task:toggle:2", btn.CallbackData)
 	assert.Contains(t, btn.Text, "Buy milk")
 	assert.Contains(t, btn.Text, "❌")
 }
@@ -108,15 +108,15 @@ func TestTasks_BackButtonCallback(t *testing.T) {
 	kb := Tasks(nil, 0)
 	lastRow := kb.InlineKeyboard[len(kb.InlineKeyboard)-1]
 	require.Len(t, lastRow, 1)
-	require.NotNil(t, lastRow[0].CallbackData)
-	assert.Equal(t, "task:back", *lastRow[0].CallbackData)
+	require.NotEmpty(t, lastRow[0].CallbackData)
+	assert.Equal(t, "task:back", lastRow[0].CallbackData)
 }
 
 func TestTaskAdd_CancelButton(t *testing.T) {
 	kb := TaskAdd()
 	require.Len(t, kb.InlineKeyboard, 2)
 	require.Len(t, kb.InlineKeyboard[0], 1)
-	require.NotNil(t, kb.InlineKeyboard[0][0].CallbackData)
-	assert.Equal(t, "task:cancel", *kb.InlineKeyboard[0][0].CallbackData)
-	assert.Equal(t, "task:cancel", *kb.InlineKeyboard[1][0].CallbackData)
+	require.NotEmpty(t, kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "task:cancel", kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "task:cancel", kb.InlineKeyboard[1][0].CallbackData)
 }

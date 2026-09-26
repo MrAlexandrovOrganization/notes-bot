@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
@@ -21,7 +21,7 @@ func TestDownloadTelegramFile_LocalAPIReadsSharedFile(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	a := &App{Cfg: &config.Config{LocalAPIURL: "http://telegram-bot-api:8081"}}
-	rc, err := a.downloadTelegramFile(context.Background(), nil, tgbotapi.File{FilePath: f.Name()}, zap.NewNop())
+	rc, err := a.downloadTelegramFile(context.Background(), nil, telego.File{FilePath: f.Name()}, zap.NewNop())
 	require.NoError(t, err)
 	defer rc.Close()
 

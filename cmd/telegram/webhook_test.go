@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -19,7 +19,7 @@ import (
 )
 
 func TestTelegramWebhookHandler(t *testing.T) {
-	updates := make(chan tgbotapi.Update, 1)
+	updates := make(chan telego.Update, 1)
 	handler := telegramWebhookHandler("expected-secret", updates)
 
 	t.Run("rejects missing secret", func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 }
 
 func TestTelegramWebhookHandler_CancelledRequestDoesNotBlock(t *testing.T) {
-	updates := make(chan tgbotapi.Update)
+	updates := make(chan telego.Update)
 	handler := telegramWebhookHandler("expected-secret", updates)
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"update_id":1}`))
 	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "expected-secret")

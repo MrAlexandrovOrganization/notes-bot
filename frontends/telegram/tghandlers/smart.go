@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -24,7 +24,7 @@ const confidenceThreshold = 0.6
 
 // HandleSmartStart — entrypoint callback "menu:smart".
 // Переводит юзера в StateSmartInput и просит описать действие.
-func (a *App) HandleSmartStart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleSmartStart(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -40,7 +40,7 @@ func (a *App) HandleSmartStart(ctx context.Context, tgBot *tgbotapi.BotAPI, quer
 
 // handleSmartInput вызывает LLM-классификатор, складывает гипотезу в SmartDraft
 // и показывает превью с подтверждением.
-func (a *App) handleSmartInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {
+func (a *App) handleSmartInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -48,7 +48,11 @@ func (a *App) handleSmartInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 
 	currentDateTime, today, tomorrow, dayAfter := a.llmDateContext()
 
-	processingMsg, _ := tgBot.Send(tgbotapi.NewMessage(chatID, "🧠 Думаю..."))
+	processingMsg, err := tgBot.SendMessage(ctx, &telego.SendMessageParams{ChatID: telego.ChatID{ID: chatID}, Text: "🧠 Думаю...", ParseMode: telego.ModeHTML})
+	if err != nil {
+		log.Error("send processing message", zap.Error(err))
+		return
+	}
 
 	result, err := a.LLM.ClassifyIntent(ctx, text, currentDateTime)
 	if err != nil {
@@ -116,7 +120,7 @@ func (a *App) handleSmartInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chat
 }
 
 // buildSmartPreview формирует текст превью и клавиатуру в зависимости от intent.
-func (a *App) buildSmartPreview(intent, rawText string, result *clients.LLMIntentResult, reminder *clients.LLMReminderResult) (tgfmt.HTML, tgbotapi.InlineKeyboardMarkup) {
+func (a *App) buildSmartPreview(intent, rawText string, result *clients.LLMIntentResult, reminder *clients.LLMReminderResult) (tgfmt.HTML, telego.InlineKeyboardMarkup) {
 	switch intent {
 	case clients.IntentNote:
 		return tgfmt.Escape(fmt.Sprintf("📝 Записать в заметку:\n\n«%s»", rawText)), tgkeyboards.SmartConfirm()
@@ -142,7 +146,7 @@ func (a *App) buildSmartPreview(intent, rawText string, result *clients.LLMInten
 }
 
 // HandleSmartConfirm — callback "smart:yes": исполняем гипотезу из драфта.
-func (a *App) HandleSmartConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleSmartConfirm(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -155,7 +159,7 @@ func (a *App) HandleSmartConfirm(ctx context.Context, tgBot *tgbotapi.BotAPI, qu
 }
 
 // HandleSmartReject — callback "smart:no": сбрасываем драфт и возвращаемся в idle.
-func (a *App) HandleSmartReject(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) {
+func (a *App) HandleSmartReject(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -176,7 +180,7 @@ func (a *App) HandleSmartReject(ctx context.Context, tgBot *tgbotapi.BotAPI, que
 
 // HandleSmartPickIntent — callback "smart:pick:<intent>": пользователь сам
 // выбрал, что делать с текстом (после unknown / low confidence).
-func (a *App) HandleSmartPickIntent(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, intent string) {
+func (a *App) HandleSmartPickIntent(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, intent string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -193,7 +197,7 @@ func (a *App) HandleSmartPickIntent(ctx context.Context, tgBot *tgbotapi.BotAPI,
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.State = tgstates.StateReminderCreateNL
 		})
-		a.handleReminderNLInput(ctx, tgBot, query.Message.Chat.ID, userID, uc.SmartDraft.RawText)
+		a.handleReminderNLInput(ctx, tgBot, query.Message.GetChat().ID, userID, uc.SmartDraft.RawText)
 		return
 	}
 
@@ -201,7 +205,7 @@ func (a *App) HandleSmartPickIntent(ctx context.Context, tgBot *tgbotapi.BotAPI,
 }
 
 // executeSmart выполняет действие, соответствующее intent, и сбрасывает state в idle.
-func (a *App) executeSmart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64, intent string, uc *tgstates.UserContext) {
+func (a *App) executeSmart(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64, intent string, uc *tgstates.UserContext) {
 	log := applog.With(ctx, a.Logger)
 	rawText := uc.SmartDraft.RawText
 	confirmedAttr := metric.WithAttributes(attribute.String("intent", intent))
@@ -246,7 +250,11 @@ func (a *App) executeSmart(ctx context.Context, tgBot *tgbotapi.BotAPI, query *t
 		log.Info("smart: task saved", zap.Int64("user_id", userID))
 
 	case clients.IntentReminder:
-		fakeUpdate := &tgbotapi.Update{Message: query.Message}
+		message, ok := query.Message.(*telego.Message)
+		if !ok {
+			return
+		}
+		fakeUpdate := &telego.Update{Message: message}
 		created := a.finalizeReminderFromUpdate(ctx, tgBot, fakeUpdate, userID)
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) {
 			u.SmartDraft = tgstates.SmartDraft{}

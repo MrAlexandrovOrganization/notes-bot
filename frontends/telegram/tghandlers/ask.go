@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +23,7 @@ import (
 const askContextRuneBudget = 8000
 
 // HandleMenuAsk opens the semantic Q&A prompt.
-func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, userID int64) error {
+func (a *App) HandleMenuAsk(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -36,7 +36,7 @@ func (a *App) HandleMenuAsk(ctx context.Context, tgBot *tgbotapi.BotAPI, query *
 		&kb)
 }
 
-func (a *App) handleAskInput(ctx context.Context, tgBot *tgbotapi.BotAPI, chatID, userID int64, text string) {
+func (a *App) handleAskInput(ctx context.Context, tgBot *telego.Bot, chatID, userID int64, text string) {
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 	log := applog.With(ctx, a.Logger)
