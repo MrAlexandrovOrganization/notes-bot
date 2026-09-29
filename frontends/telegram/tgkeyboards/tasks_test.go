@@ -19,14 +19,6 @@ func makeTasks(n int) []*clients.Task {
 	return tasks
 }
 
-func makeCompletedTask() *clients.Task {
-	return &clients.Task{Text: "Done task", Index: 0, State: pb.TaskState_TASK_STATE_COMPLETED}
-}
-
-func makeRejectedTask() *clients.Task {
-	return &clients.Task{Text: "Rejected task", Index: 0, State: pb.TaskState_TASK_STATE_INCOMPLETE}
-}
-
 func TestTasks_Empty(t *testing.T) {
 	kb := Tasks(nil, 0)
 	rows := kb.InlineKeyboard

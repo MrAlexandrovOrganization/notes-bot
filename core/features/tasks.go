@@ -61,7 +61,7 @@ func ParseTasks(ctx context.Context, content string) []Task {
 		stripped := strings.TrimSpace(line)
 
 		taskText := ""
-		state := TaskStatePending
+		var state TaskState
 		if after, ok := strings.CutPrefix(stripped, "- [?]"); ok {
 			taskText = strings.TrimSpace(after)
 			state = TaskStatePending
