@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"notes-bot/frontends/web/views"
 	"notes-bot/internal/applog"
+	pb "notes-bot/proto/notes"
 )
 
 func (a *App) registerDayRoutes(mux *http.ServeMux) {
@@ -20,6 +21,8 @@ func (a *App) registerDayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /day/rating", a.handleUpdateRating)
 	mux.HandleFunc("POST /day/tasks", a.handleAddTask)
 	mux.HandleFunc("POST /day/tasks/{index}/toggle", a.handleToggleTask)
+	mux.HandleFunc("POST /day/tasks/{index}/accept", a.handleAcceptTask)
+	mux.HandleFunc("POST /day/tasks/{index}/reject", a.handleRejectTask)
 	mux.HandleFunc("POST /day/append", a.handleAppendToNote)
 }
 
@@ -34,9 +37,9 @@ type dayViewData struct {
 }
 
 type taskView struct {
-	Index     int
-	Text      string
-	Completed bool
+	Index int
+	Text  string
+	State pb.TaskState
 }
 
 func (a *App) loadDayView(ctx context.Context, date string) (*dayViewData, error) {
@@ -68,7 +71,7 @@ func (a *App) loadDayView(ctx context.Context, date string) (*dayViewData, error
 			return err
 		}
 		for _, t := range tasks {
-			data.Tasks = append(data.Tasks, &taskView{Index: t.Index, Text: t.Text, Completed: t.Completed})
+			data.Tasks = append(data.Tasks, &taskView{Index: t.Index, Text: t.Text, State: t.State})
 		}
 		return nil
 	})
@@ -103,7 +106,16 @@ func (a *App) handleDayView(w http.ResponseWriter, r *http.Request) {
 func viewDayData(d *dayViewData) views.DayData {
 	tasks := make([]views.TaskData, len(d.Tasks))
 	for i, t := range d.Tasks {
-		tasks[i] = views.TaskData{Index: t.Index, Text: t.Text, Completed: t.Completed}
+		var status string
+		switch t.State {
+		case pb.TaskState_TASK_STATE_COMPLETED:
+			status = "completed"
+		case pb.TaskState_TASK_STATE_INCOMPLETE:
+			status = "rejected"
+		default:
+			status = "pending"
+		}
+		tasks[i] = views.TaskData{Index: t.Index, Text: t.Text, Status: status}
 	}
 	return views.DayData{
 		Date:      d.Date,
@@ -165,6 +177,44 @@ func (a *App) handleToggleTask(w http.ResponseWriter, r *http.Request) {
 	}
 	date := r.FormValue("date")
 	if _, err := a.Core.ToggleTask(ctx, date, index); err != nil {
+		a.serverError(w, r, err)
+		return
+	}
+	a.reloadDayFragment(w, r, date)
+}
+
+func (a *App) handleAcceptTask(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	index, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		a.formError(w, r, "Некорректный номер задачи")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.serverError(w, r, err)
+		return
+	}
+	date := r.FormValue("date")
+	if _, err := a.Core.SetTaskStatus(ctx, date, index, pb.TaskState_TASK_STATE_COMPLETED); err != nil {
+		a.serverError(w, r, err)
+		return
+	}
+	a.reloadDayFragment(w, r, date)
+}
+
+func (a *App) handleRejectTask(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	index, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		a.formError(w, r, "Некорректный номер задачи")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.serverError(w, r, err)
+		return
+	}
+	date := r.FormValue("date")
+	if _, err := a.Core.SetTaskStatus(ctx, date, index, pb.TaskState_TASK_STATE_INCOMPLETE); err != nil {
 		a.serverError(w, r, err)
 		return
 	}

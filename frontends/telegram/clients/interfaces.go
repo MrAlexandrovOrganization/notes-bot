@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	notespb "notes-bot/proto/notes"
 	pb "notes-bot/proto/notifications"
 )
 
@@ -17,6 +18,7 @@ type CoreService interface {
 	UpdateRating(ctx context.Context, date string, rating int) (bool, error)
 	GetTasks(ctx context.Context, date string) ([]*Task, error)
 	ToggleTask(ctx context.Context, date string, taskIndex int) (bool, error)
+	SetTaskStatus(ctx context.Context, date string, taskIndex int, state notespb.TaskState) (bool, error)
 	AddTask(ctx context.Context, date, taskText string) (bool, error)
 	AppendToNote(ctx context.Context, date, text string) (bool, error)
 	AppendToNoteByPath(ctx context.Context, relpath, text string) (bool, error)

@@ -100,9 +100,10 @@ func (m *mockRatingStore) UpdateRating(ctx context.Context, date string, rating 
 }
 
 type mockTaskStore struct {
-	parseTasksFn func(ctx context.Context, content string) []features.Task
-	toggleTaskFn func(ctx context.Context, date string, index int) error
-	addTaskFn    func(ctx context.Context, date, text string) error
+	parseTasksFn    func(ctx context.Context, content string) []features.Task
+	toggleTaskFn    func(ctx context.Context, date string, index int) error
+	setTaskStatusFn func(ctx context.Context, date string, index int, newState features.TaskState) error
+	addTaskFn       func(ctx context.Context, date, text string) error
 }
 
 func (m *mockTaskStore) ParseTasks(ctx context.Context, content string) []features.Task {
@@ -115,6 +116,13 @@ func (m *mockTaskStore) ParseTasks(ctx context.Context, content string) []featur
 func (m *mockTaskStore) ToggleTask(ctx context.Context, date string, index int) error {
 	if m.toggleTaskFn != nil {
 		return m.toggleTaskFn(ctx, date, index)
+	}
+	return nil
+}
+
+func (m *mockTaskStore) SetTaskStatus(ctx context.Context, date string, index int, newState features.TaskState) error {
+	if m.setTaskStatusFn != nil {
+		return m.setTaskStatusFn(ctx, date, index, newState)
 	}
 	return nil
 }
@@ -319,8 +327,8 @@ func TestServer_GetTasks_ReturnsMappedTasks(t *testing.T) {
 	}, nil, &mockTaskStore{
 		parseTasksFn: func(ctx context.Context, content string) []features.Task {
 			return []features.Task{
-				{Text: "Buy milk", Completed: false, Index: 0, LineNumber: 5},
-				{Text: "Walk dog", Completed: true, Index: 1, LineNumber: 6},
+				{Text: "Buy milk", State: features.TaskStatePending, Index: 0, LineNumber: 5},
+				{Text: "Walk dog", State: features.TaskStateCompleted, Index: 1, LineNumber: 6},
 			}
 		},
 	})
@@ -329,10 +337,10 @@ func TestServer_GetTasks_ReturnsMappedTasks(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Tasks, 2)
 	assert.Equal(t, "Buy milk", resp.Tasks[0].Text)
-	assert.False(t, resp.Tasks[0].Completed)
+	assert.Equal(t, pb.TaskState_TASK_STATE_PENDING, resp.Tasks[0].State)
 	assert.Equal(t, int32(0), resp.Tasks[0].Index)
 	assert.Equal(t, int32(5), resp.Tasks[0].LineNumber)
-	assert.True(t, resp.Tasks[1].Completed)
+	assert.Equal(t, pb.TaskState_TASK_STATE_COMPLETED, resp.Tasks[1].State)
 }
 
 func TestServer_GetTasks_EmptyWhenNoteNotFound(t *testing.T) {
@@ -349,27 +357,46 @@ func TestServer_GetTasks_EmptyWhenNoteNotFound(t *testing.T) {
 
 func TestServer_ToggleTask_Success(t *testing.T) {
 	var receivedIndex int
-	srv := newServer(nil, nil, nil, &mockTaskStore{
-		toggleTaskFn: func(ctx context.Context, date string, index int) error {
+	var receivedState features.TaskState
+	srv := newServer(nil, &mockNoteStore{
+		readNoteFn: func(ctx context.Context, date string) (string, error) {
+			return "---\ndate: \"[[01-Mar-2026]]\"\nОценка: 5\n---\n- [?] Test task\n---\nSome content\n", nil
+		},
+	}, nil, &mockTaskStore{
+		parseTasksFn: func(ctx context.Context, content string) []features.Task {
+			return []features.Task{{Text: "Test task", State: features.TaskStatePending, Index: 0, LineNumber: 5}}
+		},
+		setTaskStatusFn: func(ctx context.Context, date string, index int, newState features.TaskState) error {
 			receivedIndex = index
+			receivedState = newState
 			return nil
 		},
 	})
 
-	resp, err := srv.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 2})
+	resp, err := srv.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 0})
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
-	assert.Equal(t, 2, receivedIndex)
+	assert.Equal(t, 0, receivedIndex)
+	assert.Equal(t, features.TaskStateCompleted, receivedState)
 }
 
 func TestServer_ToggleTask_Error(t *testing.T) {
-	srv := newServer(nil, nil, nil, &mockTaskStore{
-		toggleTaskFn: func(ctx context.Context, date string, index int) error { return errors.New("index out of range") },
+	srv := newServer(nil, &mockNoteStore{
+		readNoteFn: func(ctx context.Context, date string) (string, error) {
+			return "---\ndate: \"[[01-Mar-2026]]\"\nОценка: 5\n---\n- [?] Test task\n---\nSome content\n", nil
+		},
+	}, nil, &mockTaskStore{
+		parseTasksFn: func(ctx context.Context, content string) []features.Task {
+			return []features.Task{{Text: "Test task", State: features.TaskStatePending, Index: 0, LineNumber: 5}}
+		},
+		setTaskStatusFn: func(ctx context.Context, date string, index int, newState features.TaskState) error {
+			return errors.New("index out of range")
+		},
 	})
 
 	_, err := srv.ToggleTask(t.Context(), &pb.ToggleTaskRequest{Date: "01-Mar-2026", TaskIndex: 99})
 	require.Error(t, err)
-	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 // --- AddTask ---

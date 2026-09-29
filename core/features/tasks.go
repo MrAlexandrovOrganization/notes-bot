@@ -10,11 +10,31 @@ import (
 	"go.uber.org/zap"
 )
 
+type TaskState int
+
+const (
+	TaskStatePending TaskState = iota
+	TaskStateCompleted
+	TaskStateRejected
+)
+
 type Task struct {
 	Text       string
-	Completed  bool
+	State      TaskState
 	Index      int
 	LineNumber int
+}
+
+func (t Task) Completed() bool {
+	return t.State == TaskStateCompleted
+}
+
+func (t Task) Rejected() bool {
+	return t.State == TaskStateRejected
+}
+
+func (t Task) Pending() bool {
+	return t.State == TaskStatePending
 }
 
 func ParseTasks(ctx context.Context, content string) []Task {
@@ -41,15 +61,22 @@ func ParseTasks(ctx context.Context, content string) []Task {
 		stripped := strings.TrimSpace(line)
 
 		taskText := ""
-		completed := false
-		if after, ok := strings.CutPrefix(stripped, "- [ ]"); ok {
+		state := TaskStatePending
+		if after, ok := strings.CutPrefix(stripped, "- [?]"); ok {
 			taskText = strings.TrimSpace(after)
+			state = TaskStatePending
+		} else if after, ok := strings.CutPrefix(stripped, "- [ ]"); ok {
+			taskText = strings.TrimSpace(after)
+			state = TaskStatePending
 		} else if after, ok := strings.CutPrefix(stripped, "- [x]"); ok {
 			taskText = strings.TrimSpace(after)
-			completed = true
+			state = TaskStateCompleted
 		} else if after, ok := strings.CutPrefix(stripped, "- [X]"); ok {
 			taskText = strings.TrimSpace(after)
-			completed = true
+			state = TaskStateCompleted
+		} else if after, ok := strings.CutPrefix(stripped, "- [-]"); ok {
+			taskText = strings.TrimSpace(after)
+			state = TaskStateRejected
 		} else {
 			continue
 		}
@@ -59,7 +86,7 @@ func ParseTasks(ctx context.Context, content string) []Task {
 
 		tasks = append(tasks, Task{
 			Text:       taskText,
-			Completed:  completed,
+			State:      state,
 			Index:      taskIndex,
 			LineNumber: lineOffset + i,
 		})
@@ -72,8 +99,8 @@ func ParseTasks(ctx context.Context, content string) []Task {
 	return tasks
 }
 
-func ToggleTaskContent(ctx context.Context, content string, taskIndex int) (string, error) {
-	ctx, span := telemetry.StartSpan(ctx)
+func SetTaskStatusContent(ctx context.Context, content string, taskIndex int, newState TaskState) (string, error) {
+	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
 	tasks := ParseTasks(ctx, content)
@@ -91,25 +118,60 @@ func ToggleTaskContent(ctx context.Context, content string, taskIndex int) (stri
 
 	line := lines[lineIdx]
 
-	if strings.Contains(line, "- [ ]") {
-		if idx := strings.Index(line, "[completion::"); idx != -1 {
-			end := strings.Index(line[idx:], "]") + idx + 1
-			line = strings.TrimRight(line[:idx], " ") + line[end:]
+	var newLine string
+	switch newState {
+	case TaskStatePending:
+		if strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]") {
+			newLine = strings.Replace(line, "- [x]", "- [?]", 1)
+			newLine = strings.Replace(newLine, "- [X]", "- [?]", 1)
+		} else if strings.Contains(line, "- [-]") {
+			newLine = strings.Replace(line, "- [-]", "- [?]", 1)
+		} else if strings.Contains(line, "- [ ]") {
+			newLine = strings.Replace(line, "- [ ]", "- [?]", 1)
+		} else {
+			return "", fmt.Errorf("line %d does not contain a valid task", lineIdx+1)
 		}
-		line = strings.Replace(line, "- [ ]", "- [x]", 1)
-		line = strings.TrimRight(line, " ") + fmt.Sprintf("  [completion:: %s]", time.Now().Format("2006-01-02"))
-	} else if strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]") {
-		line = strings.Replace(line, "- [x]", "- [ ]", 1)
-		line = strings.Replace(line, "- [X]", "- [ ]", 1)
-		if idx := strings.Index(line, "[completion::"); idx != -1 {
-			end := strings.Index(line[idx:], "]") + idx + 1
-			line = strings.TrimRight(line[:idx], " ") + line[end:]
+		if idx := strings.Index(newLine, "[completion::"); idx != -1 {
+			end := strings.Index(newLine[idx:], "]") + idx + 1
+			newLine = strings.TrimRight(newLine[:idx], " ") + newLine[end:]
 		}
-	} else {
-		return "", fmt.Errorf("line %d does not contain a valid task", lineIdx+1)
+	case TaskStateCompleted:
+		if strings.Contains(line, "- [?]") || strings.Contains(line, "- [ ]") {
+			if idx := strings.Index(line, "[completion::"); idx != -1 {
+				end := strings.Index(line[idx:], "]") + idx + 1
+				line = strings.TrimRight(line[:idx], " ") + line[end:]
+			}
+			newLine = strings.Replace(line, "- [?]", "- [x]", 1)
+			newLine = strings.Replace(newLine, "- [ ]", "- [x]", 1)
+		} else if strings.Contains(line, "- [-]") {
+			newLine = strings.Replace(line, "- [-]", "- [x]", 1)
+		} else if strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]") {
+			return "", fmt.Errorf("task already completed")
+		} else {
+			return "", fmt.Errorf("line %d does not contain a valid task", lineIdx+1)
+		}
+		newLine = strings.TrimRight(newLine, " ") + fmt.Sprintf("  [completion:: %s]", time.Now().Format("2006-01-02"))
+	case TaskStateRejected:
+		if strings.Contains(line, "- [?]") || strings.Contains(line, "- [ ]") {
+			newLine = strings.Replace(line, "- [?]", "- [-]", 1)
+			newLine = strings.Replace(newLine, "- [ ]", "- [-]", 1)
+		} else if strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]") {
+			newLine = strings.Replace(line, "- [x]", "- [-]", 1)
+			newLine = strings.Replace(newLine, "- [X]", "- [-]", 1)
+		} else if strings.Contains(line, "- [-]") {
+			return "", fmt.Errorf("task already rejected")
+		} else {
+			return "", fmt.Errorf("line %d does not contain a valid task", lineIdx+1)
+		}
+		if idx := strings.Index(newLine, "[completion::"); idx != -1 {
+			end := strings.Index(newLine[idx:], "]") + idx + 1
+			newLine = strings.TrimRight(newLine[:idx], " ") + newLine[end:]
+		}
+	default:
+		return "", fmt.Errorf("invalid task state: %d", newState)
 	}
 
-	lines[lineIdx] = line
+	lines[lineIdx] = newLine
 	return strings.Join(lines, "\n"), nil
 }
 
@@ -127,12 +189,12 @@ func AddTaskContent(ctx context.Context, content string, taskText string) (strin
 	lastTaskIdx := -1
 	for i, line := range lines {
 		stripped := strings.TrimSpace(line)
-		if strings.HasPrefix(stripped, "- [ ]") || strings.HasPrefix(stripped, "- [x]") || strings.HasPrefix(stripped, "- [X]") {
+		if strings.HasPrefix(stripped, "- [?]") || strings.HasPrefix(stripped, "- [ ]") || strings.HasPrefix(stripped, "- [x]") || strings.HasPrefix(stripped, "- [X]") || strings.HasPrefix(stripped, "- [-]") {
 			lastTaskIdx = i
 		}
 	}
 
-	newTask := "- [ ] " + taskText
+	newTask := "- [?] " + taskText
 
 	if lastTaskIdx >= 0 {
 		lines = append(lines[:lastTaskIdx+1], append([]string{newTask}, lines[lastTaskIdx+1:]...)...)

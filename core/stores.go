@@ -95,6 +95,7 @@ type RatingStore interface {
 type TaskStore interface {
 	ParseTasks(ctx context.Context, content string) []features.Task
 	ToggleTask(ctx context.Context, date string, index int) error
+	SetTaskStatus(ctx context.Context, date string, index int, newState features.TaskState) error
 	AddTask(ctx context.Context, date, text string) error
 }
 
@@ -405,7 +406,46 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	if err != nil {
 		return err
 	}
-	newContent, err := features.ToggleTaskContent(ctx, string(data), index)
+
+	// Parse tasks to get current state
+	tasks := features.ParseTasks(ctx, string(data))
+	if index < 0 || index >= len(tasks) {
+		return fmt.Errorf("invalid task index: %d", index)
+	}
+	currentState := tasks[index].State
+	var newState features.TaskState
+	switch currentState {
+	case features.TaskStatePending:
+		newState = features.TaskStateCompleted
+	case features.TaskStateCompleted:
+		newState = features.TaskStateRejected
+	case features.TaskStateRejected:
+		newState = features.TaskStatePending
+	}
+
+	newContent, err := features.SetTaskStatusContent(ctx, string(data), index, newState)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(filePath, []byte(newContent), 0644)
+}
+
+func (r *realTaskStore) SetTaskStatus(ctx context.Context, date string, index int, newState features.TaskState) error {
+	ctx, span := telemetry.StartSpan(ctx)
+	defer span.End()
+
+	logger.Debug("SetTaskStatus")
+	filePath, err := dailyNotePath(ctx, date)
+	if err != nil {
+		return err
+	}
+	unlock := lockFile(filePath)
+	defer unlock()
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	newContent, err := features.SetTaskStatusContent(ctx, string(data), index, newState)
 	if err != nil {
 		return err
 	}

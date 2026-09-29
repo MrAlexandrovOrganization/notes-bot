@@ -7,6 +7,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 
 	"notes-bot/frontends/telegram/clients"
+	pb "notes-bot/proto/notes"
 )
 
 const tasksPerPage = 5
@@ -25,11 +26,16 @@ func Tasks(tasks []*clients.Task, currentPage int) telego.InlineKeyboardMarkup {
 	}
 
 	for _, task := range tasks[startIdx:endIdx] {
-		checkbox := "❌"
-		if task.Completed {
-			checkbox = "✅"
+		var icon string
+		switch task.State {
+		case pb.TaskState_TASK_STATE_COMPLETED:
+			icon = "✅"
+		case pb.TaskState_TASK_STATE_INCOMPLETE:
+			icon = "❌"
+		default:
+			icon = "❓"
 		}
-		label := fmt.Sprintf("%s %s", checkbox, task.Text)
+		label := fmt.Sprintf("%s %s", icon, task.Text)
 		rows = append(rows, tu.InlineKeyboardRow(
 			tu.InlineKeyboardButton(label).WithCallbackData(fmt.Sprintf("task:toggle:%d", task.Index)),
 		))

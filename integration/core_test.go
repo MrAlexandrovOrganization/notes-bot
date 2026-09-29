@@ -221,7 +221,7 @@ func TestGetTasks_AfterAddTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Tasks, 1)
 	assert.Equal(t, "Buy groceries", resp.Tasks[0].Text)
-	assert.False(t, resp.Tasks[0].Completed)
+	assert.Equal(t, pb.TaskState_TASK_STATE_PENDING, resp.Tasks[0].State)
 	assert.Equal(t, int32(0), resp.Tasks[0].Index)
 }
 
@@ -249,7 +249,7 @@ func TestToggleTask_MarksCompleted(t *testing.T) {
 
 	tasks, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
-	assert.True(t, tasks.Tasks[0].Completed)
+	assert.Equal(t, pb.TaskState_TASK_STATE_COMPLETED, tasks.Tasks[0].State)
 }
 
 func TestToggleTask_MarksIncomplete(t *testing.T) {
@@ -257,7 +257,7 @@ func TestToggleTask_MarksIncomplete(t *testing.T) {
 
 	tasks, err := client.GetTasks(t.Context(), &pb.DateRequest{Date: testDate})
 	require.NoError(t, err)
-	assert.False(t, tasks.Tasks[0].Completed)
+	assert.Equal(t, pb.TaskState_TASK_STATE_INCOMPLETE, tasks.Tasks[0].State)
 }
 
 // --- AppendToNote ---

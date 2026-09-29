@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"notes-bot/core/features"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/notes"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"golang.org/x/sync/errgroup"
-
-	"notes-bot/internal/telemetry"
-	pb "notes-bot/proto/notes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -243,9 +244,18 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *
 	rawTasks := s.tasks.ParseTasks(ctx, content)
 	tasks := make([]*pb.Task, len(rawTasks))
 	for i, t := range rawTasks {
+		var state pb.TaskState
+		switch t.State {
+		case features.TaskStatePending:
+			state = pb.TaskState_TASK_STATE_PENDING
+		case features.TaskStateCompleted:
+			state = pb.TaskState_TASK_STATE_COMPLETED
+		case features.TaskStateRejected:
+			state = pb.TaskState_TASK_STATE_INCOMPLETE
+		}
 		tasks[i] = &pb.Task{
 			Text:       t.Text,
-			Completed:  t.Completed,
+			State:      state,
 			Index:      int32(t.Index),
 			LineNumber: int32(t.LineNumber),
 		}
@@ -264,8 +274,57 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 		attribute.Int("task.index", int(req.TaskIndex)))
 	defer span.End()
 
-	if err := s.tasks.ToggleTask(ctx, req.Date, int(req.TaskIndex)); err != nil {
+	content, readErr := s.notes.ReadNote(ctx, req.Date)
+	if readErr != nil || content == "" {
+		return nil, status.Errorf(codes.Internal, "failed to read note: %v", readErr)
+	}
+	rawTasks := s.tasks.ParseTasks(ctx, content)
+	if int(req.TaskIndex) < 0 || int(req.TaskIndex) >= len(rawTasks) {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid task index: %d", req.TaskIndex)
+	}
+	currentState := rawTasks[req.TaskIndex].State
+	var newState features.TaskState
+	switch currentState {
+	case features.TaskStatePending:
+		newState = features.TaskStateCompleted
+	case features.TaskStateCompleted:
+		newState = features.TaskStateRejected
+	case features.TaskStateRejected:
+		newState = features.TaskStatePending
+	}
+
+	if err := s.tasks.SetTaskStatus(ctx, req.Date, int(req.TaskIndex), newState); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to toggle task: %v", err)
+	}
+	return &pb.SuccessResponse{Success: true}, nil
+}
+
+func (s *NotesServer) SetTaskStatus(ctx context.Context, req *pb.SetTaskStatusRequest) (resp *pb.SuccessResponse, err error) {
+	defer s.recordRPC(ctx, "SetTaskStatus", &err)
+	if err := validateDate(req.Date); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	ctx, span := telemetry.StartSpan(ctx,
+		attribute.String("note.date", req.Date),
+		attribute.Int("task.index", int(req.TaskIndex)),
+		attribute.Int("status", int(req.Status)))
+	defer span.End()
+
+	var newState features.TaskState
+	switch req.Status {
+	case pb.TaskStatus_TASK_STATUS_PENDING:
+		newState = features.TaskStatePending
+	case pb.TaskStatus_TASK_STATUS_COMPLETED:
+		newState = features.TaskStateCompleted
+	case pb.TaskStatus_TASK_STATUS_REJECTED:
+		newState = features.TaskStateRejected
+	default:
+		return nil, status.Error(codes.InvalidArgument, "invalid task status")
+	}
+
+	if err := s.tasks.SetTaskStatus(ctx, req.Date, int(req.TaskIndex), newState); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to set task status: %v", err)
 	}
 	return &pb.SuccessResponse{Success: true}, nil
 }

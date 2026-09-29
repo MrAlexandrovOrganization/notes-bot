@@ -15,7 +15,8 @@ import (
 
 type Task struct {
 	Text       string
-	Completed  bool
+	State      pb.TaskState
+	Completed  bool // Deprecated: use State instead
 	Index      int
 	LineNumber int
 }
@@ -97,7 +98,8 @@ func (c *CoreClient) GetTasks(ctx context.Context, date string) ([]*Task, error)
 	for i, t := range resp.Tasks {
 		tasks[i] = &Task{
 			Text:       t.Text,
-			Completed:  t.Completed,
+			State:      t.State,
+			Completed:  t.State == pb.TaskState_TASK_STATE_COMPLETED,
 			Index:      int(t.Index),
 			LineNumber: int(t.LineNumber),
 		}
@@ -107,6 +109,23 @@ func (c *CoreClient) GetTasks(ctx context.Context, date string) ([]*Task, error)
 
 func (c *CoreClient) ToggleTask(ctx context.Context, date string, taskIndex int) (bool, error) {
 	resp, err := c.stub.ToggleTask(ctx, &pb.ToggleTaskRequest{Date: date, TaskIndex: int32(taskIndex)})
+	if err != nil {
+		return false, err
+	}
+	return resp.Success, nil
+}
+
+func (c *CoreClient) SetTaskStatus(ctx context.Context, date string, taskIndex int, state pb.TaskState) (bool, error) {
+	var status pb.TaskStatus
+	switch state {
+	case pb.TaskState_TASK_STATE_PENDING:
+		status = pb.TaskStatus_TASK_STATUS_PENDING
+	case pb.TaskState_TASK_STATE_COMPLETED:
+		status = pb.TaskStatus_TASK_STATUS_COMPLETED
+	case pb.TaskState_TASK_STATE_INCOMPLETE:
+		status = pb.TaskStatus_TASK_STATUS_REJECTED
+	}
+	resp, err := c.stub.SetTaskStatus(ctx, &pb.SetTaskStatusRequest{Date: date, TaskIndex: int32(taskIndex), Status: status})
 	if err != nil {
 		return false, err
 	}

@@ -22,6 +22,7 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
 	"notes-bot/internal/timeutil"
+	pb "notes-bot/proto/notes"
 )
 
 var callbackActionHandlers = map[string]func(*App, context.Context, *telego.Bot, *telego.CallbackQuery, int64, []string) error{
@@ -216,6 +217,40 @@ func (a *App) handleTaskAction(ctx context.Context, tgBot *telego.Bot, query *te
 			return a.showTasks(ctx, tgBot, query, userID)
 		}
 		go tgBot.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "❌ Ошибка при переключении задачи", ShowAlert: true})
+
+	case "accept":
+		if len(parts) < 3 {
+			return nil
+		}
+		idx, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("parse task index: %w", err)
+		}
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
+		if ok, _ := a.Core.SetTaskStatus(ctx, uc.ActiveDate, idx, pb.TaskState_TASK_STATE_COMPLETED); ok {
+			return a.showTasks(ctx, tgBot, query, userID)
+		}
+		go tgBot.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "❌ Ошибка при принятии задачи", ShowAlert: true})
+
+	case "reject":
+		if len(parts) < 3 {
+			return nil
+		}
+		idx, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("parse task index: %w", err)
+		}
+		uc, err := a.State.GetContext(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get context: %w", err)
+		}
+		if ok, _ := a.Core.SetTaskStatus(ctx, uc.ActiveDate, idx, pb.TaskState_TASK_STATE_INCOMPLETE); ok {
+			return a.showTasks(ctx, tgBot, query, userID)
+		}
+		go tgBot.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "❌ Ошибка при отклонении задачи", ShowAlert: true})
 
 	case "add":
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateWaitingNewTask })

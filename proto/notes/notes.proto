@@ -15,6 +15,7 @@ service NotesService {
   rpc UpdateRating(UpdateRatingRequest) returns (SuccessResponse);
   rpc GetTasks(DateRequest) returns (TasksResponse);
   rpc ToggleTask(ToggleTaskRequest) returns (SuccessResponse);
+  rpc SetTaskStatus(SetTaskStatusRequest) returns (SuccessResponse);
   rpc AddTask(AddTaskRequest) returns (SuccessResponse);
   rpc AppendToNote(AppendRequest) returns (SuccessResponse);
   rpc AppendToNoteByPath(AppendByPathRequest) returns (SuccessResponse);
@@ -48,9 +49,22 @@ message UpdateRatingRequest {
   int32 rating = 2;
 }
 
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING = 1;
+  TASK_STATUS_COMPLETED = 2;
+  TASK_STATUS_REJECTED = 3;
+}
+
+enum TaskState {
+  TASK_STATE_PENDING = 0;
+  TASK_STATE_INCOMPLETE = 1;
+  TASK_STATE_COMPLETED = 2;
+}
+
 message Task {
   string text = 1;
-  bool completed = 2;
+  TaskState state = 2;
   int32 index = 3;
   int32 line_number = 4;
 }
@@ -62,6 +76,12 @@ message TasksResponse {
 message ToggleTaskRequest {
   string date = 1;
   int32 task_index = 2;
+}
+
+message SetTaskStatusRequest {
+  string date = 1;
+  int32 task_index = 2;
+  TaskStatus status = 3;
 }
 
 message AddTaskRequest {

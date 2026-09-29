@@ -4,26 +4,29 @@ import (
 	"context"
 
 	"notes-bot/frontends/telegram/clients"
+	notespb "notes-bot/proto/notes"
 	pb "notes-bot/proto/notifications"
 )
 
 // fakeCore is a configurable in-memory stand-in for clients.CoreService.
 type fakeCore struct {
-	todayDate     string
-	existingDates []string
-	notes         map[string]string
-	ratings       map[string]int
-	hasRating     map[string]bool
-	tasks         map[string][]*clients.Task
-	dirs          map[string][]clients.DirEntry
-	err           error
-	appendedText  string
-	appendedDate  string
-	appendedPath  string
-	addedTaskText string
-	toggledIndex  int
-	updatedRating int
-	ensuredNote   string
+	todayDate          string
+	existingDates      []string
+	notes              map[string]string
+	ratings            map[string]int
+	hasRating          map[string]bool
+	tasks              map[string][]*clients.Task
+	dirs               map[string][]clients.DirEntry
+	err                error
+	appendedText       string
+	appendedDate       string
+	appendedPath       string
+	addedTaskText      string
+	toggledIndex       int
+	setTaskStatusIndex int
+	setTaskStatus      notespb.TaskState
+	updatedRating      int
+	ensuredNote        string
 }
 
 func newFakeCore() *fakeCore {
@@ -62,6 +65,11 @@ func (f *fakeCore) GetTasks(ctx context.Context, date string) ([]*clients.Task, 
 }
 func (f *fakeCore) ToggleTask(ctx context.Context, date string, taskIndex int) (bool, error) {
 	f.toggledIndex = taskIndex
+	return true, f.err
+}
+func (f *fakeCore) SetTaskStatus(ctx context.Context, date string, taskIndex int, state notespb.TaskState) (bool, error) {
+	f.setTaskStatusIndex = taskIndex
+	f.setTaskStatus = state
 	return true, f.err
 }
 func (f *fakeCore) AddTask(ctx context.Context, date, taskText string) (bool, error) {
