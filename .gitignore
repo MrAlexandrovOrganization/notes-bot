@@ -56,7 +56,7 @@ Thumbs.db
 /frontends/web/webapp/static/tailwind.css
 
 # Compiled binaries (prevent accidental commits)
-/core
+# core/ is a source directory, never ignore new Go files in it.
 /notifications
 /search-bin
 /telegram

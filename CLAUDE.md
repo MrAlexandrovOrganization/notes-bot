@@ -125,7 +125,7 @@ Health checks: core, notifications, search use `grpc.health.v1` + `grpc_health_p
 - `frontends/telegram/tghandlers/commands.go` — `/start` with ROOT_ID check
 - `frontends/telegram/tghandlers/messages.go` — text routing by `UserState` via `stateTextHandlers` map (14 state handlers + default append-to-note)
 - `frontends/telegram/tghandlers/callbacks.go` — callback_data routing via `callbackActionHandlers` map (9 action namespaces)
-- `frontends/telegram/tghandlers/voice.go` — Voice/VideoNote → Whisper → reorder buffer → append to note / NL / smart
+- `frontends/telegram/tghandlers/voice.go` — Legacy helpers/pagination; current durable pipeline lives in voice_durable.go and voice_confirmation.go
 - `frontends/telegram/tghandlers/reminder_create.go` — multi-step reminder creation wizard
 - `frontends/telegram/tghandlers/reminder_postpone.go` — postpone by duration / by date+time
 - `frontends/telegram/tghandlers/reminder_actions.go` — reminder list, delete, done, reject, back, cancel; `extractReminderTitle` (HTML unescape)
@@ -357,7 +357,7 @@ Each Go service calls `telemetry.InitMetrics()` at startup and exposes `/metrics
 ### Concurrency
 - Telegram updates are processed in goroutines limited by `semaphore.Weighted` (max 16 concurrent, `cmd/telegram/main.go`).
 - `StateManager.UpdateContext` uses a per-user mutex (`sync.Map` of `*sync.Mutex`) to serialize concurrent state updates for the same user, preventing lost updates.
-- Voice transcription uses a per-user reorder buffer (`voiceReorderBuffer`) to deliver results in Telegram message ID order.
+- Voice input is persisted in PostgreSQL before webhook acknowledgement or polling offset advance. internal/voicejobs stores delivery checkpoints and enforces chat message order; voice_durable.go resumes steps without an overall deadline. Backend SubmitOnce uses a stable request ID and retain-until-Ack; core append uses operation_id. See docs/durable-voice.md for rollout, limits and tests.
 
 ## Kafka
 

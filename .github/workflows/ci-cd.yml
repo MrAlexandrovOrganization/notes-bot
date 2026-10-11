@@ -45,20 +45,10 @@ jobs:
       - name: Install tools
         run: make install
 
-      - name: Lint proto
-        run: make proto-lint
-
-      - name: Check proto breaking changes
-        run: make proto-breaking PROTO_BREAKING_AGAINST="https://github.com/${{ github.repository }}.git#branch=main,subdir=proto"
-
-      - name: Generate proto stubs
-        run: make proto-generate
-
-      - name: Generate templ views
-        run: make templ
-
-      - name: Lint (gofmt + vet)
-        run: make lint
+      - name: Check generated contracts, formatting, code and tests
+        run: make check
+        env:
+          PROTO_BREAKING_AGAINST: .git#ref=${{ github.event.pull_request.base.sha || github.event.before }},subdir=proto
 
       - name: Install golangci-lint
         run: make install-golangci-lint
@@ -66,11 +56,17 @@ jobs:
       - name: Lint (golangci-lint)
         run: make lint-golangci
 
-      - name: Test (race + coverage)
-        run: make test
+      - name: Start isolated voice job database
+        run: make test-voice-db-up
 
-      - name: Integration tests
-        run: make test-integration-ci
+      - name: Verify durable voice storage with real PostgreSQL
+        run: make test-voice-db
+        env:
+          TEST_VOICE_DATABASE_URL: postgres://voicejobs_test:synthetic-voicejobs-test@127.0.0.1:55442/voicejobs_test?sslmode=disable
+
+      - name: Stop isolated voice job database
+        if: always()
+        run: make test-voice-db-down
 
   build:
     name: Build Docker images

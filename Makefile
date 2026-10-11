@@ -115,6 +115,8 @@ fmt-check:
 	if [ -n "$$files" ]; then echo "gofmt found unformatted files:"; printf '%s\n' "$$files"; exit 1; fi
 
 format: fmt
+	buf format -w proto
+	golangci-lint run --fix ./...
 
 lint:
 	$(MAKE) fmt-check
@@ -151,8 +153,32 @@ clean:
 	@rm -f coverage.out unit.out integration.out combined.out
 	@rm -rf htmlcov
 
-up: monitoring-register
+up: monitoring-register migrate-voice
 	$(DOCKER_COMPOSE) up --build -d
+
+# Explicit deployment migration; normal telegram startup only checks the schema.
+migrate-voice:
+	$(DOCKER_COMPOSE) up -d postgres
+	$(DOCKER_COMPOSE) build telegram
+	$(DOCKER_COMPOSE) run --rm --no-deps telegram /telegram migrate-voice
+
+check: proto-generate templ proto-check
+	@files=$$(gofmt -l $(GO_DIRS)); test -z "$$files" || { echo "$$files"; exit 1; }
+	go vet ./...
+	$(MAKE) test test-integration-ci
+
+proto-check: proto-lint proto-breaking
+
+test-voice-db:
+	@test -n "$(TEST_VOICE_DATABASE_URL)" || { echo 'Set TEST_VOICE_DATABASE_URL to an isolated local PostgreSQL database'; exit 1; }
+	go test -race ./internal/voicejobs -v
+
+test-voice-db-up:
+	docker run --detach --rm --name notes-bot-voice-ci-db --label app=notes-bot-voice-ci-db --tmpfs /var/lib/postgresql/data:rw,size=256m --memory=512m -p 127.0.0.1:55442:5432 -e POSTGRES_USER=voicejobs_test -e POSTGRES_PASSWORD=synthetic-voicejobs-test -e POSTGRES_DB=voicejobs_test postgres:$(POSTGRES_VERSION)
+	@for attempt in $$(seq 1 30); do docker exec notes-bot-voice-ci-db pg_isready -h 127.0.0.1 -U voicejobs_test -d voicejobs_test >/dev/null && exit 0; sleep 1; done; exit 1
+
+test-voice-db-down:
+	@if [ "$$(docker inspect -f '{{index .Config.Labels "app"}}' notes-bot-voice-ci-db 2>/dev/null)" = notes-bot-voice-ci-db ]; then docker stop notes-bot-voice-ci-db; fi
 
 deploy: proto monitoring-register
 	$(DOCKER_COMPOSE) build --no-cache
@@ -216,6 +242,6 @@ monitoring-unregister:
 	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	@echo "notes-bot: monitoring unregistered"
 
-.PHONY: versions build install-golangci-lint proto-generate proto-breaking test-integration-ci
+.PHONY: versions build install-golangci-lint proto-generate proto-breaking test-integration-ci check proto-check migrate-voice test-voice-db test-voice-db-up test-voice-db-down
 
 .PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint fmt fmt-check format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister

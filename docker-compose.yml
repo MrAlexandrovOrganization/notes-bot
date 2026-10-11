@@ -228,7 +228,12 @@ services:
     env_file:
       - .env
     environment:
-
+      # Durable voice delivery shares the existing notes-bot PostgreSQL instance.
+      - DB_HOST=notes-bot-postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-notifications}
+      - DB_USER=${DB_USER:-notif}
+      - DB_PASSWORD=${DB_PASSWORD}
       # Local Bot API keeps downloaded voice files in a shared volume. This is
       # the same path used by the transcriber bot and avoids public file URLs.
       - TELEGRAM_LOCAL_API_URL=http://telegram-bot-api:8081
@@ -280,6 +285,8 @@ services:
       search:
         condition: service_healthy
       notifications:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
     healthcheck:

@@ -32,6 +32,11 @@ type Config struct {
 	LocationHost          string
 	LocationPort          string
 	LocalAPIURL           string
+	DBHost                string
+	DBPort                string
+	DBName                string
+	DBUser                string
+	DBPassword            string
 
 	// Webhook mode: if WebhookURL is set, bot runs in webhook mode instead of polling.
 	// WebhookURL must use HTTPS, or HTTP with a configured trusted LocalAPIURL.
@@ -81,6 +86,11 @@ func Load() (*Config, error) {
 		LocationHost:          env.Str("LOCATION_HOST", "localhost"),
 		LocationPort:          env.Str("LOCATION_PORT", "8080"),
 		LocalAPIURL:           env.Str("TELEGRAM_LOCAL_API_URL", ""),
+		DBHost:                env.Str("DB_HOST", "localhost"),
+		DBPort:                env.Str("DB_PORT", "5432"),
+		DBName:                env.Str("DB_NAME", "notifications"),
+		DBUser:                env.Str("DB_USER", "notif"),
+		DBPassword:            os.Getenv("DB_PASSWORD"),
 		WebhookURL:            env.Str("WEBHOOK_URL", ""),
 		WebhookListenAddr:     env.Str("WEBHOOK_LISTEN_ADDR", ":8080"),
 		WebhookSecret:         env.Str("TELEGRAM_WEBHOOK_SECRET", ""),

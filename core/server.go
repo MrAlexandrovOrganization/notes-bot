@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -353,7 +354,22 @@ func (s *NotesServer) AppendToNote(ctx context.Context, req *pb.AppendRequest) (
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.date", req.Date))
 	defer span.End()
 
-	if err := s.notes.AppendToNote(ctx, req.Date, req.Text); err != nil {
+	if operationID := req.GetOperationId(); operationID != "" {
+		if err := validateOperationID(operationID); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		store, ok := s.notes.(IdempotentNoteStore)
+		if !ok {
+			return nil, status.Error(codes.FailedPrecondition, "note store does not support idempotent append")
+		}
+		err = store.AppendToNoteOnce(ctx, req.Date, req.Text, operationID)
+	} else {
+		err = s.notes.AppendToNote(ctx, req.Date, req.Text)
+	}
+	if errors.Is(err, ErrOperationConflict) {
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to append to note: %v", err)
 	}
 	if s.noteFileOps != nil {

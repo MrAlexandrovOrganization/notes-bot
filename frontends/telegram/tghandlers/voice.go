@@ -568,6 +568,15 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *telego.Bot, query *t
 		if err != nil {
 			return nil
 		}
+		if a.VoiceJobs != nil && query.Message != nil {
+			j, err := a.VoiceJobs.Page(ctx, query.Message.GetChat().ID, userID, msgID)
+			if err != nil {
+				return err
+			}
+			if j != nil {
+				return a.showDurableVoicePage(ctx, tgBot, j, page)
+			}
+		}
 		val, ok := a.voiceTexts.Load(msgID)
 		if !ok {
 			return nil
@@ -582,8 +591,38 @@ func (a *App) handleVoiceAction(ctx context.Context, tgBot *telego.Bot, query *t
 
 	case "noop":
 		// Do nothing — just the page counter button.
+	case "stop":
+		if len(parts) == 3 && a.VoiceJobs != nil {
+			return a.VoiceJobs.Cancel(ctx, parts[2], userID)
+		}
+	case "open":
+		if len(parts) == 3 && a.VoiceJobs != nil {
+			return a.openDurableVoice(ctx, tgBot, query, userID, parts[2])
+		}
+	case "pages":
+		if len(parts) == 4 && a.VoiceJobs != nil && query.Message != nil {
+			page, err := strconv.Atoi(parts[3])
+			if err != nil {
+				return nil
+			}
+			j, err := a.VoiceJobs.Get(ctx, parts[2], userID)
+			if err != nil {
+				return err
+			}
+			if j != nil && j.ChatID == query.Message.GetChat().ID {
+				return a.showDurableVoicePage(ctx, tgBot, j, page)
+			}
+		}
+	case "do":
+		if len(parts) == 4 && a.VoiceJobs != nil {
+			return a.handleDurableVoiceConfirmation(ctx, tgBot, query, userID, parts[2], parts[3])
+		}
 	}
 	return nil
+}
+
+func isMissingVoiceMessage(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "message to edit not found") || strings.Contains(err.Error(), "message can't be edited"))
 }
 
 func editStatus(ctx context.Context, tgBot *telego.Bot, chatID int64, msgID int, text string) {

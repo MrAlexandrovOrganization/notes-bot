@@ -148,6 +148,18 @@ func (c *CoreClient) AppendToNote(ctx context.Context, date, text string) (bool,
 	return resp.Success, nil
 }
 
+// AppendToNoteOnce retries the same operation without appending a second copy.
+func (c *CoreClient) AppendToNoteOnce(ctx context.Context, date, text, operationID string) (bool, error) {
+	if operationID == "" {
+		return false, fmt.Errorf("append operation ID is required")
+	}
+	resp, err := c.stub.AppendToNote(ctx, &pb.AppendRequest{Date: date, Text: text, OperationId: &operationID})
+	if err != nil {
+		return false, err
+	}
+	return resp.Success, nil
+}
+
 func (c *CoreClient) AppendToNoteByPath(ctx context.Context, relpath, text string) (bool, error) {
 	resp, err := c.stub.AppendToNoteByPath(ctx, &pb.AppendByPathRequest{Relpath: relpath, Text: text})
 	if err != nil {

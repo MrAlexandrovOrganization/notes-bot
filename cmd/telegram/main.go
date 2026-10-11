@@ -39,6 +39,7 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
+	"notes-bot/internal/voicejobs"
 )
 
 // maxConcurrentUpdates limits how many updates are processed in parallel.
@@ -107,6 +108,29 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.DBPassword == "" {
+		logger.Fatal("DB_PASSWORD is required for durable voice jobs")
+	}
+	dbCtx, dbCancel := context.WithTimeout(ctx, 10*time.Second)
+	voicePool, err := voicejobs.NewPool(dbCtx, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBUser, cfg.DBPassword)
+	dbCancel()
+	if err != nil {
+		logger.Fatal("voice database unavailable")
+	}
+	defer voicePool.Close()
+	voiceStore := &voicejobs.Store{Pool: voicePool}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-voice" {
+		migrateCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := voiceStore.Migrate(migrateCtx); err != nil {
+			logger.Fatal("voice migration failed")
+		}
+		logger.Info("voice migration complete")
+		return
+	}
+	if err := voiceStore.CheckSchema(ctx); err != nil {
+		logger.Fatal("voice schema unavailable; run make migrate-voice")
+	}
 
 	shutdown, err := telemetry.InitTracer(ctx, "telegram")
 	if err != nil {
@@ -120,6 +144,11 @@ func main() {
 	}
 	defer metricsShutdown()
 	bot.InitTelegramMetrics()
+	voiceMetrics, err := voiceStore.RegisterMetrics()
+	if err != nil {
+		logger.Fatal("voice metrics unavailable")
+	}
+	defer voiceMetrics.Unregister() //nolint:errcheck
 
 	metricsPort := os.Getenv("METRICS_PORT")
 	if metricsPort == "" {
@@ -177,6 +206,7 @@ func main() {
 		Location:      locationClient,
 		State:         stateManager,
 		Logger:        logger,
+		VoiceJobs:     voiceStore,
 	}
 
 	// Telegram bot
@@ -204,6 +234,7 @@ func main() {
 	// Start Kafka consumer in background.
 	// Offsets are committed to Kafka via consumer group — no external store needed.
 	var wg sync.WaitGroup
+	wg.Go(func() { app.RunVoiceJobs(ctx, tgBot) })
 	wg.Go(func() {
 		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
 	})
@@ -366,12 +397,6 @@ func handleUpdate(ctx context.Context, app *tghandlers.App, tgBot *telego.Bot, u
 }
 
 func runPolling(ctx context.Context, tgBot *telego.Bot, app *tghandlers.App, wg *sync.WaitGroup, log *zap.Logger) {
-	updates, err := tgBot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 60})
-	if err != nil {
-		log.Error("failed to start polling", zap.Error(err))
-		return
-	}
-
 	sem := semaphore.NewWeighted(maxConcurrentUpdates)
 	var handlers sync.WaitGroup
 	defer wg.Wait()
@@ -379,14 +404,30 @@ func runPolling(ctx context.Context, tgBot *telego.Bot, app *tghandlers.App, wg 
 
 	log.Info("bot started (polling mode)")
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("shutting down bot")
-			return
-		case update, ok := <-updates:
-			if !ok {
+	var offset int
+	for ctx.Err() == nil {
+		updates, err := tgBot.GetUpdates(ctx, &telego.GetUpdatesParams{Offset: offset, Timeout: 60})
+		if err != nil {
+			if ctx.Err() != nil {
 				return
+			}
+			log.Warn("polling unavailable")
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		for _, update := range updates {
+			kind, _ := classifyUpdate(&update)
+			if kind == "voice" && app.VoiceJobs != nil {
+				if err := app.AcceptVoice(ctx, &update); err != nil {
+					log.Warn("voice acceptance will retry")
+					break
+				}
+				offset = update.UpdateID + 1
+				continue
 			}
 			if err := sem.Acquire(ctx, 1); err != nil {
 				return
@@ -397,6 +438,7 @@ func runPolling(ctx context.Context, tgBot *telego.Bot, app *tghandlers.App, wg 
 				defer sem.Release(1)
 				handleUpdateTraced(ctx, app, tgBot, &update)
 			}()
+			offset = update.UpdateID + 1
 		}
 	}
 }
@@ -419,7 +461,13 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *telego.Bot, app 
 	}
 	updates := make(chan telego.Update, 100)
 	mux := http.NewServeMux()
-	mux.Handle(path, telegramWebhookHandler(cfg.WebhookSecret, updates))
+	mux.Handle(path, telegramWebhookHandler(cfg.WebhookSecret, updates, func(ctx context.Context, u *telego.Update) (bool, error) {
+		kind, _ := classifyUpdate(u)
+		if kind != "voice" || app.VoiceJobs == nil {
+			return false, nil
+		}
+		return true, app.AcceptVoice(ctx, u)
+	}))
 
 	srv := &http.Server{
 		Addr:              cfg.WebhookListenAddr,
@@ -474,7 +522,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *telego.Bot, app 
 	}
 }
 
-func telegramWebhookHandler(secret string, updates chan<- telego.Update) http.Handler {
+func telegramWebhookHandler(secret string, updates chan<- telego.Update, accept ...func(context.Context, *telego.Update) (bool, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -498,6 +546,17 @@ func telegramWebhookHandler(secret string, updates chan<- telego.Update) http.Ha
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
 			http.Error(w, "invalid update", http.StatusBadRequest)
 			return
+		}
+		if len(accept) > 0 {
+			handled, err := accept[0](r.Context(), &update)
+			if err != nil {
+				http.Error(w, "acceptance unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if handled {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 		}
 		select {
 		case updates <- update:

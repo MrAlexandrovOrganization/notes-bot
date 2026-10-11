@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 
 	"notes-bot/core/features"
 	"notes-bot/internal/telemetry"
@@ -22,18 +21,9 @@ import (
 // updates are lost. Writes go through temp-file+rename so a crash mid-write
 // cannot corrupt a note.
 
-var fileLocks sync.Map // map[abs path]*sync.Mutex
-
-// lockFile acquires the per-file mutex for path and returns the unlock func.
-func lockFile(path string) func() {
-	muAny, _ := fileLocks.LoadOrStore(path, &sync.Mutex{})
-	mu := muAny.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
-}
-
 // writeFileAtomic writes data to filePath via a temp file in the same
-// directory followed by an atomic rename.
+// directory followed by an atomic rename. Both data and directory metadata
+// are synced before success, so a retry can trust the committed marker.
 func writeFileAtomic(filePath string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(filePath)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(filePath)+".tmp-*")
@@ -52,17 +42,22 @@ func writeFileAtomic(filePath string, data []byte, perm os.FileMode) error {
 		tmp.Close() //nolint:errcheck
 		return fmt.Errorf("write temp file: %w", err)
 	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close() //nolint:errcheck
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close() //nolint:errcheck
+		return fmt.Errorf("sync temp file: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		return fmt.Errorf("chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpName, filePath); err != nil {
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 	cleanup = false
-	return nil
+	return syncDirectory(dir)
 }
 
 // --- Interfaces ---
@@ -168,7 +163,10 @@ func (r *realNoteStore) EnsureNote(ctx context.Context, date string) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return r.createFromTemplate(ctx, filePath, date)
@@ -185,7 +183,10 @@ func (r *realNoteStore) AppendToNote(ctx context.Context, date, text string) err
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		if err := r.createFromTemplate(ctx, filePath, date); err != nil {
@@ -211,7 +212,10 @@ func (r *realNoteStore) AppendByPath(ctx context.Context, relpath, text string) 
 		}
 		return fmt.Errorf("stat note: %w", err)
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	return appendToFile(filePath, text)
 }
@@ -358,7 +362,10 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		zap.L().Error("file not found", zap.String("path", filePath))
@@ -400,7 +407,10 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -439,7 +449,10 @@ func (r *realTaskStore) SetTaskStatus(ctx context.Context, date string, index in
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -461,7 +474,10 @@ func (r *realTaskStore) AddTask(ctx context.Context, date, text string) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockFile(filePath)
+	unlock, err := lockFile(ctx, filePath)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	data, err := os.ReadFile(filePath)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/timeutil"
+	"notes-bot/internal/voicejobs"
 )
 
 // App holds shared dependencies for all handlers.
@@ -24,6 +25,7 @@ type App struct {
 	Location      clients.LocationService
 	State         tgstates.StateStore
 	Logger        *zap.Logger
+	VoiceJobs     voicejobs.Repository
 
 	// voiceCancels stores cancel functions for in-progress transcription jobs.
 	// Key: jobID (string), Value: context.CancelFunc.

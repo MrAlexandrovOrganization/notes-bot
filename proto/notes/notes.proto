@@ -92,6 +92,8 @@ message AddTaskRequest {
 message AppendRequest {
   string date = 1;
   string text = 2;
+  // Nonempty key makes retries safe. Reusing it with a different date or text fails.
+  optional string operation_id = 3;
 }
 
 // AppendByPathRequest appends text to an arbitrary note by its relative path

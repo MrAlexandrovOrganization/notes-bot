@@ -54,6 +54,17 @@ type WhisperService interface {
 	Cancel(ctx context.Context, jobID string) (bool, error)
 }
 
+// DurableWhisperService is required by the resumable voice pipeline.
+type DurableWhisperService interface {
+	WhisperService
+	SubmitOnce(context.Context, io.Reader, string, string, string) (string, int, error)
+	Ack(context.Context, string) (bool, error)
+}
+
+type IdempotentNoteService interface {
+	AppendToNoteOnce(context.Context, string, string, string) (bool, error)
+}
+
 // Ensure concrete types satisfy their interfaces at compile time.
 var _ CoreService = (*CoreClient)(nil)
 var _ NotificationsService = (*NotificationsClient)(nil)

@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -53,6 +54,17 @@ func (c *WhisperClient) Close() {
 // Submit uploads audio and returns a job ID and queue position immediately.
 // Uses a manual timeout because Submit is a client-streaming RPC — unary interceptors do not apply.
 func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset string) (jobID string, queuePosition int, err error) {
+	return c.submit(ctx, r, format, preset, "")
+}
+
+func (c *WhisperClient) SubmitOnce(ctx context.Context, r io.Reader, format, preset, requestID string) (string, int, error) {
+	if requestID == "" {
+		return "", 0, fmt.Errorf("request ID is required")
+	}
+	return c.submit(ctx, r, format, preset, requestID)
+}
+
+func (c *WhisperClient) submit(ctx context.Context, r io.Reader, format, preset, requestID string) (jobID string, queuePosition int, err error) {
 	ctx, cancel := context.WithTimeout(ctx, submitTimeout)
 	defer cancel()
 
@@ -64,11 +76,7 @@ func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset 
 		return "", 0, fmt.Errorf("open submit stream: %w", err)
 	}
 
-	if err := sendChunks(stream, r, format, preset); err != nil {
-		return "", 0, err
-	}
-
-	resp, err := stream.CloseAndRecv()
+	resp, err := uploadAndReceive(stream, r, format, preset, requestID)
 	if err != nil {
 		if isUnavailable(err) {
 			return "", 0, errUnavailable("whisper")
@@ -76,6 +84,27 @@ func (c *WhisperClient) Submit(ctx context.Context, r io.Reader, format, preset 
 		return "", 0, fmt.Errorf("close submit stream: %w", err)
 	}
 	return resp.JobId, int(resp.QueuePosition), nil
+}
+
+// A replay can finish on the first chunk, before the client has streamed the
+// rest of the file. Send then returns EOF; the successful response still needs
+// to be read. Other reader/send failures must not be hidden.
+func uploadAndReceive(stream interface {
+	Send(*pb.TranscribeChunk) error
+	CloseAndRecv() (*pb.SubmitResponse, error)
+}, r io.Reader, format, preset, requestID string) (*pb.SubmitResponse, error) {
+	if err := sendDurableChunks(stream, r, format, preset, requestID); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return stream.CloseAndRecv()
+}
+
+func (c *WhisperClient) Ack(ctx context.Context, jobID string) (bool, error) {
+	resp, err := c.stub.Ack(ctx, &pb.AckRequest{JobId: jobID})
+	if err != nil {
+		return false, fmt.Errorf("ack transcription: %w", err)
+	}
+	return resp.Acknowledged, nil
 }
 
 // GetStatus polls the status of a submitted job.
@@ -111,6 +140,12 @@ func (c *WhisperClient) Cancel(ctx context.Context, jobID string) (bool, error) 
 func sendChunks(stream interface {
 	Send(*pb.TranscribeChunk) error
 }, r io.Reader, format, preset string) error {
+	return sendDurableChunks(stream, r, format, preset, "")
+}
+
+func sendDurableChunks(stream interface {
+	Send(*pb.TranscribeChunk) error
+}, r io.Reader, format, preset, requestID string) error {
 	buf := make([]byte, chunkSize)
 	first := true
 	for {
@@ -120,6 +155,8 @@ func sendChunks(stream interface {
 			if first {
 				chunk.Format = format
 				chunk.Options = &pb.TranscriptionOptions{Preset: preset}
+				chunk.RequestId = requestID
+				chunk.RetainUntilAck = requestID != ""
 				first = false
 			}
 			if sendErr := stream.Send(chunk); sendErr != nil {
