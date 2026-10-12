@@ -257,7 +257,7 @@ image-deploy:
 	python3 scripts/images.py deploy
 image-activate: monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
-	$(IMAGE_COMPOSE) run --rm --no-build --no-deps --pull never telegram /telegram migrate-voice
+	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
 
 .PHONY: image-check
