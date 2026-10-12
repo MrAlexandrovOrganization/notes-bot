@@ -422,7 +422,7 @@ func runPolling(ctx context.Context, tgBot *telego.Bot, app *tghandlers.App, wg 
 		for _, update := range updates {
 			kind, _ := classifyUpdate(&update)
 			if kind == "voice" && app.VoiceJobs != nil {
-				if err := app.AcceptVoice(ctx, &update); err != nil {
+				if err := app.AcceptVoice(ctx, tgBot, &update); err != nil {
 					log.Warn("voice acceptance will retry")
 					break
 				}
@@ -466,7 +466,7 @@ func runWebhook(ctx context.Context, cfg *config.Config, tgBot *telego.Bot, app 
 		if kind != "voice" || app.VoiceJobs == nil {
 			return false, nil
 		}
-		return true, app.AcceptVoice(ctx, u)
+		return true, app.AcceptVoice(ctx, tgBot, u)
 	}))
 
 	srv := &http.Server{

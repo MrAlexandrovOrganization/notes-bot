@@ -28,7 +28,7 @@ import (
 
 // AcceptVoice persists the input before Telegram is allowed to acknowledge it.
 // Duplicate deliveries retain the original date, mode and operation ID.
-func (a *App) AcceptVoice(ctx context.Context, update *telego.Update) error {
+func (a *App) AcceptVoice(ctx context.Context, b *telego.Bot, update *telego.Update) error {
 	ctx, span := otel.Tracer("telegram").Start(ctx, "voice.accept")
 	defer span.End()
 	m := update.Message
@@ -73,7 +73,32 @@ func (a *App) AcceptVoice(ctx context.Context, update *telego.Update) error {
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	j.Traceparent = carrier.Get("traceparent")
 	j.Tracestate = carrier.Get("tracestate")
-	return a.VoiceJobs.Enqueue(ctx, j)
+	// Create the delivery destination before publishing the job, so the
+	// background worker always edits this message and cannot race its creation.
+	uiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	msg, err := b.SendMessage(uiCtx, &telego.SendMessageParams{ChatID: telego.ChatID{ID: j.ChatID}, Text: resources.VoiceReceiving, ParseMode: telego.ModeHTML,
+		ReplyParameters: &telego.ReplyParameters{MessageID: j.MessageID, AllowSendingWithoutReply: true}, ReplyMarkup: durableCancelKeyboard(j.ID)})
+	cancel()
+	if err != nil {
+		return err
+	}
+	j.StatusMessageID = msg.MessageID
+	if err := a.VoiceJobs.Enqueue(ctx, j); err != nil {
+		uiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		// This status does not promise persistence until Enqueue succeeds.
+		_ = editText(uiCtx, b, j.ChatID, j.StatusMessageID, tgfmt.Escape(resources.VoiceAcceptanceRetry), nil)
+		return err
+	}
+	// Navigation belongs to acceptance, not to the background job. Once the
+	// input is durable, a UI failure must not reject it or delay transcription.
+	menuCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	kb := a.getMainMenuKeyboard(menuCtx)
+	if err := sendText(menuCtx, b, j.ChatID, tgfmt.Escape(resources.VoiceContinue), &kb, true); err != nil {
+		a.Logger.Warn("voice acceptance menu unavailable", zap.String("operation_id", j.ID))
+	}
+	return nil
 }
 
 // RunVoiceJobs performs bounded steps. Every progress transition is persisted;
@@ -146,6 +171,7 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 			j.SubmitStarted = true
 			return false, 0, a.VoiceJobs.Save(ctx, j)
 		}
+		a.updateDurableVoiceStatus(ctx, b, j, resources.VoiceDownloading)
 		f, err := b.GetFile(ctx, &telego.GetFileParams{FileID: j.FileID})
 		if err != nil {
 			return false, retry, err
@@ -155,6 +181,7 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 			return false, retry, err
 		}
 		defer rc.Close()
+		a.updateDurableVoiceStatus(ctx, b, j, resources.VoiceSubmitting)
 		id, _, err := whisper.SubmitOnce(ctx, rc, j.Format, "voice", "notes-bot:"+j.ID)
 		if err != nil {
 			return false, retry, err
@@ -176,14 +203,13 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 			j.ResultReady = true
 		default:
 			text := resources.VoiceQueued
-			if result.Status == pb.JobStatus_RUNNING {
-				text = resources.VoiceRunning
+			switch result.Status {
+			case pb.JobStatus_DOWNLOADING:
+				text = resources.VoiceUploading
+			case pb.JobStatus_RUNNING:
+				text = resources.VoiceProgress(result.ProgressPercent)
 			}
-			if text != j.LastStatus {
-				if err := editText(ctx, b, j.ChatID, j.StatusMessageID, tgfmt.Escape(text), durableCancelKeyboard(j.ID)); err == nil {
-					j.LastStatus = text
-				}
-			}
+			a.updateDurableVoiceStatus(ctx, b, j, text)
 			return false, retry, nil
 		}
 		// Commit the complete result BEFORE acknowledging backend retention.
@@ -249,6 +275,19 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 	}
 	kb := tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(resources.VoiceOpen).WithCallbackData("voice:open:" + j.ID)))
 	return true, 0, a.editDurableResult(ctx, b, j, tgfmt.Escape(text), kb)
+}
+
+// Progress is best effort: Telegram failures must not stop transcription.
+// LastStatus is checkpointed with the step, avoiding duplicate edits on resume.
+func (a *App) updateDurableVoiceStatus(ctx context.Context, b *telego.Bot, j *voicejobs.Job, text string) {
+	if text == j.LastStatus {
+		return
+	}
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := editText(statusCtx, b, j.ChatID, j.StatusMessageID, tgfmt.Escape(text), durableCancelKeyboard(j.ID)); err == nil {
+		j.LastStatus = text
+	}
 }
 
 func durableCancelKeyboard(id string) *telego.InlineKeyboardMarkup {

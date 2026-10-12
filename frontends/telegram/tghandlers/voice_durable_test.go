@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/config"
+	"notes-bot/frontends/telegram/resources"
+	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/voicejobs"
 	pb "notes-bot/proto/whisper"
@@ -220,6 +223,10 @@ type durableVoiceAPI struct {
 	markups     []string
 	messageID   int
 	missingEdit bool
+	failMenu    bool
+	failStatus  bool
+	failEdit    bool
+	lastEditID  int
 }
 
 func (api *durableVoiceAPI) call(req *http.Request) (*http.Response, error) {
@@ -237,6 +244,21 @@ func (api *durableVoiceAPI) call(req *http.Request) (*http.Response, error) {
 		api.texts = append(api.texts, text)
 	}
 	api.markups = append(api.markups, string(params["reply_markup"]))
+	if method == "editMessageText" {
+		_ = json.Unmarshal(params["message_id"], &api.lastEditID)
+		if api.failEdit {
+			api.failEdit = false
+			return apiResponse(`{"ok":false,"error_code":503,"description":"synthetic Telegram unavailable"}`), nil
+		}
+	}
+	if method == "sendMessage" && api.failStatus {
+		api.failStatus = false
+		return apiResponse(`{"ok":false,"error_code":503,"description":"synthetic Telegram unavailable"}`), nil
+	}
+	if method == "sendMessage" && api.failMenu && strings.Contains(string(params["reply_markup"]), "menu:note") {
+		api.failMenu = false
+		return apiResponse(`{"ok":false,"error_code":503,"description":"synthetic Telegram unavailable"}`), nil
+	}
 	if method == "editMessageText" && api.missingEdit {
 		api.missingEdit = false
 		return apiResponse(`{"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}`), nil
@@ -286,12 +308,12 @@ func TestDurableVoiceAcceptSnapshotsDeduplicatesAndPersistsErrors(t *testing.T) 
 		want  string
 	}{{tgstates.StateIdle, "note"}, {tgstates.StateReminderCreateNL, "reminder"}, {tgstates.StateSmartInput, "smart"}} {
 		t.Run(mode.want, func(t *testing.T) {
-			r, w, c, _, _ := durableVoiceFixture(t)
+			r, w, c, _, bot := durableVoiceFixture(t)
 			app := durableVoiceApp(r, w, c)
 			state := app.State.(*noteFlowState)
 			state.value.State = mode.state
 			update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC).Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "original-audio"}}}
-			require.NoError(t, app.AcceptVoice(t.Context(), update))
+			require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
 			first, err := r.Find(t.Context(), 42, 7)
 			require.NoError(t, err)
 			assert.Equal(t, "12-Oct-2026", first.ActiveDate)
@@ -302,17 +324,189 @@ func TestDurableVoiceAcceptSnapshotsDeduplicatesAndPersistsErrors(t *testing.T) 
 			state.value.ActiveDate = "01-Jan-2030"
 			state.value.State = tgstates.StateIdle
 			update.Message.Voice.FileID = "duplicate-different-audio"
-			require.NoError(t, app.AcceptVoice(t.Context(), update))
+			require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
 			second, err := r.Find(t.Context(), 42, 7)
 			require.NoError(t, err)
 			assert.Equal(t, first, second)
 			assert.Len(t, r.jobs, 1)
 			update.Message.MessageID = 8
 			r.enqueueError = errors.New("synthetic database unavailable")
-			assert.Error(t, app.AcceptVoice(t.Context(), update))
+			assert.Error(t, app.AcceptVoice(t.Context(), bot, update))
 			assert.Len(t, r.jobs, 1)
 		})
 	}
+}
+
+func TestDurableVoiceSendsMenuBeforeTranscription(t *testing.T) {
+	for _, state := range []tgstates.UserState{tgstates.StateIdle, tgstates.StateSmartInput, tgstates.StateReminderCreateNL} {
+		for _, video := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/video=%t", state, video), func(t *testing.T) {
+				r, w, c, api, bot := durableVoiceFixture(t)
+				app := durableVoiceApp(r, w, c)
+				app.State.(*noteFlowState).value.State = state
+				message := &telego.Message{MessageID: 7, Date: time.Now().Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}}
+				if video {
+					message.VideoNote = &telego.VideoNote{FileID: "synthetic-video"}
+				} else {
+					message.Voice = &telego.Voice{FileID: "synthetic-voice"}
+				}
+				require.NoError(t, app.AcceptVoice(t.Context(), bot, &telego.Update{Message: message}))
+				job, err := r.Find(t.Context(), 42, 7)
+				require.NoError(t, err)
+				require.NotNil(t, job)
+				// The handler sends both messages without starting the worker.
+				assert.Equal(t, []string{"sendMessage", "sendMessage"}, api.methods)
+				assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceContinue}, api.texts)
+				assert.Equal(t, 71, job.StatusMessageID)
+				assert.Contains(t, api.markups[0], "voice:stop:"+job.ID)
+				var menu telego.InlineKeyboardMarkup
+				require.NoError(t, json.Unmarshal([]byte(api.markups[1]), &menu))
+				assert.Equal(t, tgkeyboards.MainMenu(""), menu)
+				assert.Empty(t, w.requests)
+				assert.Empty(t, c.calls)
+				assert.Equal(t, state, app.State.(*noteFlowState).value.State)
+
+				// Duplicate updates and resumed worker steps must not send
+				// another status destination or another menu.
+				require.NoError(t, app.AcceptVoice(t.Context(), bot, &telego.Update{Message: message}))
+				for range 2 {
+					_, _, err = durableVoiceStep(t, r, w, c, bot, job.ID)
+					require.NoError(t, err)
+				}
+				assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceContinue, resources.VoiceDownloading, resources.VoiceSubmitting}, api.texts)
+				assert.Equal(t, job.StatusMessageID, r.jobs[job.ID].StatusMessageID)
+				if state == tgstates.StateIdle {
+					for range 4 {
+						_, _, err = durableVoiceStep(t, r, w, c, bot, job.ID)
+						require.NoError(t, err)
+					}
+					assert.True(t, r.done[job.ID])
+					assert.Equal(t, job.StatusMessageID, api.lastEditID)
+					assert.Equal(t, []string{"sendMessage", "sendMessage", "editMessageText", "getFile", "editMessageText", "editMessageText"}, api.methods)
+					assert.Contains(t, api.texts[len(api.texts)-1], resources.VoiceSaved)
+				}
+			})
+		}
+	}
+}
+
+func TestDurableVoiceMenuFailureDoesNotRejectOrBlockAcceptedJob(t *testing.T) {
+	r, w, c, api, bot := durableVoiceFixture(t)
+	app := durableVoiceApp(r, w, c)
+	api.failMenu = true
+	update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: time.Now().Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "synthetic-voice"}}}
+	require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
+	job, err := r.Find(t.Context(), 42, 7)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	assert.Equal(t, 71, job.StatusMessageID)
+	assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceContinue}, api.texts)
+
+	require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
+	for range 2 {
+		_, _, err = durableVoiceStep(t, r, w, c, bot, job.ID)
+		require.NoError(t, err)
+	}
+	assert.Len(t, w.requests, 1)
+	assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceContinue, resources.VoiceDownloading, resources.VoiceSubmitting}, api.texts)
+}
+
+func TestDurableVoiceProgressUpdatesStatusAndSurvivesRestart(t *testing.T) {
+	r, w, c, api, bot := durableVoiceFixture(t)
+	j := durableVoiceJob("progress", 1)
+	j.RemoteID = "remote-progress"
+	require.NoError(t, r.Enqueue(t.Context(), j))
+	for _, update := range []struct {
+		status  pb.JobStatus
+		percent float32
+		want    string
+	}{
+		{pb.JobStatus_ACCEPTED, 0, resources.VoiceQueued},
+		{pb.JobStatus_QUEUED, 0, resources.VoiceQueued},
+		{pb.JobStatus_DOWNLOADING, 0, resources.VoiceUploading},
+		{pb.JobStatus_RUNNING, 0, resources.VoiceRunning},
+		{pb.JobStatus_RUNNING, 27.6, "⏳ Расшифровываю... 28%"},
+		{pb.JobStatus_RUNNING, 27.7, "⏳ Расшифровываю... 28%"},
+		{pb.JobStatus_RUNNING, 54.2, "⏳ Расшифровываю... 54%"},
+		{pb.JobStatus_RUNNING, 120, "⏳ Расшифровываю... 100%"},
+		{pb.JobStatus_RUNNING, -1, resources.VoiceRunning},
+		{pb.JobStatus_RUNNING, float32(math.NaN()), resources.VoiceRunning},
+		{pb.JobStatus_RUNNING, float32(math.Inf(1)), resources.VoiceRunning},
+	} {
+		w.result = &clients.JobResult{Status: update.status, ProgressPercent: update.percent}
+		previous, edits := r.jobs[j.ID].LastStatus, len(api.texts)
+		// The helper rebuilds App from the persisted job for every poll.
+		done, delay, err := durableVoiceStep(t, r, w, c, bot, j.ID)
+		require.NoError(t, err)
+		assert.False(t, done)
+		assert.Equal(t, 5*time.Second, delay)
+		assert.Equal(t, update.want, r.jobs[j.ID].LastStatus)
+		if update.want == previous {
+			assert.Len(t, api.texts, edits)
+		} else {
+			require.Len(t, api.texts, edits+1)
+			assert.Equal(t, update.want, api.texts[edits])
+			assert.Equal(t, j.StatusMessageID, api.lastEditID)
+			assert.Contains(t, api.markups[len(api.markups)-1], "voice:stop:"+j.ID)
+		}
+	}
+	assert.Empty(t, w.requests)
+	assert.Empty(t, c.calls)
+}
+
+func TestDurableVoiceProgressFailureDoesNotBlockUploadAndRetriesPollUpdate(t *testing.T) {
+	r, w, c, api, bot := durableVoiceFixture(t)
+	j := durableVoiceJob("progress-retry", 1)
+	j.SubmitStarted = true
+	require.NoError(t, r.Enqueue(t.Context(), j))
+	api.failEdit = true
+	_, _, err := durableVoiceStep(t, r, w, c, bot, j.ID)
+	require.NoError(t, err)
+	assert.Len(t, w.requests, 1)
+	assert.NotEmpty(t, r.jobs[j.ID].RemoteID)
+	assert.Equal(t, resources.VoiceSubmitting, r.jobs[j.ID].LastStatus)
+
+	w.result = &clients.JobResult{Status: pb.JobStatus_RUNNING, ProgressPercent: 42}
+	api.failEdit = true
+	_, _, err = durableVoiceStep(t, r, w, c, bot, j.ID)
+	require.NoError(t, err)
+	assert.Equal(t, resources.VoiceSubmitting, r.jobs[j.ID].LastStatus)
+	_, _, err = durableVoiceStep(t, r, w, c, bot, j.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "⏳ Расшифровываю... 42%", r.jobs[j.ID].LastStatus)
+	assert.Equal(t, []string{resources.VoiceDownloading, resources.VoiceSubmitting, "⏳ Расшифровываю... 42%", "⏳ Расшифровываю... 42%"}, api.texts)
+}
+
+func TestDurableVoiceEnqueueFailureDoesNotShowSuccessMenu(t *testing.T) {
+	r, w, c, api, bot := durableVoiceFixture(t)
+	app := durableVoiceApp(r, w, c)
+	r.enqueueError = errors.New("synthetic database unavailable")
+	update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: time.Now().Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "synthetic-voice"}}}
+	require.Error(t, app.AcceptVoice(t.Context(), bot, update))
+	assert.Empty(t, r.jobs)
+	assert.Equal(t, []string{"sendMessage", "editMessageText"}, api.methods)
+	assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceAcceptanceRetry}, api.texts)
+	assert.Empty(t, w.requests)
+
+	r.enqueueError = nil
+	require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
+	assert.Len(t, r.jobs, 1)
+	assert.Equal(t, resources.VoiceContinue, api.texts[len(api.texts)-1])
+}
+
+func TestDurableVoiceStatusFailureRetriesBeforePublishingJob(t *testing.T) {
+	r, w, c, api, bot := durableVoiceFixture(t)
+	app := durableVoiceApp(r, w, c)
+	api.failStatus = true
+	update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: time.Now().Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "synthetic-voice"}}}
+	require.Error(t, app.AcceptVoice(t.Context(), bot, update))
+	assert.Empty(t, r.jobs)
+	assert.Equal(t, []string{"sendMessage"}, api.methods)
+	assert.Empty(t, w.requests)
+
+	require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
+	assert.Len(t, r.jobs, 1)
+	assert.Equal(t, []string{resources.VoiceReceiving, resources.VoiceReceiving, resources.VoiceContinue}, api.texts)
 }
 
 func TestDurableVoiceSubmitResultAckAndNoteSurviveLostReplies(t *testing.T) {
