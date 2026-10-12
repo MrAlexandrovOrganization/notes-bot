@@ -245,3 +245,28 @@ monitoring-unregister:
 .PHONY: versions build install-golangci-lint proto-generate proto-breaking test-integration-ci check proto-check migrate-voice test-voice-db test-voice-db-up test-voice-db-down
 
 .PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint fmt fmt-check format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister
+
+# CI builds/publishes once; VM activates immutable digests (Python 3 + Docker required).
+export IMAGE_COMPOSE_FILE := docker-compose.yml
+.PHONY: image-build image-publish image-deploy image-activate
+image-build:
+	python3 scripts/images.py build
+image-publish:
+	python3 scripts/images.py publish
+image-deploy:
+	python3 scripts/images.py deploy
+image-activate: monitoring-register
+	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
+	$(IMAGE_COMPOSE) run --rm --no-build --no-deps --pull never telegram /telegram migrate-voice
+	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
+
+.PHONY: image-check
+image-check:
+	python3 -B scripts/test_images.py
+
+.PHONY: image-compose
+export IMAGE_ARGS
+image-compose:
+	python3 scripts/images.py compose
+
+include makefiles/ci-deploy.mk

@@ -50,3 +50,10 @@ third_party/
 
 # Pre-commit
 .pre-commit-config.yaml
+
+.images
+
+# Keep credentials and delivery metadata out of images
+.env.*
+**/.env
+**/.env.*
