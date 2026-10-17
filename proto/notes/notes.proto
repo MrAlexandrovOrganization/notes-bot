@@ -101,7 +101,9 @@ message AppendRequest {
 // create new notes. Path traversal (..) is rejected.
 message AppendByPathRequest {
   string relpath = 1;
-  string text    = 2;
+  string text = 2;
+  // Nonempty key makes retries to this note safe; changing the text fails.
+  optional string operation_id = 3;
 }
 
 message SuccessResponse {

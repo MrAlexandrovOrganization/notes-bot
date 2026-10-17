@@ -384,7 +384,22 @@ func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPa
 	ctx, span := telemetry.StartSpan(ctx, attribute.String("note.relpath", req.Relpath))
 	defer span.End()
 
-	if err := s.notes.AppendByPath(ctx, req.Relpath, req.Text); err != nil {
+	if operationID := req.GetOperationId(); operationID != "" {
+		if err := validateOperationID(operationID); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		store, ok := s.notes.(IdempotentPathNoteStore)
+		if !ok {
+			return nil, status.Error(codes.FailedPrecondition, "note store does not support idempotent append by path")
+		}
+		err = store.AppendByPathOnce(ctx, req.Relpath, req.Text, operationID)
+	} else {
+		err = s.notes.AppendByPath(ctx, req.Relpath, req.Text)
+	}
+	if errors.Is(err, ErrOperationConflict) {
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to append to note: %v", err)
 	}
 	if s.noteFileOps != nil {

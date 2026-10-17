@@ -65,6 +65,10 @@ type IdempotentNoteService interface {
 	AppendToNoteOnce(context.Context, string, string, string) (bool, error)
 }
 
+type IdempotentNoteByPathService interface {
+	AppendToNoteByPathOnce(context.Context, string, string, string) (bool, error)
+}
+
 // Ensure concrete types satisfy their interfaces at compile time.
 var _ CoreService = (*CoreClient)(nil)
 var _ NotificationsService = (*NotificationsClient)(nil)

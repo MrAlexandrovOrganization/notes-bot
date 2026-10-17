@@ -27,7 +27,7 @@ import (
 )
 
 // AcceptVoice persists the input before Telegram is allowed to acknowledge it.
-// Duplicate deliveries retain the original date, mode and operation ID.
+// Duplicate deliveries retain the original destination, mode and operation ID.
 func (a *App) AcceptVoice(ctx context.Context, b *telego.Bot, update *telego.Update) error {
 	ctx, span := otel.Tracer("telegram").Start(ctx, "voice.accept")
 	defer span.End()
@@ -53,6 +53,14 @@ func (a *App) AcceptVoice(ctx context.Context, b *telego.Bot, update *telego.Upd
 	}
 	j := &voicejobs.Job{ID: uuid.NewString(), ChatID: m.Chat.ID, MessageID: m.MessageID, UserID: m.From.ID, ActiveDate: uc.ActiveDate,
 		Mode: "note", SentAt: time.Unix(m.Date, 0).UTC(), TimezoneOffset: a.Cfg.TimezoneOffsetHours, DayStartHour: a.Cfg.DayStartHour}
+	if uc.State == tgstates.StateAppendToNoteInput {
+		if uc.ActiveRelpath == "" {
+			uiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			return sendText(uiCtx, b, m.Chat.ID, tgfmt.Escape(resources.VoiceMissingDestination), nil, true)
+		}
+		j.ActiveRelpath = uc.ActiveRelpath
+	}
 	if j.ActiveDate == "" {
 		j.ActiveDate = timeutil.TodayDateAt(j.SentAt, j.TimezoneOffset, j.DayStartHour)
 	}
@@ -245,11 +253,7 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 	}
 	if j.Mode == "note" {
 		if !j.NoteSaved {
-			core, ok := a.Core.(clients.IdempotentNoteService)
-			if !ok {
-				return false, retry, errors.New("idempotent note service required")
-			}
-			saved, err := core.AppendToNoteOnce(ctx, j.ActiveDate, j.Text, "voice:"+j.ID)
+			saved, err := a.appendDurableVoice(ctx, j)
 			if err != nil {
 				return false, retry, err
 			}
@@ -275,6 +279,21 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 	}
 	kb := tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(resources.VoiceOpen).WithCallbackData("voice:open:" + j.ID)))
 	return true, 0, a.editDurableResult(ctx, b, j, tgfmt.Escape(text), kb)
+}
+
+func (a *App) appendDurableVoice(ctx context.Context, j *voicejobs.Job) (bool, error) {
+	if j.ActiveRelpath != "" {
+		core, ok := a.Core.(clients.IdempotentNoteByPathService)
+		if !ok {
+			return false, errors.New("idempotent note-by-path service required")
+		}
+		return core.AppendToNoteByPathOnce(ctx, j.ActiveRelpath, j.Text, "voice:"+j.ID)
+	}
+	core, ok := a.Core.(clients.IdempotentNoteService)
+	if !ok {
+		return false, errors.New("idempotent note service required")
+	}
+	return core.AppendToNoteOnce(ctx, j.ActiveDate, j.Text, "voice:"+j.ID)
 }
 
 // Progress is best effort: Telegram failures must not stop transcription.
@@ -320,7 +339,11 @@ func (a *App) showDurableVoicePage(ctx context.Context, b *telego.Bot, j *voicej
 	if j.Mode != "note" {
 		header = resources.VoiceResult
 	}
-	text := tgfmt.Join(tgfmt.Escape(fmt.Sprintf("%s [%d/%d]\n\n", header, page+1, total)), tgfmt.Blockquote(tgfmt.Escape(string(runes[page*voiceCharsPerPage:min((page+1)*voiceCharsPerPage, len(runes))]))))
+	destination := tgfmt.Escape("")
+	if j.Mode == "note" && j.ActiveRelpath != "" {
+		destination = tgfmt.Join(tgfmt.Escape(" "), tgfmt.Code(tgfmt.Escape(j.ActiveRelpath)))
+	}
+	text := tgfmt.Join(tgfmt.Escape(header), destination, tgfmt.Escape(fmt.Sprintf(" [%d/%d]\n\n", page+1, total)), tgfmt.Blockquote(tgfmt.Escape(string(runes[page*voiceCharsPerPage:min((page+1)*voiceCharsPerPage, len(runes))]))))
 	var kb *telego.InlineKeyboardMarkup
 	if total > 1 {
 		var nav []telego.InlineKeyboardButton

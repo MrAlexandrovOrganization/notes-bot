@@ -168,6 +168,17 @@ func (c *CoreClient) AppendToNoteByPath(ctx context.Context, relpath, text strin
 	return resp.Success, nil
 }
 
+func (c *CoreClient) AppendToNoteByPathOnce(ctx context.Context, relpath, text, operationID string) (bool, error) {
+	if operationID == "" {
+		return false, fmt.Errorf("append operation ID is required")
+	}
+	resp, err := c.stub.AppendToNoteByPath(ctx, &pb.AppendByPathRequest{Relpath: relpath, Text: text, OperationId: &operationID})
+	if err != nil {
+		return false, err
+	}
+	return resp.Success, nil
+}
+
 type DirEntry struct {
 	Name    string
 	Relpath string

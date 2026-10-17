@@ -34,6 +34,7 @@ type Job struct {
 	FileID          string          `json:"file_id"`
 	Format          string          `json:"format"`
 	ActiveDate      string          `json:"active_date"`
+	ActiveRelpath   string          `json:"active_relpath,omitempty"`
 	Mode            string          `json:"mode"`
 	SentAt          time.Time       `json:"sent_at"`
 	TimezoneOffset  int             `json:"timezone_offset"`

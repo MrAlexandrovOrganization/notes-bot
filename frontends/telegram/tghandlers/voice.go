@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
@@ -43,14 +44,15 @@ const (
 // that fills it starts, so that the ordering slot exists immediately.
 type pendingVoiceResult struct {
 	// Input — set at registration time.
-	tgBot        *telego.Bot
-	chatID       int64
-	userID       int64
-	statusMsgID  int
-	activeDate   string
-	isNLReminder bool
-	isSmart      bool
-	log          *zap.Logger
+	tgBot         *telego.Bot
+	chatID        int64
+	userID        int64
+	statusMsgID   int
+	activeDate    string
+	activeRelpath string
+	isNLReminder  bool
+	isSmart       bool
+	log           *zap.Logger
 
 	// Output — set by transcribeVoice when it finishes.
 	done          bool
@@ -158,6 +160,14 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *telego.Bot, update 
 	activeDate := uc.ActiveDate
 	isNLReminder := uc.State == tgstates.StateReminderCreateNL
 	isSmart := uc.State == tgstates.StateSmartInput
+	activeRelpath := ""
+	if uc.State == tgstates.StateAppendToNoteInput {
+		if uc.ActiveRelpath == "" {
+			sendText(ctx, tgBot, chatID, tgfmt.Escape(resources.VoiceMissingDestination), nil, true)
+			return
+		}
+		activeRelpath = uc.ActiveRelpath
+	}
 
 	// Reply with initial status — the goroutine will update it with progress.
 	replyMsg := &telego.SendMessageParams{
@@ -178,14 +188,15 @@ func (a *App) HandleVoiceMessage(ctx context.Context, tgBot *telego.Bot, update 
 	// This claims the slot so that complete() for an earlier message can
 	// see this one as still-pending and correctly hold the flush.
 	result := &pendingVoiceResult{
-		tgBot:        tgBot,
-		chatID:       chatID,
-		userID:       userID,
-		statusMsgID:  statusMsg.MessageID,
-		activeDate:   activeDate,
-		isNLReminder: isNLReminder,
-		isSmart:      isSmart,
-		log:          log,
+		tgBot:         tgBot,
+		chatID:        chatID,
+		userID:        userID,
+		statusMsgID:   statusMsg.MessageID,
+		activeDate:    activeDate,
+		activeRelpath: activeRelpath,
+		isNLReminder:  isNLReminder,
+		isSmart:       isSmart,
+		log:           log,
 	}
 	buf := a.getVoiceBuffer(userID)
 	msgID := update.Message.MessageID
@@ -362,7 +373,13 @@ func (a *App) deliverVoiceResult(r *pendingVoiceResult) {
 	}
 
 	// Append to the note that was active when the message was sent.
-	if _, err := a.Core.AppendToNote(ctx, r.activeDate, r.text); err != nil {
+	var err error
+	if r.activeRelpath != "" {
+		_, err = a.Core.AppendToNoteByPath(ctx, r.activeRelpath, r.text)
+	} else {
+		_, err = a.Core.AppendToNote(ctx, r.activeDate, r.text)
+	}
+	if err != nil {
 		r.log.Error("append to note", zap.Error(err))
 		editStatus(ctx, r.tgBot, r.chatID, r.statusMsgID, "❌ Ошибка при сохранении в заметку.")
 		return

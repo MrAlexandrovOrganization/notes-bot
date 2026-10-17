@@ -125,11 +125,13 @@ func TestStoreMigrationRepeatPreservesJobsAndOtherTables(t *testing.T) {
 func TestStoreDuplicatePreservesOriginalSnapshot(t *testing.T) {
 	s, _ := testStore(t, true)
 	original := testJob(100, 10)
+	original.ActiveRelpath = "Tags/Films/First.md"
 	enqueue(t, s, original)
 	duplicate := testJob(100, 10)
 	duplicate.FileID = "different-file"
 	duplicate.UserID = 202
 	duplicate.ActiveDate = "13-Oct-2026"
+	duplicate.ActiveRelpath = "Tags/Films/Second.md"
 	duplicate.Mode = "smart"
 	duplicate.SentAt = original.SentAt.Add(24 * time.Hour)
 	duplicate.StatusMessageID = 9000
@@ -147,6 +149,7 @@ func TestStoreDuplicatePreservesOriginalSnapshot(t *testing.T) {
 func TestStoreRestartRecoversProgressAndPrivateLookups(t *testing.T) {
 	s, cfg := testStore(t, true)
 	j := testJob(100, 10)
+	j.ActiveRelpath = "Tags/Films/First.md"
 	enqueue(t, s, j)
 	j = claim(t, s)
 	j.RemoteID = "synthetic-backend-job"

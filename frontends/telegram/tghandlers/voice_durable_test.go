@@ -312,12 +312,14 @@ func TestDurableVoiceAcceptSnapshotsDeduplicatesAndPersistsErrors(t *testing.T) 
 			app := durableVoiceApp(r, w, c)
 			state := app.State.(*noteFlowState)
 			state.value.State = mode.state
+			state.value.ActiveRelpath = "Films/PreviouslyOpened.md"
 			update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC).Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "original-audio"}}}
 			require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
 			first, err := r.Find(t.Context(), 42, 7)
 			require.NoError(t, err)
 			assert.Equal(t, "12-Oct-2026", first.ActiveDate)
 			assert.Equal(t, mode.want, first.Mode)
+			assert.Empty(t, first.ActiveRelpath, "a stale opened path is ignored outside append mode")
 			assert.Equal(t, "original-audio", first.FileID)
 			assert.Equal(t, 3, first.TimezoneOffset)
 			assert.Equal(t, 7, first.DayStartHour)
