@@ -13,7 +13,7 @@ make cover            # Combined unit + integration coverage
 make test-integration # Integration tests (requires running core service)
 make proto            # Sync whisper.proto from backends/transcriber + regenerate gRPC stubs
 make format           # gofmt -w (auto-fix formatting)
-make up               # docker-compose build + up + logs
+make up               # docker compose --project-directory . -f compose/docker-compose.yml build + up + logs
 make build-core       # Rebuild core service image
 make build-notifications # Rebuild notifications image
 make build-search     # Rebuild search image
@@ -45,7 +45,7 @@ The web frontend is a second, independent client of the same `core`/`notificatio
 
 ### Service topology
 
-This repo (`notes-bot`) runs **5 Go services** in Docker. All infrastructure (Kafka, Redis, Jaeger, Prometheus, Grafana, Whisper, Ollama, Location) is **external** — consumed via Docker networks declared in `docker-compose.yml` as `external: true`. Sources of truth:
+This repo (`notes-bot`) runs **5 Go services** in Docker. All infrastructure (Kafka, Redis, Jaeger, Prometheus, Grafana, Whisper, Ollama, Location) is **external** — consumed via Docker networks declared in `compose/docker-compose.yml` as `external: true`. Sources of truth:
 
 | External dependency | Source repo | Docker network |
 |---------------------|-------------|-----------------|
@@ -403,4 +403,4 @@ $NOTES_DIR/
 - Containers run as non-root user `app` (UID 10001)
 - `grpc_health_probe` installed at build time (version in `makefiles/versions.mk`)
 - `.dockerignore` excludes `.git`, `docs/`, `notes/`, `third_party/`, test artifacts, env files
-- `docker-compose.base.yml` defines shared logging + resource limits
+- `compose/docker-compose.base.yml` defines shared logging + resource limits

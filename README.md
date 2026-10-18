@@ -147,7 +147,7 @@ Telegram и Web вызывают уже готовый продуктовый pi
 ### 3. Запустите через Docker
 
 ```bash
-docker-compose up -d
+docker compose --project-directory . -f compose/docker-compose.yml up -d
 ```
 
 ## Структура проекта
@@ -226,7 +226,7 @@ notes-bot/
 ├── grafana/                      # Grafana provisioning и дашборды
 ├── prometheus.yml                # Prometheus конфиг (scrape targets)
 ├── jaeger.yaml                   # Jaeger конфиг
-├── docker-compose.yml
+├── compose/docker-compose.yml
 ├── Makefile
 ├── go.mod / go.sum
 ├── pyproject.toml                # Poetry (только для Whisper)
@@ -286,9 +286,9 @@ make proto-breaking   # Проверка совместимости proto с mai
 make fmt              # применить gofmt ко всему Go-коду
 make fmt-check        # проверить форматирование без изменений
 make format           # алиас make fmt
-make up               # docker-compose build + up
-make down             # docker-compose down
-make logs             # docker-compose logs -f
+make up               # docker compose --project-directory . -f compose/docker-compose.yml build + up
+make down             # docker compose --project-directory . -f compose/docker-compose.yml down
+make logs             # docker compose --project-directory . -f compose/docker-compose.yml logs -f
 make restart          # Полный перезапуск с пересборкой
 make build-core       # Пересборка core образа
 make build-notifications # Пересборка notifications образа
@@ -414,3 +414,15 @@ VM нужны Python 3.9+, Make, Docker Compose с `--wait`, Git и flock для
 обходные Compose-операции одновременно с доставкой. При первом переходе на GHCR
 `previous.json` ещё отсутствует: сохраните прежние локальные образы и конфигурацию
 для восстановления по runbook до первого релиза.
+
+## Структура Compose
+
+Файлы Docker Compose находятся в `compose/`; основной файл — `compose/docker-compose.yml`.
+Команды запускайте из корня проекта через Makefile: он задаёт `--project-directory`
+на корень checkout. Build contexts, bind mounts, `env_file` и секреты остаются
+относительными к этому корню; имена Compose project, сервисов, сетей и томов сохранены.
+При явном вызове Docker используйте `docker compose --project-directory . -f compose/docker-compose.yml ...`.
+Если в приватной `.env` или окружении задан `COMPOSE_FILE`, добавьте `compose/`
+к прежним именам файлов, сохранив прежний набор overlays и порядок. Для плавного
+перехода Make также распознаёт прежние короткие имена, если файлы уже перенесены.
+Не меняйте project name и не удаляйте прежние тома для переноса файлов.

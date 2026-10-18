@@ -1,4 +1,6 @@
-DOCKER_COMPOSE = docker compose
+DOCKER_COMPOSE_BASE = docker compose --project-directory "$(CURDIR)"
+include makefiles/compose.mk
+DOCKER_COMPOSE = docker compose --project-directory "$(CURDIR)" $(COMPOSE_FLAGS)
 MONITORING_DATA_DIR ?= $(HOME)/.monitoring
 include makefiles/versions.mk
 
@@ -247,7 +249,7 @@ monitoring-unregister:
 .PHONY: install templ test-go test-go-cover test-go-cover-html test-race cover cover-html test-integration test-notifications test-search test clean build-core build-notifications build-telegram build-search build-web up deploy down logs restart docker-clean proto proto-docker proto-lint fmt fmt-check format lint lint-golangci install-linters vulncheck print-unit-pkgs print-coverpkgs monitoring-register monitoring-unregister
 
 # CI builds/publishes once; VM activates immutable digests (Python 3 + Docker required).
-export IMAGE_COMPOSE_FILE := docker-compose.yml
+export IMAGE_COMPOSE_FILE := compose/docker-compose.yml
 .PHONY: image-build image-publish image-deploy image-activate
 image-build:
 	python3 scripts/images.py build
@@ -270,3 +272,14 @@ image-compose:
 	python3 scripts/images.py compose
 
 include makefiles/ci-deploy.mk
+
+.PHONY: compose
+compose:
+	$(DOCKER_COMPOSE) $(ARGS)
+
+# Read-only validation of every tracked Compose combination, without runtime secrets.
+.PHONY: compose-layout-check
+compose-layout-check:
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+
+check: compose-layout-check
