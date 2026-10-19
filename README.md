@@ -68,6 +68,16 @@ PostgreSQL БД (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, обязатель�
 миграцию журнала голосовых заданий перед запуском frontend. Предварительно
 нужно обновить весь общий transcriber до версии с идемпотентным Submit и Ack.
 
+## Отдельный сервер Transcriber
+
+Общий Transcriber может работать на другой машине. Укажите в `.env`
+`WHISPER_GRPC_HOST` и `WHISPER_GRPC_PORT` для его клиентского gRPC API через
+доверенную VPN-сеть. По умолчанию используется `whisper-ingress:50053` —
+локальный сервис либо совместимый forwarder. Сохранённые голосовые задания
+продолжают обрабатываться после восстановления соединения.
+Настройки транспорта и ограничения описаны в
+[durable voice](docs/durable-voice.md#transcriber-на-другой-машине).
+
 ## Webhook (Opt-In)
 
 По умолчанию `WEBHOOK_URL` пустой и бот использует polling. Для публичного Telegram Bot API webhook должен использовать HTTPS. HTTP разрешён только при явно заданном `TELEGRAM_LOCAL_API_URL`, указывающем на доверенный локальный Bot API server, работающий в local mode.

@@ -94,8 +94,9 @@ Telegram frontend обновить core: прежний core игнорируе�
 3. Обычный startup Telegram только проверяет схему. Миграция выполняется
    транзакционно с advisory lock и ledger `voice_schema_migrations`; добавляются
    отдельные таблицы, существующие reminders не изменяются.
-4. Подключить native worker к отдельному backend WorkerService через SSH-туннель.
-   Worker не получает Telegram token, notes DB credentials или доступ к заметкам.
+4. Удалённые inference workers подключаются к отдельному WorkerService через
+   gRPC/TLS с индивидуальными credentials. Worker не получает Telegram token,
+   notes DB credentials или доступ к заметкам.
 
 Незавершённые задания прежней RAM реализации не могут быть восстановлены
 задним числом. До rollout следует дождаться их завершения. Для отката приложения
@@ -134,3 +135,23 @@ gofmt/vet, unit/race и существующие integration tests. PG tests и�
 cancel, порядок доставки и метрики. Handler tests моделируют потерянные ответы,
 долгую недоступность, сохранение результата до Ack, повтор append и pagination.
 Обычные tests не отправляют Telegram сообщения и не меняют production.
+
+## Transcriber на другой машине
+
+Telegram frontend обращается к общему backend по gRPC. Docker Compose читает
+`WHISPER_GRPC_HOST` и `WHISPER_GRPC_PORT` из `.env`; значения по умолчанию —
+`whisper-ingress:50053`. Это может быть как сам backend, так и локальный прокси.
+Для backend на другой машине задайте его адрес в доверенной VPN-сети и порт
+клиентского API, затем примените настройки обычным Git/CI/CD деплоем.
+
+Публичный TLS WorkerService предназначен для inference workers и не заменяет
+клиентский API Submit/GetStatus/Ack. Внутренний клиентский gRPC работает без
+отдельного TLS, поэтому удалённое соединение должно проходить через защищённую
+VPN-сеть. Compose включает выбранный host в `NO_PROXY`, чтобы прокси Telegram
+не перехватывал этот трафик.
+
+Docker-сеть `whisper-net` сохраняется для совместимости с локальным сервисом
+или forwarder; при прямом VPN-соединении frontend не зависит от процессов
+Transcriber на своей машине. Задания, UUID повторов и результаты продолжают
+храниться в PostgreSQL notes-bot. Временная недоступность удалённого backend
+вызывает повтор обработки по описанной выше политике.

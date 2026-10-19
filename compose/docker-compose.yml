@@ -241,8 +241,8 @@ services:
       - CORE_GRPC_PORT=50051
       - NOTIFICATIONS_GRPC_HOST=notifications
       - NOTIFICATIONS_GRPC_PORT=50052
-      - WHISPER_GRPC_HOST=whisper-ingress
-      - WHISPER_GRPC_PORT=50053
+      - WHISPER_GRPC_HOST=${WHISPER_GRPC_HOST:-whisper-ingress}
+      - WHISPER_GRPC_PORT=${WHISPER_GRPC_PORT:-50053}
       - SEARCH_GRPC_HOST=search
       - SEARCH_GRPC_PORT=50054
       - LOCATION_HOST=location
@@ -260,7 +260,7 @@ services:
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
       # Route Telegram API traffic through Xray SOCKS5 proxy on host
       - HTTPS_PROXY=socks5://host.docker.internal:10808
-      - NO_PROXY=core,notifications,whisper-ingress,search,location,kafka,redis,ollama,jaeger,localhost,127.0.0.1
+      - NO_PROXY=core,notifications,${WHISPER_GRPC_HOST:-whisper-ingress},search,location,kafka,redis,ollama,jaeger,localhost,127.0.0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     dns:
