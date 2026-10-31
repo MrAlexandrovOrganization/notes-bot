@@ -61,6 +61,9 @@
 
 Подробная документация для разработки — в `CLAUDE.md`.
 
+Внешние копии vault (включая Git и незакоммиченные файлы), обеих БД
+и конфигурации Yandex Disk: [резервное копирование на ASUS](docs/BACKUPS.md).
+
 Порядок доставки, миграция, идемпотентность и ограничения описаны в
 [durable voice](docs/durable-voice.md). Telegram теперь также использует существующую
 PostgreSQL БД (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, обязательный `DB_PASSWORD`).

@@ -7,6 +7,7 @@ include makefiles/versions.mk
 # Per-service targets live in makefiles/ to keep this file focused on
 # top-level workflows (build, test, deploy).
 include makefiles/search.mk
+include makefiles/backup.mk
 
 # Canonical source of whisper.proto (shared with backends/transcriber).
 # For remote fetch (e.g. in CI without access to the backend repo):
