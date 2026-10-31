@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh shared infrastructure forwarding for notes-bot migration
+After=docker.service tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/notes-backup/legacy_forward.py
+StateDirectory=notes-legacy-forward
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
