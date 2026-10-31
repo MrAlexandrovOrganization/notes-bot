@@ -54,6 +54,7 @@ services:
 
   core:
     container_name: notes-bot-core
+    user: "${NOTES_VAULT_USER:-0:0}"
     build:
       context: .
       dockerfile: core/Dockerfile
@@ -153,6 +154,7 @@ services:
 
   search:
     container_name: notes-bot-search
+    user: "${NOTES_VAULT_USER:-10001:10001}"
     build:
       context: .
       dockerfile: search/Dockerfile

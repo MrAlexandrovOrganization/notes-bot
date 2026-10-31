@@ -65,6 +65,12 @@ authorized_keys, cron и другие backup units не заменяются. Ro
 с контейнером. Выполняются `pg_restore --exit-on-error --single-transaction`,
 проверка чтения всех таблиц. Production credentials и приложения не запускаются.
 Результат — `verified.json`. Для образов требуется доступ к registry/cache.
+Для offline cache исходные образы можно передать через `docker save/load`.
+В приватном `config.json` секция `image_cache` сопоставляет исходный digest с
+`reference` импортированного тега и `fingerprint`, полученным на доверенном
+источнике. Проверяются архитектура, ОС, image config и хэши слоёв: одного
+совпадения тега недостаточно. Новые архивы также содержат этот fingerprint.
+Это метаданные сохранённого артефакта, не второй редактируемый pin версии.
 
 ```sh
 sudo systemctl start notes-backup.service
