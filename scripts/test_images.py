@@ -71,6 +71,13 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(json.loads(current.read_text()), {"old": True})
         self.assertEqual(run.call_count, 1)
 
+    def test_retired_source_never_pulls_or_activates(self):
+        (self.root / ".retired").write_text("migrated")
+        with patch.object(images, "run") as run:
+            with self.assertRaises(ValueError):
+                images.deploy()
+        run.assert_not_called()
+
     def test_activation_failure_keeps_current(self):
         self.save_manifest()
         current = images.STATE / "current.json"

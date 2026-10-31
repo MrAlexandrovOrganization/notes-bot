@@ -156,11 +156,15 @@ clean:
 	@rm -f coverage.out unit.out integration.out combined.out
 	@rm -rf htmlcov
 
-up: monitoring-register migrate-voice
+.PHONY: assert-active
+assert-active:
+	@test ! -e .retired || { echo 'This checkout is retired; use the active host.' >&2; exit 1; }
+
+up: assert-active monitoring-register migrate-voice
 	$(DOCKER_COMPOSE) up --build -d
 
 # Explicit deployment migration; normal telegram startup only checks the schema.
-migrate-voice:
+migrate-voice: assert-active
 	$(DOCKER_COMPOSE) up -d postgres
 	$(DOCKER_COMPOSE) build telegram
 	$(DOCKER_COMPOSE) run --rm --no-deps telegram /telegram migrate-voice
@@ -183,7 +187,7 @@ test-voice-db-up:
 test-voice-db-down:
 	@if [ "$$(docker inspect -f '{{index .Config.Labels "app"}}' notes-bot-voice-ci-db 2>/dev/null)" = notes-bot-voice-ci-db ]; then docker stop notes-bot-voice-ci-db; fi
 
-deploy: proto monitoring-register
+deploy: assert-active proto monitoring-register
 	$(DOCKER_COMPOSE) build --no-cache
 	$(DOCKER_COMPOSE) up -d
 
@@ -193,7 +197,7 @@ down:
 logs:
 	$(DOCKER_COMPOSE) logs -f
 
-restart:
+restart: assert-active
 	$(DOCKER_COMPOSE) up --build --force-recreate -d
 	$(DOCKER_COMPOSE) logs -f
 
@@ -260,7 +264,7 @@ image-publish:
 	python3 scripts/images.py publish
 image-deploy:
 	python3 scripts/images.py deploy
-image-activate: monitoring-register
+image-activate: assert-active monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180

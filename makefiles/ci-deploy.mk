@@ -6,6 +6,7 @@ export IMAGE_DEPLOY_LOCK := $(HOME)/.notes-bot-images-deploy.lock
 ci-deploy:
 	@set -eu; \
 	test "$$(git rev-parse --show-toplevel)" = "$$(pwd -P)"; \
+	test ! -e .retired || { echo 'Retired source host: deployment refused' >&2; exit 1; }; \
 	test -n "$${IMAGE_MANIFEST_B64:-}"; \
 	test -n "$${GHCR_USER:-}"; \
 	test -n "$${GHCR_TOKEN:-}"; \
