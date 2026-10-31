@@ -7,6 +7,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import subprocess
 from unittest.mock import patch
 
 import notes_backup as backup
@@ -86,6 +87,24 @@ class NotesBackupTests(unittest.TestCase):
         recent = Path("notes-bot-20261030T230000Z-" + "a" * 32 + ".tar")
         old = Path("notes-bot-20260101T000000Z-" + "b" * 32 + ".tar")
         self.assertEqual(backup.retained([recent, old, Path("unrelated.tar")], now), {recent, old})
+
+    def test_empty_or_wrong_database_is_rejected(self):
+        with patch.object(backup, "run", return_value=b'[]'):
+            with self.assertRaises(backup.BackupError):
+                backup.check_tables("synthetic", "notifications")
+        tables = list(backup.REQUIRED_TABLES["search"]) + ["future_table"]
+        with patch.object(backup, "run", return_value=json.dumps(tables).encode()):
+            backup.check_tables("synthetic", "search")
+
+    def test_imported_image_cache_cannot_substitute_other_content(self):
+        metadata = {"Architecture": "amd64", "Os": "linux", "Config": {}, "RootFS": {"Layers": ["a"]}}
+        config = {"image_cache": {"postgres@sha256:" + "a" * 64:
+                  {"reference": "notes-backup-cache:synthetic", "fingerprint": "wrong"}}}
+        responses = [subprocess.CompletedProcess([], 1, b''),
+                     subprocess.CompletedProcess([], 0, json.dumps([metadata]).encode())]
+        with patch.object(backup.subprocess, "run", side_effect=responses):
+            with self.assertRaisesRegex(backup.BackupError, "differs"):
+                backup.restore_image({"image": "postgres@sha256:" + "a" * 64}, config)
 
 
 if __name__ == "__main__":

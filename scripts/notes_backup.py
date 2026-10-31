@@ -19,6 +19,10 @@ import uuid
 
 NAME = re.compile(r"notes-bot-(\d{8}T\d{6}Z)-[0-9a-f]{32}\.tar")
 MEMBERS = {"vault.tgz", "yandex-config.tgz", "application.env", "notifications.dump", "search.dump", "manifest.json"}
+REQUIRED_TABLES = {
+    "notifications": {"reminders", "voice_jobs", "voice_schema_migrations", "location_history", "location_tracking"},
+    "search": {"notes", "note_chunks", "chunk_embeddings", "note_profiles", "profile_embeddings"},
+}
 
 
 class BackupError(RuntimeError):
@@ -41,6 +45,30 @@ def run(command, *, output=None, source=None, timeout=900):
 def checksum(path):
     with Path(path).open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def image_fingerprint(metadata):
+    value = [metadata.get("Architecture"), metadata.get("Os"), metadata.get("Config"),
+             metadata["RootFS"]["Layers"]]
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def restore_image(database, config):
+    cached = config.get("image_cache", {}).get(database["image"], {})
+    expected = database.get("fingerprint", cached.get("fingerprint"))
+    candidates = [database["image"]]
+    if cached.get("reference"):
+        candidates.append(cached["reference"])
+    for reference in candidates:
+        found = subprocess.run(["docker", "image", "inspect", reference], capture_output=True, timeout=30)
+        if not found.returncode:
+            if expected and image_fingerprint(json.loads(found.stdout)[0]) != expected:
+                raise BackupError("Cached database image differs from source")
+            if reference != database["image"] and not expected:
+                raise BackupError("Imported restore image requires a source fingerprint")
+            return reference
+    run(["docker", "pull", "--quiet", database["image"]], timeout=600)
+    return database["image"]
 
 
 def inventory(root):
@@ -113,6 +141,15 @@ def database(service):
     return ids[0], digests[0]
 
 
+def check_tables(container, name):
+    statement = "SELECT coalesce(json_agg(tablename), '[]') FROM pg_tables WHERE schemaname='public';"
+    tables = json.loads(run(["docker", "exec", container, "sh", "-c",
+                             'exec psql -XAtq -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$POSTGRES_DB" -c "$1"',
+                             "sh", statement]))
+    if not REQUIRED_TABLES[name].issubset(tables):
+        raise BackupError("Required notes database tables are missing")
+
+
 def source_export(root, home):
     os.umask(0o077)
     project = root / "telegram-bots/notes-bot"
@@ -128,12 +165,14 @@ def source_export(root, home):
         databases = {}
         for service, name in (("postgres", "notifications"), ("postgres-search", "search")):
             container, image = database(service)
+            check_tables(container, name)
             with (directory / f"{name}.dump").open("wb") as stream:
                 run(["docker", "exec", container, "sh", "-c",
                      'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'], output=stream)
             with (directory / f"{name}.dump").open("rb") as stream:
                 run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
-            databases[name] = {"image": image}
+            metadata = json.loads(run(["docker", "image", "inspect", image]))[0]
+            databases[name] = {"image": image, "fingerprint": image_fingerprint(metadata)}
         manifest = {"format": 1, "created_at": dt.datetime.now(dt.UTC).isoformat(),
                     "revision": run(["git", "-C", str(project), "rev-parse", "HEAD"]).decode().strip(),
                     "vault": vault, "databases": databases,
@@ -275,10 +314,7 @@ def verify(config):
             run(["git", "-C", str(restored), "fsck", "--full"], timeout=300)
         counts = {}
         for name, database in manifest["databases"].items():
-            image = database["image"]
-            cached = subprocess.run(["docker", "image", "inspect", image], capture_output=True, timeout=30)
-            if cached.returncode:
-                run(["docker", "pull", "--quiet", image], timeout=900)
+            image = restore_image(database, config)
             container = "notes-backup-verify-" + uuid.uuid4().hex[:12]
             created = False
             try:
@@ -300,6 +336,7 @@ def verify(config):
                 with (temporary / f"{name}.dump").open("rb") as stream:
                     run(["docker", "exec", "-i", container, "pg_restore", "-U", "postgres", "-d", "restore",
                          "--no-owner", "--no-privileges", "--exit-on-error", "--single-transaction"], source=stream)
+                check_tables(container, name)
                 # Counts only; note/reminder/voice contents never enter logs.
                 sql = """DO $$ DECLARE t record; BEGIN
                     FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
