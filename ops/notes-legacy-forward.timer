@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh temporary notes infrastructure forwards
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=notes-legacy-forward.service
+
+[Install]
+WantedBy=timers.target

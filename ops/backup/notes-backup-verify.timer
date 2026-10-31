@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly isolated notes restore verification
+
+[Timer]
+OnCalendar=*-*-01 05:10:00 Europe/Moscow
+RandomizedDelaySec=120
+Persistent=true
+Unit=notes-backup-verify.service
+
+[Install]
+WantedBy=timers.target

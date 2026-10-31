@@ -49,6 +49,11 @@ class DeliveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             images.validate(self.manifest)
 
+    def test_runtime_uses_make_resolved_overlays_without_changing_build_inputs(self):
+        os.environ["IMAGE_RUNTIME_COMPOSE_FILES"] = "compose.yaml compose/compose.russia.yml"
+        self.assertNotIn("compose/compose.russia.yml", images.compose())
+        self.assertIn("compose/compose.russia.yml", images.compose(runtime=True))
+
     def test_rejects_missing_services(self):
         self.manifest["images"] = {}
         with self.assertRaises(ValueError):
@@ -65,6 +70,13 @@ class DeliveryTests(unittest.TestCase):
                 images.deploy()
         self.assertEqual(json.loads(current.read_text()), {"old": True})
         self.assertEqual(run.call_count, 1)
+
+    def test_retired_source_never_pulls_or_activates(self):
+        (self.root / ".retired").write_text("migrated")
+        with patch.object(images, "run") as run:
+            with self.assertRaises(ValueError):
+                images.deploy()
+        run.assert_not_called()
 
     def test_activation_failure_keeps_current(self):
         self.save_manifest()

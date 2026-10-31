@@ -7,6 +7,7 @@ include makefiles/versions.mk
 # Per-service targets live in makefiles/ to keep this file focused on
 # top-level workflows (build, test, deploy).
 include makefiles/search.mk
+include makefiles/backup.mk
 
 # Canonical source of whisper.proto (shared with backends/transcriber).
 # For remote fetch (e.g. in CI without access to the backend repo):
@@ -155,11 +156,15 @@ clean:
 	@rm -f coverage.out unit.out integration.out combined.out
 	@rm -rf htmlcov
 
-up: monitoring-register migrate-voice
+.PHONY: assert-active
+assert-active:
+	@test ! -e .retired || { echo 'This checkout is retired; use the active host.' >&2; exit 1; }
+
+up: assert-active monitoring-register migrate-voice
 	$(DOCKER_COMPOSE) up --build -d
 
 # Explicit deployment migration; normal telegram startup only checks the schema.
-migrate-voice:
+migrate-voice: assert-active
 	$(DOCKER_COMPOSE) up -d postgres
 	$(DOCKER_COMPOSE) build telegram
 	$(DOCKER_COMPOSE) run --rm --no-deps telegram /telegram migrate-voice
@@ -182,7 +187,7 @@ test-voice-db-up:
 test-voice-db-down:
 	@if [ "$$(docker inspect -f '{{index .Config.Labels "app"}}' notes-bot-voice-ci-db 2>/dev/null)" = notes-bot-voice-ci-db ]; then docker stop notes-bot-voice-ci-db; fi
 
-deploy: proto monitoring-register
+deploy: assert-active proto monitoring-register
 	$(DOCKER_COMPOSE) build --no-cache
 	$(DOCKER_COMPOSE) up -d
 
@@ -192,7 +197,7 @@ down:
 logs:
 	$(DOCKER_COMPOSE) logs -f
 
-restart:
+restart: assert-active
 	$(DOCKER_COMPOSE) up --build --force-recreate -d
 	$(DOCKER_COMPOSE) logs -f
 
@@ -250,6 +255,8 @@ monitoring-unregister:
 
 # CI builds/publishes once; VM activates immutable digests (Python 3 + Docker required).
 export IMAGE_COMPOSE_FILE := compose/docker-compose.yml
+# Make resolves .env COMPOSE_FILE once; digest activation must use the same overlays.
+export IMAGE_RUNTIME_COMPOSE_FILES = $(COMPOSE_FILES)
 .PHONY: image-build image-publish image-deploy image-activate
 image-build:
 	python3 scripts/images.py build
@@ -257,7 +264,7 @@ image-publish:
 	python3 scripts/images.py publish
 image-deploy:
 	python3 scripts/images.py deploy
-image-activate: monitoring-register
+image-activate: assert-active monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
@@ -281,5 +288,6 @@ compose:
 .PHONY: compose-layout-check
 compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 
 check: compose-layout-check

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly off-host notes backups
+
+[Timer]
+OnCalendar=*-*-* *:20:00 Europe/Moscow
+RandomizedDelaySec=120
+Persistent=true
+Unit=notes-backup.service
+
+[Install]
+WantedBy=timers.target

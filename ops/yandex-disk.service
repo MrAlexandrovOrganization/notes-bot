@@ -1,0 +1,21 @@
+[Unit]
+Description=Yandex Disk notes synchronization
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=maxim
+Group=maxim
+Environment=HOME=/home/maxim
+ExecStart=/usr/bin/python3 /usr/local/lib/notes-backup/yandex_disk.py
+ExecStop=/usr/bin/yandex-disk stop --config=/home/maxim/.config/yandex-disk/config.cfg
+Restart=always
+RestartSec=30
+TimeoutStopSec=90
+UMask=0002
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

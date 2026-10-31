@@ -1,0 +1,48 @@
+# Transitional placement: vault and databases are local; shared infrastructure
+# stays on server until its own migration. Kafka advertises kafka:9092, so the
+# broker hostname must resolve to its tailnet forwarder on both clients.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${NOTES_SUBNET:?Set a non-overlapping private subnet}
+services:
+  postgres:
+    image: ${NOTES_POSTGRES_IMAGE:?Set the migrated PostgreSQL image digest}
+  postgres-search:
+    image: ${NOTES_SEARCH_POSTGRES_IMAGE:?Set the migrated pgvector image digest}
+  core:
+    # The sync client must be able to read files created by the note writer.
+    user: "${NOTES_VAULT_UID:?}:${NOTES_VAULT_GID:?}"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  notifications:
+    networks: !override [default, prometheus-net, jaeger-net]
+    extra_hosts:
+      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  search:
+    user: "${NOTES_VAULT_UID:?}:${NOTES_VAULT_GID:?}"
+    networks: !override [default, prometheus-net, jaeger-net]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  web:
+    networks: !override [default, caddy-net, prometheus-net, jaeger-net]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  telegram:
+    networks: !override [default, caddy-net, whisper-net, prometheus-net, jaeger-net, telegram-net]
+    extra_hosts:
+      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+    environment:
+      REDIS_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      REDIS_PORT: ${NOTES_REDIS_PORT:?Set the private Redis forwarder port}
+      LOCATION_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      LOCATION_PORT: ${NOTES_LOCATION_PORT:?Set the private location forwarder port}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+      # The local Bot API performs Telegram egress. Do not use server's host proxy.
+      HTTPS_PROXY: ""
+      HTTP_PROXY: ""
+      ALL_PROXY: ""
+      NO_PROXY: "*"
