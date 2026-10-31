@@ -70,6 +70,9 @@ LLM-конфигурация сохраняется; доступность пр
    iid и exclusions. Клиент 0.1.6.1080 перенесён из того же официального deb.
    Сохранённое дерево перед первым подключением не удалять: синхронизация
    может применить изменения из облака. Проверить доступность всех локальных файлов.
+   Foreground-режим старого клиента не читает config.cfg: `scripts/yandex_disk.py`
+   явно переносит его настройки в аргументы, включая exclusions и auth path.
+   Launcher устанавливается root-owned в `/usr/local/lib/notes-backup/`.
 7. Направить GitHub VM_* secrets/CD на Russia, проверить новый workflow и
    фактические digests/runtime. На source поставить restart=no и защиту retired.
 8. Переключить ASUS backup source на Russia, вручную выполнить backup/restore,

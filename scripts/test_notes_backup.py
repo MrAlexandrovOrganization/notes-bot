@@ -11,6 +11,7 @@ import subprocess
 from unittest.mock import patch
 
 import notes_backup as backup
+import yandex_disk
 
 
 class NotesBackupTests(unittest.TestCase):
@@ -105,6 +106,25 @@ class NotesBackupTests(unittest.TestCase):
         with patch.object(backup.subprocess, "run", side_effect=responses):
             with self.assertRaisesRegex(backup.BackupError, "differs"):
                 backup.restore_image({"image": "postgres@sha256:" + "a" * 64}, config)
+
+    def test_foreground_sync_keeps_exclusions_and_auth_without_shell_evaluation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.cfg"
+            config.write_text('dir="/synthetic/Yandex.Disk"\nexclude-dirs="Фото,Книги с пробелами"\n'
+                              'auth="/synthetic/passwd"\nproxy="no"\nread-only="no"\n')
+            args = yandex_disk.arguments(config, Path("/synthetic"))
+            self.assertIn("--exclude-dirs=Фото,Книги с пробелами", args)
+            self.assertIn("--auth=/synthetic/passwd", args)
+            self.assertIn("--proxy=no", args)
+            self.assertNotIn("--read-only", args)
+            self.assertNotIn("start", args)
+
+    def test_foreground_sync_rejects_unknown_configuration_instead_of_dropping_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.cfg"
+            config.write_text('dir="/synthetic"\nunknown="setting"\n')
+            with self.assertRaises(RuntimeError):
+                yandex_disk.arguments(config, Path("/synthetic"))
 
 
 if __name__ == "__main__":

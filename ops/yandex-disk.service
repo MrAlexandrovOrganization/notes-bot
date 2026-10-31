@@ -9,7 +9,7 @@ Type=simple
 User=maxim
 Group=maxim
 Environment=HOME=/home/maxim
-ExecStart=/usr/bin/yandex-disk start --no-daemon --config=/home/maxim/.config/yandex-disk/config.cfg
+ExecStart=/usr/bin/python3 /usr/local/lib/notes-backup/yandex_disk.py
 ExecStop=/usr/bin/yandex-disk stop --config=/home/maxim/.config/yandex-disk/config.cfg
 Restart=always
 RestartSec=30
