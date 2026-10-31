@@ -2,7 +2,8 @@
 
 Канонический код — `scripts/notes_backup.py`, systemd units — `ops/backup/`.
 Первичная административная установка выполняется отдельно от CD: копия скрипта
-в `~/.local/lib/notes-backup/` на источнике и ASUS, units в `/etc/systemd/system/`
+в `/usr/local/lib/notes-backup/` (root-owned) на источнике и
+`~/.local/lib/notes-backup/` на ASUS, units в `/etc/systemd/system/`
 на ASUS. Изменения скрипта требуют явного обновления установленных копий.
 
 ## Состав и гарантии
@@ -47,10 +48,12 @@ SSH шифрует передачу, архивы на диске не заши�
 Отдельный ключ создаётся и остаётся только на ASUS в `~/.config/notes-backup/`.
 `config.json`: `directory`, `source=maxim@<tailnet-IP>`, `identity`, `known_hosts`.
 На источнике разрешается только forced command:
-`/usr/bin/python3 /home/maxim/.local/lib/notes-backup/notes_backup.py source`
+`/usr/bin/sudo -n /usr/bin/python3 /usr/local/lib/notes-backup/notes_backup.py source`
 с `restrict,from="100.64.0.11"`. Host key получают по уже доверенному каналу
 администратора; строго проверяют через отдельный known_hosts. Существующие
-authorized_keys, cron и другие backup units не заменяются.
+authorized_keys, cron и другие backup units не заменяются. Root нужен для
+полного чтения файлов vault, созданных контейнерами с ограниченными правами;
+клиентский ключ не получает shell или выбор произвольной команды.
 
 ## Проверка восстановления
 

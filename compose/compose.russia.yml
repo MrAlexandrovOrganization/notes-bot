@@ -1,0 +1,36 @@
+# Transitional placement: vault and databases are local; shared infrastructure
+# stays on server until its own migration. Kafka advertises kafka:9092, so the
+# broker hostname must resolve to its tailnet forwarder on both clients.
+services:
+  postgres:
+    image: ${NOTES_POSTGRES_IMAGE:?Set the migrated PostgreSQL image digest}
+  postgres-search:
+    image: ${NOTES_SEARCH_POSTGRES_IMAGE:?Set the migrated pgvector image digest}
+  core:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  notifications:
+    extra_hosts:
+      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  search:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  web:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+  telegram:
+    extra_hosts:
+      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+    environment:
+      REDIS_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      REDIS_PORT: ${NOTES_REDIS_PORT:?Set the private Redis forwarder port}
+      LOCATION_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      LOCATION_PORT: ${NOTES_LOCATION_PORT:?Set the private location forwarder port}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
+      # The local Bot API performs Telegram egress. Do not use server's host proxy.
+      HTTPS_PROXY: ""
+      HTTP_PROXY: ""
+      ALL_PROXY: ""
+      NO_PROXY: "*"

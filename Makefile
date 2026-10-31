@@ -251,6 +251,8 @@ monitoring-unregister:
 
 # CI builds/publishes once; VM activates immutable digests (Python 3 + Docker required).
 export IMAGE_COMPOSE_FILE := compose/docker-compose.yml
+# Make resolves .env COMPOSE_FILE once; digest activation must use the same overlays.
+export IMAGE_RUNTIME_COMPOSE_FILES = $(COMPOSE_FILES)
 .PHONY: image-build image-publish image-deploy image-activate
 image-build:
 	python3 scripts/images.py build
@@ -282,5 +284,6 @@ compose:
 .PHONY: compose-layout-check
 compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 
 check: compose-layout-check

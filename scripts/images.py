@@ -31,7 +31,9 @@ def compose(runtime=False):
     files = os.environ.get("COMPOSE_FILE", os.environ["IMAGE_COMPOSE_FILE"]).split(
         os.pathsep
     )
-    if runtime and "COMPOSE_FILE" not in os.environ:
+    if runtime and os.environ.get("IMAGE_RUNTIME_COMPOSE_FILES"):
+        files = shlex.split(os.environ["IMAGE_RUNTIME_COMPOSE_FILES"])
+    elif runtime and "COMPOSE_FILE" not in os.environ:
         override = ROOT / "compose/docker-compose.override.yml"
         if override.exists():
             files.append(str(override.relative_to(ROOT)))

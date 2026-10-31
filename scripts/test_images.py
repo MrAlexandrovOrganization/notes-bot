@@ -49,6 +49,11 @@ class DeliveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             images.validate(self.manifest)
 
+    def test_runtime_uses_make_resolved_overlays_without_changing_build_inputs(self):
+        os.environ["IMAGE_RUNTIME_COMPOSE_FILES"] = "compose.yaml compose/compose.russia.yml"
+        self.assertNotIn("compose/compose.russia.yml", images.compose())
+        self.assertIn("compose/compose.russia.yml", images.compose(runtime=True))
+
     def test_rejects_missing_services(self):
         self.manifest["images"] = {}
         with self.assertRaises(ValueError):
