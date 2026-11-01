@@ -195,7 +195,7 @@ def source_export(root, home):
                 check_tables(container, name)
                 with (directory / f"{name}.dump").open("wb") as stream:
                     run(["docker", "exec", container, "sh", "-c",
-                         'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'], output=stream)
+                         'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -Z1'], output=stream)
                 with (directory / f"{name}.dump").open("rb") as stream:
                     run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
                 metadata = json.loads(run(["docker", "image", "inspect", image]))[0]
