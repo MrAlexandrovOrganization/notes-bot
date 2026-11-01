@@ -2,6 +2,8 @@
 
 import datetime as dt
 import io
+import fcntl
+import os
 import json
 from pathlib import Path
 import tarfile
@@ -15,6 +17,31 @@ import yandex_disk
 
 
 class NotesBackupTests(unittest.TestCase):
+    def test_backup_and_deploy_are_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            with backup.deployment_lock(home):
+                with (home / ".notes-bot-images-deploy.lock").open("a") as deploy:
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(deploy, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with (home / ".notes-bot-images-deploy.lock").open("a") as deploy:
+                fcntl.flock(deploy, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaisesRegex(backup.BackupError, "Deployment in progress"):
+                    with backup.deployment_lock(home):
+                        self.fail("Backup must not start during deployment")
+            self.assertEqual((home / ".notes-bot-images-deploy.lock").stat().st_uid, os.getuid())
+
+    def test_backup_lock_rejects_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            other = home / "unrelated"
+            other.write_text("preserve")
+            (home / ".notes-bot-images-deploy.lock").symlink_to(other)
+            with self.assertRaises(OSError):
+                with backup.deployment_lock(home):
+                    self.fail("Symlink lock must be rejected")
+            self.assertEqual(other.read_text(), "preserve")
+
     def test_vault_roundtrip_includes_git_ignored_unicode_and_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "source"

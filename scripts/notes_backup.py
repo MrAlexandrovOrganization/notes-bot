@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -150,34 +151,60 @@ def check_tables(container, name):
         raise BackupError("Required notes database tables are missing")
 
 
+@contextlib.contextmanager
+def deployment_lock(home):
+    """Do not let pg_dump overlap startup DDL under the existing CI host lock."""
+    path = home / ".notes-bot-images-deploy.lock"
+    owner = home.stat()
+    created = False
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        created = True
+    except FileExistsError:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as lock:
+        if created:
+            # The root exporter must not take ownership away from CI.
+            os.fchown(lock.fileno(), owner.st_uid, owner.st_gid)
+        metadata = os.fstat(lock.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != owner.st_uid:
+            raise BackupError("Deployment lock must be a regular file owned by the application user")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise BackupError("Deployment in progress; backup will retry") from None
+        yield
+
+
 def source_export(root, home):
     os.umask(0o077)
     project = root / "telegram-bots/notes-bot"
     with tempfile.TemporaryDirectory(prefix="notes-export-") as temporary:
         directory = Path(temporary)
-        vault = snapshot_vault(home / "Yandex.Disk/notes", directory / "vault.tgz")
-        config = home / ".config/yandex-disk"
-        if not (config / "config.cfg").is_file() or not (config / "passwd").is_file():
-            raise BackupError("Yandex Disk configuration or auth file is missing")
-        with tarfile.open(directory / "yandex-config.tgz", "w:gz", dereference=False) as archive:
-            archive.add(config, arcname="yandex-disk")
-        shutil.copyfile(project / ".env", directory / "application.env")
-        databases = {}
-        for service, name in (("postgres", "notifications"), ("postgres-search", "search")):
-            container, image = database(service)
-            check_tables(container, name)
-            with (directory / f"{name}.dump").open("wb") as stream:
-                run(["docker", "exec", container, "sh", "-c",
-                     'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'], output=stream)
-            with (directory / f"{name}.dump").open("rb") as stream:
-                run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
-            metadata = json.loads(run(["docker", "image", "inspect", image]))[0]
-            databases[name] = {"image": image, "fingerprint": image_fingerprint(metadata)}
-        manifest = {"format": 1, "created_at": dt.datetime.now(dt.UTC).isoformat(),
-                    "revision": run(["git", "-C", str(project), "rev-parse", "HEAD"]).decode().strip(),
-                    "vault": vault, "databases": databases,
-                    "sha256": {p.name: checksum(p) for p in directory.iterdir()}}
-        (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        with deployment_lock(home):
+            vault = snapshot_vault(home / "Yandex.Disk/notes", directory / "vault.tgz")
+            config = home / ".config/yandex-disk"
+            if not (config / "config.cfg").is_file() or not (config / "passwd").is_file():
+                raise BackupError("Yandex Disk configuration or auth file is missing")
+            with tarfile.open(directory / "yandex-config.tgz", "w:gz", dereference=False) as archive:
+                archive.add(config, arcname="yandex-disk")
+            shutil.copyfile(project / ".env", directory / "application.env")
+            databases = {}
+            for service, name in (("postgres", "notifications"), ("postgres-search", "search")):
+                container, image = database(service)
+                check_tables(container, name)
+                with (directory / f"{name}.dump").open("wb") as stream:
+                    run(["docker", "exec", container, "sh", "-c",
+                         'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'], output=stream)
+                with (directory / f"{name}.dump").open("rb") as stream:
+                    run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
+                metadata = json.loads(run(["docker", "image", "inspect", image]))[0]
+                databases[name] = {"image": image, "fingerprint": image_fingerprint(metadata)}
+            manifest = {"format": 1, "created_at": dt.datetime.now(dt.UTC).isoformat(),
+                        "revision": run(["git", "-C", str(project), "rev-parse", "HEAD"]).decode().strip(),
+                        "vault": vault, "databases": databases,
+                        "sha256": {p.name: checksum(p) for p in directory.iterdir()}}
+            (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as archive:
             for path in sorted(directory.iterdir()):
                 info = archive.gettarinfo(str(path), arcname=path.name)
