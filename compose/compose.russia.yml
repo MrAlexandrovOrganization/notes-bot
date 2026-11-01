@@ -1,6 +1,6 @@
-# Transitional placement: vault and databases are local; shared infrastructure
-# stays on server until its own migration. Kafka advertises kafka:9092, so the
-# broker hostname must resolve to its tailnet forwarder on both clients.
+# Russia runs the notes application and vault; shared infrastructure has
+# independent tailnet endpoints. Kafka advertises kafka:9092, so both clients
+# must map the broker hostname to the WSL endpoint.
 networks:
   default:
     ipam:
@@ -19,7 +19,7 @@ services:
   notifications:
     networks: !override [default, prometheus-net, jaeger-net]
     extra_hosts:
-      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+      - "kafka=${NOTES_KAFKA_HOST:?Set the Kafka tailnet address}"
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
   search:
@@ -34,11 +34,11 @@ services:
   telegram:
     networks: !override [default, caddy-net, whisper-net, prometheus-net, jaeger-net, telegram-net]
     extra_hosts:
-      - "kafka=${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}"
+      - "kafka=${NOTES_KAFKA_HOST:?Set the Kafka tailnet address}"
     environment:
-      REDIS_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      REDIS_HOST: ${NOTES_REDIS_HOST:?Set the Redis tailnet address}
       REDIS_PORT: ${NOTES_REDIS_PORT:?Set the private Redis forwarder port}
-      LOCATION_HOST: ${NOTES_LEGACY_HOST:?Set the shared infrastructure tailnet address}
+      LOCATION_HOST: ${NOTES_LOCATION_HOST:?Set the location tailnet address}
       LOCATION_PORT: ${NOTES_LOCATION_PORT:?Set the private location forwarder port}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
       # The local Bot API performs Telegram egress. Do not use server's host proxy.

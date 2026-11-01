@@ -443,3 +443,11 @@ VM нужны Python 3.9+, Make, Docker Compose с `--wait`, Git и flock для
 к прежним именам файлов, сохранив прежний набор overlays и порядок. Для плавного
 перехода Make также распознаёт прежние короткие имена, если файлы уже перенесены.
 Не меняйте project name и не удаляйте прежние тома для переноса файлов.
+
+## Внешняя инфраструктура с 2 ноября 2026
+
+В Russia overlay задаются независимые `NOTES_KAFKA_HOST` (WSL), `NOTES_REDIS_HOST`
+и `NOTES_LOCATION_HOST` (Finland), а также `NOTES_OTLP_ENDPOINT` (WSL).
+`NOTES_LEGACY_HOST` больше не используется. Kafka сохраняет advertised hostname
+`kafka:9092`; overlay сопоставляет его с WSL на обоих клиентах.
+Старые forwards на `server` не нужны notes-bot.
