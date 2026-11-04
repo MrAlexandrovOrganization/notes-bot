@@ -1,0 +1,876 @@
+{
+  "uid": "location-blacklist",
+  "id": null,
+  "title": "Location · блэклист",
+  "description": "Правила постоянного скрытия координат и кандидаты для ручной проверки. Только чтение; вся история. Generated from monitoring/templates and monitoring/sql/location-blacklist.",
+  "tags": [
+    "location",
+    "blacklist"
+  ],
+  "editable": true,
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "Europe/Moscow",
+  "refresh": "1m",
+  "time": {
+    "from": "now-1y",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "Основной Location",
+      "url": "/d/4128eebc-4764-470e-9234-bba3ef454ef8/location",
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "grafana-postgresql-datasource",
+          "value": "eftexe5xy5hxca"
+        },
+        "hide": 2,
+        "includeAll": false,
+        "label": "PostgreSQL",
+        "multi": false,
+        "name": "postgres",
+        "options": [],
+        "query": "grafana-postgresql-datasource",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "name": "min_days",
+        "label": "Минимум разных дней",
+        "type": "custom",
+        "query": "1,2,3,5,7",
+        "current": {
+          "selected": true,
+          "text": "3",
+          "value": "3"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "1",
+            "value": "1"
+          },
+          {
+            "selected": false,
+            "text": "2",
+            "value": "2"
+          },
+          {
+            "selected": true,
+            "text": "3",
+            "value": "3"
+          },
+          {
+            "selected": false,
+            "text": "5",
+            "value": "5"
+          },
+          {
+            "selected": false,
+            "text": "7",
+            "value": "7"
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "min_points",
+        "label": "Минимум записей",
+        "type": "custom",
+        "query": "5,10,20,50",
+        "current": {
+          "selected": true,
+          "text": "5",
+          "value": "5"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "5",
+            "value": "5"
+          },
+          {
+            "selected": false,
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "selected": false,
+            "text": "20",
+            "value": "20"
+          },
+          {
+            "selected": false,
+            "text": "50",
+            "value": "50"
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Правила и предложения за всю историю",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Красная карта** — действующие правила блэклиста. Если правил ещё нет, карта пуста. В таблице ниже есть также отключённые правила. Размер маркера не обозначает радиус.\n\n**Оранжевая карта** — кандидаты для твоей проверки, они ещё не добавлены. По умолчанию: ≥5 записей за ≥3 разных дня, ≥95% уже скрыты; предлагаемая окружность — 100 м. Пороги можно менять сверху. Скрытие само по себе не доказывает ошибку: проверь место и даты. Нажатие на ID в таблице открывает место на OpenStreetMap. Сообщи ID кандидатов, которые нужно добавить."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Состояние блэклиста",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT\n    (SELECT count(*) FROM public.location_blacklist WHERE enabled) AS active_rules,\n    (SELECT count(*) FROM public.location_blacklist WHERE NOT enabled) AS disabled_rules,\n    CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n         THEN (SELECT count(*) FROM public.locations\n               WHERE hidden AND public.location_blacklist_matches(latitude,longitude))\n         ELSE 0 END AS matched_points;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "active_rules"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Активных правил"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disabled_rules"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Отключённых правил"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "matched_points"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Записей под активными правилами"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": false,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 32
+        }
+      },
+      "pluginVersion": "12.0.0"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 15
+      },
+      "id": 3,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "osm-standard"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Действующие правила · центры",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "red"
+                },
+                "lineWidth": 2,
+                "opacity": 0.85,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 8,
+                  "min": 8,
+                  "max": 8
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 11,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                },
+                "text": {
+                  "field": "id",
+                  "fixed": "",
+                  "mode": "field"
+                }
+              },
+              "showLegend": false
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "lat": 55.9,
+          "lon": 37.6,
+          "zoom": 9
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT id, latitude, longitude, radius_m, note, created_at\nFROM public.location_blacklist\nWHERE enabled\nORDER BY id;"
+        }
+      ],
+      "title": "Действующие правила · центры",
+      "type": "geomap",
+      "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 15
+      },
+      "id": 4,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "osm-standard"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Кандидаты · ещё не в блэклисте",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "lineWidth": 2,
+                "opacity": 0.85,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 8,
+                  "min": 8,
+                  "max": 8
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 11,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                },
+                "text": {
+                  "field": "candidate_id",
+                  "fixed": "",
+                  "mode": "field"
+                }
+              },
+              "showLegend": false
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "lat": 55.9,
+          "lon": 37.6,
+          "zoom": 9
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "-- Proposals only: this query does not create or enable blacklist rules.\nWITH eligible AS MATERIALIZED (\n    SELECT latitude, longitude, hidden, source, recorded_at\n    FROM public.locations\n    WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180\n      AND CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n        THEN NOT public.location_blacklist_matches(latitude, longitude)\n        ELSE true END\n), cells AS (\n    SELECT round(latitude::numeric, 3)::double precision AS grid_lat,\n           round(longitude::numeric, 3)::double precision AS grid_lon,\n           avg(latitude) FILTER (WHERE hidden) AS latitude,\n           avg(longitude) FILTER (WHERE hidden) AS longitude,\n           count(*) FILTER (WHERE hidden) AS hidden_samples,\n           count(DISTINCT (recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               FILTER (WHERE hidden) AS days\n    FROM eligible\n    GROUP BY 1, 2\n    HAVING count(*) FILTER (WHERE hidden) >= ${min_points:sqlstring}::integer\n       AND count(*) FILTER (WHERE hidden) >= count(*) * 0.95\n       AND count(DISTINCT (recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               FILTER (WHERE hidden) >= ${min_days:sqlstring}::integer\n), ranked AS MATERIALIZED (\n    SELECT *, row_number() OVER (\n        ORDER BY days DESC, hidden_samples DESC, grid_lat, grid_lon\n    ) AS priority\n    FROM cells\n), centres AS (\n    -- Keep local peaks instead of proposing many neighbouring cells in one area.\n    SELECT r.*\n    FROM ranked r\n    WHERE NOT EXISTS (\n        SELECT FROM ranked p\n        WHERE p.priority < r.priority\n          AND abs(p.latitude-r.latitude) < 0.005\n          AND 12742000 * asin(sqrt(least(1.0, greatest(0.0,\n              power(sin(radians(p.latitude-r.latitude)/2),2)\n              + cos(radians(r.latitude))*cos(radians(p.latitude))\n                * power(sin(radians(p.longitude-r.longitude)/2),2)\n          )))) < 500\n    )\n), proposals AS (\n    SELECT 'C-' || upper(substr(md5(c.grid_lat::text || ':' || c.grid_lon::text),1,6)) AS candidate_id,\n           c.latitude, c.longitude, 100 AS radius_m,\n           count(*) AS samples,\n           count(*) FILTER (WHERE l.hidden) AS hidden_samples,\n           count(*) FILTER (WHERE NOT l.hidden) AS visible_samples,\n           count(DISTINCT (l.recorded_at AT TIME ZONE 'Europe/Moscow')::date) AS days,\n           min(l.recorded_at) AS first_seen, max(l.recorded_at) AS last_seen,\n           string_agg(DISTINCT l.source::text, ', ') AS sources,\n           c.priority\n    FROM centres c\n    JOIN eligible l ON abs(l.latitude-c.latitude) < 0.001\n                   AND 12742000 * asin(sqrt(least(1.0,greatest(0.0,\n                       power(sin(radians(l.latitude-c.latitude)/2),2)\n                       + cos(radians(c.latitude))*cos(radians(l.latitude))\n                         * power(sin(radians(l.longitude-c.longitude)/2),2)\n                   )))) <= 100\n    GROUP BY c.grid_lat,c.grid_lon,c.latitude,c.longitude,c.priority\n    HAVING count(*) FILTER (WHERE l.hidden) >= count(*) * 0.95\n       AND count(*) FILTER (WHERE l.hidden) >= ${min_points:sqlstring}::integer\n       AND count(DISTINCT (l.recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               >= ${min_days:sqlstring}::integer\n)\nSELECT candidate_id, latitude, longitude, radius_m, samples, hidden_samples,\n       visible_samples, round(100.0*hidden_samples/samples,1) AS hidden_percent,\n       days, first_seen, last_seen, sources\nFROM proposals\nORDER BY days DESC, hidden_samples DESC, candidate_id\nLIMIT 20;"
+        }
+      ],
+      "title": "Кандидаты · ещё не в блэклисте",
+      "type": "geomap",
+      "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей."
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Все правила блэклиста",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT id, latitude, longitude, radius_m, enabled, note, created_at\nFROM public.location_blacklist\nORDER BY enabled DESC, id;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Правило"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Открыть место на OpenStreetMap",
+                    "url": "https://www.openstreetmap.org/?mlat=${__data.fields.latitude}&mlon=${__data.fields.longitude}#map=17/${__data.fields.latitude}/${__data.fields.longitude}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              },
+              {
+                "id": "decimals",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              },
+              {
+                "id": "decimals",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус, м"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "enabled"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Включено"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "note"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Комментарий"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "created_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Создано"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      },
+      "pluginVersion": "12.0.0"
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Кандидаты для проверки · ID, координаты, повторы и даты",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "-- Proposals only: this query does not create or enable blacklist rules.\nWITH eligible AS MATERIALIZED (\n    SELECT latitude, longitude, hidden, source, recorded_at\n    FROM public.locations\n    WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180\n      AND CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n        THEN NOT public.location_blacklist_matches(latitude, longitude)\n        ELSE true END\n), cells AS (\n    SELECT round(latitude::numeric, 3)::double precision AS grid_lat,\n           round(longitude::numeric, 3)::double precision AS grid_lon,\n           avg(latitude) FILTER (WHERE hidden) AS latitude,\n           avg(longitude) FILTER (WHERE hidden) AS longitude,\n           count(*) FILTER (WHERE hidden) AS hidden_samples,\n           count(DISTINCT (recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               FILTER (WHERE hidden) AS days\n    FROM eligible\n    GROUP BY 1, 2\n    HAVING count(*) FILTER (WHERE hidden) >= ${min_points:sqlstring}::integer\n       AND count(*) FILTER (WHERE hidden) >= count(*) * 0.95\n       AND count(DISTINCT (recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               FILTER (WHERE hidden) >= ${min_days:sqlstring}::integer\n), ranked AS MATERIALIZED (\n    SELECT *, row_number() OVER (\n        ORDER BY days DESC, hidden_samples DESC, grid_lat, grid_lon\n    ) AS priority\n    FROM cells\n), centres AS (\n    -- Keep local peaks instead of proposing many neighbouring cells in one area.\n    SELECT r.*\n    FROM ranked r\n    WHERE NOT EXISTS (\n        SELECT FROM ranked p\n        WHERE p.priority < r.priority\n          AND abs(p.latitude-r.latitude) < 0.005\n          AND 12742000 * asin(sqrt(least(1.0, greatest(0.0,\n              power(sin(radians(p.latitude-r.latitude)/2),2)\n              + cos(radians(r.latitude))*cos(radians(p.latitude))\n                * power(sin(radians(p.longitude-r.longitude)/2),2)\n          )))) < 500\n    )\n), proposals AS (\n    SELECT 'C-' || upper(substr(md5(c.grid_lat::text || ':' || c.grid_lon::text),1,6)) AS candidate_id,\n           c.latitude, c.longitude, 100 AS radius_m,\n           count(*) AS samples,\n           count(*) FILTER (WHERE l.hidden) AS hidden_samples,\n           count(*) FILTER (WHERE NOT l.hidden) AS visible_samples,\n           count(DISTINCT (l.recorded_at AT TIME ZONE 'Europe/Moscow')::date) AS days,\n           min(l.recorded_at) AS first_seen, max(l.recorded_at) AS last_seen,\n           string_agg(DISTINCT l.source::text, ', ') AS sources,\n           c.priority\n    FROM centres c\n    JOIN eligible l ON abs(l.latitude-c.latitude) < 0.001\n                   AND 12742000 * asin(sqrt(least(1.0,greatest(0.0,\n                       power(sin(radians(l.latitude-c.latitude)/2),2)\n                       + cos(radians(c.latitude))*cos(radians(l.latitude))\n                         * power(sin(radians(l.longitude-c.longitude)/2),2)\n                   )))) <= 100\n    GROUP BY c.grid_lat,c.grid_lon,c.latitude,c.longitude,c.priority\n    HAVING count(*) FILTER (WHERE l.hidden) >= count(*) * 0.95\n       AND count(*) FILTER (WHERE l.hidden) >= ${min_points:sqlstring}::integer\n       AND count(DISTINCT (l.recorded_at AT TIME ZONE 'Europe/Moscow')::date)\n               >= ${min_days:sqlstring}::integer\n)\nSELECT candidate_id, latitude, longitude, radius_m, samples, hidden_samples,\n       visible_samples, round(100.0*hidden_samples/samples,1) AS hidden_percent,\n       days, first_seen, last_seen, sources\nFROM proposals\nORDER BY days DESC, hidden_samples DESC, candidate_id\nLIMIT 20;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "candidate_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Кандидат"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Открыть место на OpenStreetMap",
+                    "url": "https://www.openstreetmap.org/?mlat=${__data.fields.latitude}&mlon=${__data.fields.longitude}#map=17/${__data.fields.latitude}/${__data.fields.longitude}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              },
+              {
+                "id": "decimals",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              },
+              {
+                "id": "decimals",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус, м"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "samples"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Всего записей"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hidden_samples"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Скрытых"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "visible_samples"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Видимых рядом"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hidden_percent"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Скрыто, %"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "days"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Разных дней"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "first_seen"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Первое появление"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last_seen"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Последнее появление"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sources"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источники"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      },
+      "pluginVersion": "12.0.0",
+      "description": "До 20 локальных центров с подавлением соседей в 500 м. Это предложения, запросы не меняют БД. Числа относятся к окружности 100 м за всю историю, а не к отдельному дню."
+    }
+  ]
+}
