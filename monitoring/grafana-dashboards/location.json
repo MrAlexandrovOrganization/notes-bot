@@ -334,7 +334,7 @@
         "basemap": {
           "config": {},
           "name": "Layer 0",
-          "type": "default"
+          "type": "osm-standard"
         },
         "controls": {
           "mouseWheelZoom": true,
@@ -482,7 +482,7 @@
         "basemap": {
           "config": {},
           "name": "Layer 0",
-          "type": "default"
+          "type": "osm-standard"
         },
         "controls": {
           "mouseWheelZoom": true,
