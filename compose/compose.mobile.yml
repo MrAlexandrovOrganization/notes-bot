@@ -1,0 +1,33 @@
+# Opt-in native API. Use the already checked/published web image digest.
+# This file is not part of the ordinary production Compose selection.
+services:
+  mobile:
+    image: ${NOTES_MOBILE_IMAGE:?Set the published web image by digest}
+    container_name: ${CONTAINER_NAME_PREFIX:-}notes-bot-mobile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WEB_MOBILE_ONLY: "true"
+      WEB_LISTEN_ADDR: ":8090"
+      CORE_GRPC_HOST: core
+      CORE_GRPC_PORT: "50051"
+      NOTIFICATIONS_GRPC_HOST: notifications
+      NOTIFICATIONS_GRPC_PORT: "50052"
+      SEARCH_GRPC_HOST: search
+      SEARCH_GRPC_PORT: "50054"
+      LLM_HOST: ${NOTES_LLM_HOST:-ollama}
+      LLM_PORT: ${NOTES_LLM_PORT:-11434}
+      METRICS_PORT: "9105"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set existing trace collector}
+    ports:
+      - "${NOTES_MOBILE_BIND_IP:?Set this host's tailnet IP}:18090:8090"
+    networks: [default, prometheus-net, jaeger-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    extends:
+      file: compose/docker-compose.base.yml
+      service: base

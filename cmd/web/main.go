@@ -84,9 +84,13 @@ func main() {
 		Logger:        logger,
 	}
 
+	router := app.NewRouter()
+	if cfg.MobileOnly {
+		router = app.NewMobileRouter()
+	}
 	srv := &http.Server{
 		Addr:         cfg.WebListenAddr,
-		Handler:      otelhttp.NewHandler(app.NewRouter(), "web"),
+		Handler:      otelhttp.NewHandler(router, "web"),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 5 * time.Minute,
 	}

@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	MobileOnly       bool
 	WebListenAddr    string
 	WebPassword      string
 	WebSessionSecret string
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
+		MobileOnly:            env.Str("WEB_MOBILE_ONLY", "false") == "true",
 		WebListenAddr:         env.Str("WEB_LISTEN_ADDR", ":8090"),
 		WebPassword:           password,
 		WebSessionSecret:      secret,

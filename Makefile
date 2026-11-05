@@ -8,6 +8,7 @@ include makefiles/versions.mk
 # top-level workflows (build, test, deploy).
 include makefiles/search.mk
 include makefiles/backup.mk
+include makefiles/mobile.mk
 
 # Canonical source of whisper.proto (shared with backends/transcriber).
 # For remote fetch (e.g. in CI without access to the backend repo):
@@ -289,6 +290,8 @@ compose:
 compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 
 check: compose-layout-check
 
