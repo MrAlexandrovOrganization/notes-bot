@@ -24,13 +24,14 @@ const (
 )
 
 type SaveLocationInput struct {
-	Latitude   float64
-	Longitude  float64
-	Accuracy   float32
-	LivePeriod int
-	Date       string
-	RecordedAt time.Time
-	Source     string
+	TelegramRaw json.RawMessage
+	Latitude    float64
+	Longitude   float64
+	Accuracy    float32
+	LivePeriod  int
+	Date        string
+	RecordedAt  time.Time
+	Source      string
 }
 
 type LocationRecord struct {
@@ -72,8 +73,13 @@ func (c *LocationClient) Save(ctx context.Context, input *SaveLocationInput) (*L
 	if err != nil {
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
+	route := "/locations"
+	if len(input.TelegramRaw) > 0 {
+		body = input.TelegramRaw
+		route = "/telegram/measurements"
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/locations", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+route, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("new request: %w", err)
 	}
