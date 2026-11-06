@@ -2,18 +2,17 @@ package tghandlers
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"encoding/json"
 
 	"github.com/mymmrac/telego"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
-	"notes-bot/internal/timeutil"
 )
 
 // HandleLocationMessage handles both one-time and live location messages.
@@ -53,51 +52,33 @@ func (a *App) HandleLocationMessage(ctx context.Context, tgBot *telego.Bot, upda
 
 	log := applog.With(ctx, a.Logger)
 
-	// Location is always tied to the logical today at the moment of receipt,
-	// not the user's currently browsed date — the user is physically present now.
-	activeDate := timeutil.TodayDate(a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour)
-
-	input := &clients.SaveLocationInput{
-		Latitude:   loc.Latitude,
-		Longitude:  loc.Longitude,
-		Accuracy:   float32(loc.HorizontalAccuracy),
-		LivePeriod: loc.LivePeriod,
-		Date:       activeDate,
-		RecordedAt: time.Now(),
-		Source:     clients.SourceTelegramBot,
+	raw, err := json.Marshal(struct {
+		UpdateID            int              `json:"update_id"`
+		ChatID              int64            `json:"chat_id"`
+		MessageID           int              `json:"message_id"`
+		MessageDate         int64            `json:"message_date"`
+		EditDate            int64            `json:"edit_date"`
+		Location            *telego.Location `json:"location"`
+		TimezoneOffsetHours int              `json:"timezone_offset_hours"`
+		DayStartHour        int              `json:"day_start_hour"`
+	}{update.UpdateID, msg.Chat.ID, msg.MessageID, msg.Date, msg.EditDate, loc, a.Cfg.TimezoneOffsetHours, a.Cfg.DayStartHour})
+	if err != nil {
+		log.Error("encode location measurement", zap.Error(err))
+		return
 	}
-
-	if _, err := a.Location.Save(ctx, input); err != nil {
+	saved, err := a.Location.Save(ctx, &clients.SaveLocationInput{TelegramRaw: raw})
+	if err != nil {
 		log.Error("save location", zap.Error(err))
 		if !isLiveUpdate {
-			chatID := msg.Chat.ID
-			sendText(ctx, tgBot, chatID, tgfmt.Escape("❌ Ошибка при сохранении местоположения."), nil, true)
+			sendText(ctx, tgBot, msg.Chat.ID, tgfmt.Escape(resources.LocationSaveError), nil, true)
 		}
 		return
 	}
-
 	if isLiveUpdate {
-		// log.Info("live location saved",
-		// 	zap.Float64("lat", loc.Latitude),
-		// 	zap.Float64("lon", loc.Longitude),
-		// 	zap.String("date", activeDate),
-		// )
 		return
 	}
-
 	chatID := msg.Chat.ID
-	var text tgfmt.HTML
-	if loc.LivePeriod > 0 {
-		text = tgfmt.Escape(fmt.Sprintf(
-			"📍 Живое местоположение активно — буду записывать каждое обновление к дате %s",
-			activeDate,
-		))
-	} else {
-		text = tgfmt.Escape(fmt.Sprintf(
-			"📍 Местоположение сохранено к дате %s",
-			activeDate,
-		))
-	}
+	text := tgfmt.Escape(resources.LocationSaved(saved.Date, loc.LivePeriod > 0))
 
 	kb := a.getMainMenuKeyboard(ctx)
 	sendText(ctx, tgBot, chatID, text, &kb, true)

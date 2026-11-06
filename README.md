@@ -494,3 +494,13 @@ VM нужны Python 3.9+, Make, Docker Compose с `--wait`, Git и flock для
 `NOTES_LEGACY_HOST` больше не используется. Kafka сохраняет advertised hostname
 `kafka:9092`; overlay сопоставляет его с WSL на обоих клиентах.
 Старые forwards на `server` не нужны notes-bot.
+
+## Исходные измерения Location
+
+Telegram frontend передаёт исходный location и message_date/edit_date/update_id
+через внутренний POST /telegram/measurements. Нормализация времени, логической
+даты, оценка качества и blacklist принадлежат backend Location. Frontend передаёт
+только контекст timezone/day-start из своей конфигурации и показывает дату из
+ответа сервера. Повтор Telegram update получает тот же UUID на backend. Сначала
+развернуть backend Location с миграцией 009 и новым маршрутом, затем notes-bot.
+Старый POST /locations оставлен для совместимости с прежними клиентами.
