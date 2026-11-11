@@ -6,6 +6,7 @@ plugins:
     out: .
     opt:
       - module=notes-bot
+      - Mlocation/v1/location.proto=notes-bot/proto/location/v1
       # Override go_package for whisper.proto so syncing from an external repo
       # does not require patching the file with sed.
       - Mwhisper/whisper.proto=notes-bot/proto/whisper
@@ -13,5 +14,6 @@ plugins:
     out: .
     opt:
       - module=notes-bot
+      - Mlocation/v1/location.proto=notes-bot/proto/location/v1
       - Mwhisper/whisper.proto=notes-bot/proto/whisper
       - require_unimplemented_servers=true

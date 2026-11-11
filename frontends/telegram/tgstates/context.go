@@ -4,6 +4,13 @@ package tgstates
 type UserState string
 
 const (
+	StateGeoName                    UserState = "geo_name"
+	StateGeoPoint                   UserState = "geo_point"
+	StateGeoRadius                  UserState = "geo_radius"
+	StateGeoPlaceConfirm            UserState = "geo_place_confirm"
+	StateGeoTitle                   UserState = "geo_title"
+	StateGeoRepeat                  UserState = "geo_repeat"
+	StateGeoRuleConfirm             UserState = "geo_rule_confirm"
 	StateIdle                       UserState = "idle"
 	StateWaitingRating              UserState = "waiting_rating"
 	StateTasksView                  UserState = "tasks_view"
@@ -42,6 +49,7 @@ const (
 
 // UserContext stores all session data for a user.
 type UserContext struct {
+	GeoDraft                  GeoDraft      `json:"geo_draft"`
 	UserID                    int64         `json:"user_id"`
 	State                     UserState     `json:"state"`
 	ActiveDate                string        `json:"active_date"`
@@ -68,6 +76,18 @@ type UserContext struct {
 
 	// Vault browse state.
 	BrowsePath string `json:"browse_path"`
+}
+
+type GeoDraft struct {
+	RequestID  string  `json:"request_id"`
+	PlaceID    string  `json:"place_id"`
+	Name       string  `json:"name"`
+	Latitude   float64 `json:"latitude"`
+	Longitude  float64 `json:"longitude"`
+	Radius     float64 `json:"radius"`
+	Title      string  `json:"title"`
+	Transition string  `json:"transition"`
+	Repeat     string  `json:"repeat"`
 }
 
 // SearchHit is the minimum view of a search hit kept in user context for pagination.

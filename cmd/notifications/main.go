@@ -7,15 +7,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"notes-bot/internal/applog"
+	"notes-bot/internal/georeminders"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	"notes-bot/notifications"
+	geopb "notes-bot/proto/georeminders/v1"
 	pb "notes-bot/proto/notifications"
 )
 
@@ -59,6 +62,19 @@ func main() {
 		logger.Fatal("failed to connect to postgres", zap.Error(err))
 	}
 	defer pool.Close()
+	geoConfig, err := georeminders.LoadConfig()
+	if err != nil {
+		logger.Fatal("invalid geofence configuration")
+	}
+	geoStore := &georeminders.Store{Pool: pool}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-geo" {
+		migrationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := geoStore.Migrate(migrationCtx); err != nil {
+			logger.Fatal("geofence migration failed")
+		}
+		return
+	}
 
 	if err := notifications.EnsureSchema(ctx, pool); err != nil {
 		logger.Fatal("failed to ensure schema", zap.Error(err))
@@ -94,6 +110,40 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer(logger)
+	geoDone := make(chan struct{})
+	if geoConfig.Address != "" {
+		if err := geoStore.Check(ctx); err != nil {
+			logger.Fatal("geofence schema unavailable; run make migrate-geo")
+		}
+		if err := geoStore.RegisterMetrics(); err != nil {
+			logger.Warn("geofence metrics unavailable")
+		}
+		geoServer, conn, err := georeminders.New(geoStore, geoConfig)
+		if err != nil {
+			logger.Fatal("geofence client unavailable")
+		}
+		defer conn.Close()
+		geopb.RegisterGeoRemindersServiceServer(grpcServer, geoServer)
+		go func() {
+			defer close(geoDone)
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+				if err := geoServer.Poll(pollCtx); err != nil && ctx.Err() == nil {
+					logger.Warn("geofence event polling failed")
+				}
+				cancel()
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	} else {
+		close(geoDone)
+	}
 	pb.RegisterNotificationsServiceServer(grpcServer, notifications.NewNotificationsServer(pool, cfg))
 	grpcutil.RegisterHealth(grpcServer)
 
@@ -111,4 +161,5 @@ func main() {
 	// Wait for the scheduler to flush in-flight Kafka publishes and release
 	// its resources before the deferred pool.Close() runs.
 	<-schedulerDone
+	<-geoDone
 }

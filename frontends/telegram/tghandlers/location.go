@@ -11,6 +11,8 @@ import (
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
+	"notes-bot/frontends/telegram/tgkeyboards"
+	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/telemetry"
 )
@@ -44,6 +46,28 @@ func (a *App) HandleLocationMessage(ctx context.Context, tgBot *telego.Bot, upda
 	}
 
 	loc := msg.Location
+	uc, stateErr := a.State.GetContext(ctx, userID)
+	if stateErr != nil {
+		if !isLiveUpdate {
+			sendText(ctx, tgBot, msg.Chat.ID, tgfmt.Escape(resources.LocationSaveError), nil, true)
+		}
+		return
+	}
+	if uc.State == tgstates.StateGeoPoint {
+		if isLiveUpdate || loc.LivePeriod > 0 || !validGeoPoint(loc.Latitude, loc.Longitude) {
+			a.replyToStateMessage(ctx, tgBot, msg.Chat.ID, userID, tgfmt.Escape(resources.GeoPointPrompt), tgkeyboards.GeoCancel())
+			return
+		}
+		if err := a.State.UpdateContext(ctx, userID, func(u *tgstates.UserContext) {
+			u.GeoDraft.Latitude = loc.Latitude
+			u.GeoDraft.Longitude = loc.Longitude
+			u.State = tgstates.StateGeoRadius
+		}); err != nil {
+			return
+		}
+		a.replyToStateMessage(ctx, tgBot, msg.Chat.ID, userID, tgfmt.Escape(resources.GeoRadiusPrompt), tgkeyboards.GeoCancel())
+		return
+	}
 	span.SetAttributes(
 		attribute.Float64("location.lat", loc.Latitude),
 		attribute.Float64("location.lon", loc.Longitude),

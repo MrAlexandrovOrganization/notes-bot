@@ -197,6 +197,7 @@ func main() {
 	locationClient := clients.NewLocationClient(cfg.LocationHost, cfg.LocationPort)
 
 	app := &tghandlers.App{
+		Geo:           notifClient.Geo(),
 		Cfg:           cfg,
 		Core:          coreClient,
 		Notifications: notifClient,
@@ -235,6 +236,7 @@ func main() {
 	// Offsets are committed to Kafka via consumer group — no external store needed.
 	var wg sync.WaitGroup
 	wg.Go(func() { app.RunVoiceJobs(ctx, tgBot) })
+	wg.Go(func() { app.RunGeoDeliveries(ctx, tgBot) })
 	wg.Go(func() {
 		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
 	})

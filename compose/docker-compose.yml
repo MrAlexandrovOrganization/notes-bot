@@ -100,6 +100,9 @@ services:
       - METRICS_PORT=9101
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
+      - GEO_LOCATION_ADDR=${GEO_LOCATION_ADDR:-}
+      - GEO_LOCATION_TOKEN=${GEO_LOCATION_TOKEN:-}
+      - ROOT_ID=${ROOT_ID}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     networks:
@@ -107,6 +110,7 @@ services:
       - prometheus-net
       - jaeger-net
       - kafka-net
+      - location-api-net
     healthcheck:
       test: ["CMD", "/grpc_health_probe", "-addr=:50052"]
       interval: 30s

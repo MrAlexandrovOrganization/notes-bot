@@ -12,10 +12,12 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/timeutil"
 	"notes-bot/internal/voicejobs"
+	geopb "notes-bot/proto/georeminders/v1"
 )
 
 // App holds shared dependencies for all handlers.
 type App struct {
+	Geo           geopb.GeoRemindersServiceClient
 	Cfg           *config.Config
 	Core          clients.CoreService
 	Notifications clients.NotificationsService

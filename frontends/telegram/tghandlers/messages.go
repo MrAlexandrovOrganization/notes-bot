@@ -36,6 +36,13 @@ func (a *App) replyToStateMessage(ctx context.Context, tgBot *telego.Bot, chatID
 // To add a new state: define the constant in tgstates/context.go, then add an entry here.
 // States not listed fall through to handleAppendNote (default note-append behaviour).
 var stateTextHandlers = map[tgstates.UserState]stateTextHandler{
+	tgstates.StateGeoName:         geoStateText,
+	tgstates.StateGeoPoint:        geoStateText,
+	tgstates.StateGeoRadius:       geoStateText,
+	tgstates.StateGeoTitle:        geoStateText,
+	tgstates.StateGeoRepeat:       geoStateText,
+	tgstates.StateGeoPlaceConfirm: geoStateText,
+	tgstates.StateGeoRuleConfirm:  geoStateText,
 	tgstates.StateWaitingRating: func(a *App, ctx context.Context, tgBot *telego.Bot, _ *telego.Update, chatID, userID int64, text string, uc *tgstates.UserContext) {
 		a.handleRatingInput(ctx, tgBot, chatID, userID, text, uc.ActiveDate)
 	},

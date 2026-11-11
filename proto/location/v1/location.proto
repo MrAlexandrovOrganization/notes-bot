@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package location.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "location/gen/location/v1;locationv1";
+
+// GeofencesService controls the single authenticated primary Android tracker.
+service GeofencesService {
+  rpc CreatePlace(CreatePlaceRequest) returns (CreatePlaceResponse);
+  rpc UpdatePlace(UpdatePlaceRequest) returns (UpdatePlaceResponse);
+  rpc ListPlaces(ListPlacesRequest) returns (ListPlacesResponse);
+  rpc DeletePlace(DeletePlaceRequest) returns (DeletePlaceResponse);
+  // Durable ordered feed. Persist the cursor together with downstream effects.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}
+
+message Place {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  double radius_m = 5;
+  int32 confirmation_seconds = 6;
+  int64 version = 7;
+  string state = 8;
+  google.protobuf.Timestamp last_observed_at = 9;
+}
+message CreatePlaceRequest {
+  Place place = 1;
+  string request_id = 2;
+}
+message CreatePlaceResponse {
+  Place place = 1;
+}
+message UpdatePlaceRequest {
+  Place place = 1;
+}
+message UpdatePlaceResponse {
+  Place place = 1;
+}
+message ListPlacesRequest {}
+message ListPlacesResponse {
+  repeated Place places = 1;
+}
+message DeletePlaceRequest {
+  string id = 1;
+}
+message DeletePlaceResponse {}
+message PlaceEvent {
+  int64 sequence = 1;
+  string place_id = 2;
+  int64 place_version = 3;
+  string transition = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  google.protobuf.Timestamp confirmed_at = 6;
+}
+message ListEventsRequest {
+  int64 after_sequence = 1;
+  int32 limit = 2;
+}
+message ListEventsResponse {
+  repeated PlaceEvent events = 1;
+  int64 next_sequence = 2;
+}

@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package georeminders.v1;
+
+import "google/protobuf/timestamp.proto";
+import "location/v1/location.proto";
+
+option go_package = "notes-bot/proto/georeminders/v1;georemindersv1";
+
+service GeoRemindersService {
+  rpc ListPlaces(ListPlacesRequest) returns (ListPlacesResponse);
+  rpc SavePlace(SavePlaceRequest) returns (SavePlaceResponse);
+  rpc DeletePlace(DeletePlaceRequest) returns (DeletePlaceResponse);
+  rpc CreateRule(CreateRuleRequest) returns (CreateRuleResponse);
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+  rpc DeleteRule(DeleteRuleRequest) returns (DeleteRuleResponse);
+  rpc ClaimDelivery(ClaimDeliveryRequest) returns (ClaimDeliveryResponse);
+  rpc CompleteDelivery(CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
+}
+message ListPlacesRequest {
+  int64 user_id = 1;
+}
+message ListPlacesResponse {
+  repeated location.v1.Place places = 1;
+}
+message SavePlaceRequest {
+  int64 user_id = 1;
+  location.v1.Place place = 2;
+  string request_id = 3;
+}
+message SavePlaceResponse {
+  location.v1.Place place = 1;
+}
+message DeletePlaceRequest {
+  int64 user_id = 1;
+  string place_id = 2;
+}
+message DeletePlaceResponse {}
+message Rule {
+  int64 id = 1;
+  string place_id = 2;
+  string title = 3;
+  string transition = 4;
+  string repeat = 5;
+  int32 max_age_seconds = 6;
+  string timezone = 7;
+  bool armed = 8;
+  google.protobuf.Timestamp last_fired_at = 9;
+}
+message CreateRuleRequest {
+  int64 user_id = 1;
+  Rule rule = 2;
+  string request_id = 3;
+}
+message CreateRuleResponse {
+  Rule rule = 1;
+}
+message ListRulesRequest {
+  int64 user_id = 1;
+}
+message ListRulesResponse {
+  repeated Rule rules = 1;
+}
+message DeleteRuleRequest {
+  int64 user_id = 1;
+  int64 rule_id = 2;
+}
+message DeleteRuleResponse {}
+message Delivery {
+  int64 id = 1;
+  string lease_token = 2;
+  string title = 3;
+  string place_name = 4;
+  string transition = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+message ClaimDeliveryRequest {
+  int64 user_id = 1;
+}
+message ClaimDeliveryResponse {
+  Delivery delivery = 1;
+}
+message CompleteDeliveryRequest {
+  int64 user_id = 1;
+  int64 delivery_id = 2;
+  string lease_token = 3;
+  bool success = 4;
+}
+message CompleteDeliveryResponse {}

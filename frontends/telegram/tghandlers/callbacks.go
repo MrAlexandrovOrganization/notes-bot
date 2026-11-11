@@ -26,6 +26,7 @@ import (
 )
 
 var callbackActionHandlers = map[string]func(*App, context.Context, *telego.Bot, *telego.CallbackQuery, int64, []string) error{
+	"geo":      (*App).handleGeoAction,
 	"menu":     (*App).handleMenuAction,
 	"task":     (*App).handleTaskAction,
 	"cal":      (*App).handleCalAction,

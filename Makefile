@@ -161,7 +161,7 @@ clean:
 assert-active:
 	@test ! -e .retired || { echo 'This checkout is retired; use the active host.' >&2; exit 1; }
 
-up: assert-active monitoring-register migrate-voice
+up: assert-active monitoring-register migrate-voice migrate-geo
 	$(DOCKER_COMPOSE) up --build -d
 
 # Explicit deployment migration; normal telegram startup only checks the schema.
@@ -267,6 +267,7 @@ image-deploy:
 	python3 scripts/images.py deploy
 image-activate: assert-active monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
+	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-geo
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
 
@@ -298,3 +299,5 @@ check: compose-layout-check
 include makefiles/monitoring.mk
 
 include makefiles/observability.mk
+
+include makefiles/geo.mk

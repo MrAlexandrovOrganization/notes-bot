@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"notes-bot/internal/grpcutil"
+	geopb "notes-bot/proto/georeminders/v1"
 	pb "notes-bot/proto/notifications"
 )
 
@@ -38,6 +39,10 @@ func NewNotificationsClient(host, port string) (*NotificationsClient, error) {
 
 func (c *NotificationsClient) Close() {
 	c.conn.Close()
+}
+
+func (c *NotificationsClient) Geo() geopb.GeoRemindersServiceClient {
+	return geopb.NewGeoRemindersServiceClient(c.conn)
 }
 
 func isUnavailable(err error) bool {
