@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "service": "notes-bot",
+  "components": [
+    "notes-bot/*"
+  ],
+  "logs": [
+    {
+      "file": "monitoring/alloy/logs.alloy",
+      "phase": "parse",
+      "order": 130
+    }
+  ],
+  "assets": [
+    {
+      "kind": "metrics",
+      "file": "monitoring/prometheus-targets.yml",
+      "destination": "notes-bot.yml",
+      "adopt_sha256": [
+        "e0994681e9da73c6787ff1c54b5eb0fed7d165d310097ba9a5ed8616d7c9546f"
+      ],
+      "location": "local"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/cadvisor.json",
+      "destination": "notes-bot/cadvisor.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/core.json",
+      "destination": "notes-bot/core.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/location-blacklist.json",
+      "destination": "notes-bot/location-blacklist.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/location.json",
+      "destination": "notes-bot/location.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/notifications.json",
+      "destination": "notes-bot/notifications.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/overview.json",
+      "destination": "notes-bot/overview.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/search.json",
+      "destination": "notes-bot/search.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/telegram.json",
+      "destination": "notes-bot/telegram.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/web.json",
+      "destination": "notes-bot/web.json",
+      "location": "central"
+    }
+  ],
+  "retire": [
+    {
+      "kind": "metrics",
+      "destination": "notes-bot.yml",
+      "sha256": [
+        "e0994681e9da73c6787ff1c54b5eb0fed7d165d310097ba9a5ed8616d7c9546f"
+      ],
+      "location": "central"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+stage.match {
+	selector = `{service=~"notes-bot/(core|mobile|web|search|notifications|telegram)"}`
+	// Go OTel's error handler is separate from the application's JSON logger.
+	stage.regex {
+		expression = `^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} (?P<otel_export_failure>traces export: .+)$`
+	}
+
+	stage.template {
+		source   = "text_level"
+		template = `{{ if .otel_export_failure }}error{{ else }}{{ .Value }}{{ end }}`
+	}
+}

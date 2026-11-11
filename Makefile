@@ -296,3 +296,5 @@ compose-layout-check:
 check: compose-layout-check
 
 include makefiles/monitoring.mk
+
+include makefiles/observability.mk

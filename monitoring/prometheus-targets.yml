@@ -1,8 +1,14 @@
-- targets:
-    - 'notes-bot-core:9100'
-    - 'notes-bot-notifications:9101'
-    - 'notes-bot-telegram:9102'
-    - 'notes-bot-search:9103'
-    - 'notes-bot-web:9105'
-  labels:
-    project: 'notes-bot'
+[
+  {
+    "targets": [
+      "notes-bot-core:9100",
+      "notes-bot-notifications:9101",
+      "notes-bot-telegram:9102",
+      "notes-bot-search:9103",
+      "notes-bot-web:9105"
+    ],
+    "labels": {
+      "project": "notes-bot"
+    }
+  }
+]

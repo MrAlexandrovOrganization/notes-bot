@@ -77,3 +77,5 @@ coverage.out
 # Local image release manifests and activation state
 /.images/
 /.retired
+
+.observability/
