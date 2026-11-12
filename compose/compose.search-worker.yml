@@ -40,7 +40,7 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
       TS_AUTHKEY: file:/run/secrets/search-tailnet-auth
-      TS_EXTRA_ARGS: --accept-dns=false --accept-routes=false
+      TS_EXTRA_ARGS: --login-server=${HEADSCALE_URL:?Set the existing Headscale control server} --accept-dns=false --accept-routes=false
       SEARCH_ROUTER_ADDRESS: ${SEARCH_ROUTER_ADDRESS:?Set the application host's tailnet IPv4}
     cap_add: [NET_ADMIN, NET_RAW]
     devices: [/dev/net/tun:/dev/net/tun]
