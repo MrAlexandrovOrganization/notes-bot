@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"notes-bot/internal/applog"
 	"notes-bot/internal/grpcutil"
@@ -104,7 +105,7 @@ func main() {
 
 	grpcServer := grpcutil.NewServer(logger)
 	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder, agent))
-	grpcutil.RegisterHealth(grpcServer)
+	grpc_health_v1.RegisterHealthServer(grpcServer, search.NewHealthServer(pool))
 
 	go func() {
 		logger.Info("starting gRPC server", zap.String("port", cfg.GRPCPort))

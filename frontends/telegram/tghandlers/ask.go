@@ -63,7 +63,11 @@ func (a *App) handleAskInput(ctx context.Context, tgBot *telego.Bot, chatID, use
 				nil, true)
 		case codes.Unavailable:
 			sendText(ctx, tgBot, chatID,
-				tgfmt.Escape("⏳ Поисковая модель недоступна. Проверьте Ollama и модели."),
+				tgfmt.Escape("⏳ Поиск временно недоступен. Попробуйте позже."),
+				nil, true)
+		case codes.ResourceExhausted:
+			sendText(ctx, tgBot, chatID,
+				tgfmt.Escape("⏳ Поиск занят. Попробуйте позже."),
 				nil, true)
 		default:
 			log.Error("agent search", zap.Error(err))

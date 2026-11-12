@@ -2,7 +2,6 @@ package webapp
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -254,7 +253,7 @@ func (a *App) reloadDayFragment(w http.ResponseWriter, r *http.Request, date str
 
 func (a *App) serverError(w http.ResponseWriter, r *http.Request, err error) {
 	applog.With(r.Context(), a.Logger).Error("handler error", zap.Error(err))
-	if st, ok := status.FromError(errors.Unwrap(err)); ok && st.Code() == codes.Unavailable {
+	if st, ok := status.FromError(err); ok && (st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded || st.Code() == codes.ResourceExhausted) {
 		http.Error(w, "Сервис временно недоступен, попробуйте позже", http.StatusServiceUnavailable)
 		return
 	}

@@ -1,0 +1,131 @@
+# Separate WSL checkout/project. No polling bot, core writer, notification DB,
+# host-published ports, or Yandex Disk client are part of this role.
+networks:
+  default: {}
+  prometheus-net:
+    external: true
+  jaeger-net:
+    external: true
+volumes:
+  search-data: {}
+  search-tailnet-state: {}
+services:
+  postgres-search:
+    image: ${NOTES_SEARCH_POSTGRES_IMAGE:?Pin the source pgvector digest}
+    container_name: notes-search-postgres
+    restart: unless-stopped
+    command: [postgres, -c, log_checkpoints=off]
+    environment:
+      POSTGRES_DB: ${SEARCH_DB_NAME:-search}
+      POSTGRES_USER: ${SEARCH_DB_USER:-search}
+      POSTGRES_PASSWORD: ${SEARCH_DB_PASSWORD:?Set the existing search database password}
+    volumes: [search-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+    deploy:
+      resources:
+        limits: {memory: 512m, cpus: "1.0"}
+  search-tailnet:
+    image: tailscale/tailscale:${TAILSCALE_VERSION:?Run via make}
+    container_name: notes-search-tailnet
+    restart: unless-stopped
+    hostname: notes-search-wsl
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_AUTHKEY: file:/run/secrets/search-tailnet-auth
+      TS_EXTRA_ARGS: --login-server=${HEADSCALE_URL:?Set the existing Headscale control server} --accept-dns=false --accept-routes=false
+      SEARCH_ROUTER_ADDRESS: ${SEARCH_ROUTER_ADDRESS:?Set the application host's tailnet IPv4}
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: [/dev/net/tun:/dev/net/tun]
+    entrypoint: [/bin/sh, /usr/local/bin/search-tailnet.sh]
+    volumes:
+      - search-tailnet-state:/var/lib/tailscale
+      - type: bind
+        source: ${SEARCH_TAILNET_AUTH_FILE:?Set the protected one-use registration file}
+        target: /run/secrets/search-tailnet-auth
+        read_only: true
+        bind: {propagation: rprivate, create_host_path: false}
+      - ./ops/search/tailnet.sh:/usr/local/bin/search-tailnet.sh:ro
+    networks: [default, prometheus-net, jaeger-net]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          tailscale status --json | grep -q '"BackendState": "Running"'
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+    deploy:
+      resources:
+        limits: {memory: 128m, cpus: "0.25"}
+  search:
+    container_name: notes-search
+    # The application digest is supplied by the existing CI release manifest.
+    image: ${NOTES_SEARCH_BOOTSTRAP_IMAGE:-local/notes-search:unconfigured}
+    restart: unless-stopped
+    user: "${NOTES_VAULT_UID:-1000}:${NOTES_VAULT_GID:-1000}"
+    network_mode: service:search-tailnet
+    env_file: [.env]
+    environment:
+      DB_HOST: postgres-search
+      DB_PORT: "5432"
+      DB_NAME: ${SEARCH_DB_NAME:-search}
+      DB_USER: ${SEARCH_DB_USER:-search}
+      DB_PASSWORD: ${SEARCH_DB_PASSWORD:?Set the existing search database password}
+      NOTES_DIR: /notes/current
+      SNAPSHOT_LOCK_FILE: /notes/.snapshot.lock
+      GRPC_PORT: "50054"
+      METRICS_PORT: "9103"
+      INDEX_INTERVAL: ${SEARCH_INDEX_INTERVAL:-5m}
+      LLM_HOST: ${NOTES_LLM_HOST:?Set the existing model server}
+      LLM_PORT: ${NOTES_LLM_PORT:-11434}
+      EMBED_MODEL: ${SEARCH_EMBED_MODEL:-bge-m3:567m}
+      EMBED_DIM: ${SEARCH_EMBED_DIM:-1024}
+      FEATURE_EMBEDDINGS: ${SEARCH_FEATURE_EMBEDDINGS:-true}
+      FEATURE_VECTOR_INDEX: ${SEARCH_FEATURE_VECTOR_INDEX:-true}
+      FEATURE_PROFILES: ${SEARCH_FEATURE_PROFILES:-false}
+      FEATURE_PROFILE_EMBEDDINGS: ${SEARCH_FEATURE_PROFILE_EMBEDDINGS:-false}
+      FEATURE_LLM_GENERATION: ${SEARCH_FEATURE_LLM_GENERATION:-true}
+      FEATURE_FACTS: ${SEARCH_FEATURE_FACTS:-false}
+      INDEX_IGNORE_DIRS: ${SEARCH_INDEX_IGNORE_DIRS:-.obsidian,.trash}
+      FIND_RETRIEVERS: ${SEARCH_FIND_RETRIEVERS:-name,lexical}
+      ASK_RETRIEVERS: ${SEARCH_ASK_RETRIEVERS:-lexical,dense}
+      BACKFILL_BATCH_PER_PASS: ${SEARCH_BACKFILL_BATCH_PER_PASS:-50}
+      PROFILE_BACKFILL_BATCH_PER_PASS: ${SEARCH_PROFILE_BACKFILL_BATCH_PER_PASS:-10}
+      PROFILE_MODEL: ${SEARCH_PROFILE_MODEL:-qwen3.5:2b}
+      AGENT_MODEL: ${SEARCH_AGENT_MODEL:-qwen2.5:7b}
+      AGENT_MAX_STEPS: ${SEARCH_AGENT_MAX_STEPS:-3}
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+      LOG_LEVEL: ${SEARCH_LOG_LEVEL:-warn}
+    volumes:
+      - type: bind
+        source: ${SEARCH_SNAPSHOT_DIR:?Set the independent snapshot directory}
+        target: /notes
+        read_only: true
+        bind: {propagation: rprivate, create_host_path: false}
+    healthcheck:
+      test: [CMD, /grpc_health_probe, -addr=:50054]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      postgres-search: {condition: service_healthy}
+      search-tailnet: {condition: service_healthy, restart: true}
+    labels:
+      observability.service: notes-bot/search
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+    deploy:
+      resources:
+        limits: {memory: 512m, cpus: "1.0"}

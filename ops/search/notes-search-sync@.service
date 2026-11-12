@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish the Notes search vault replica
+After=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+User=%i
+ExecStart=/usr/bin/python3 /home/%i/projects/telegram-bots/notes-search/scripts/search_snapshot.py --config /home/%i/.config/notes-search/snapshot.json
+TimeoutStartSec=5min
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=true
+Environment=PYTHONDONTWRITEBYTECODE=1

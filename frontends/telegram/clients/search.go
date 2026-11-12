@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"notes-bot/internal/grpcutil"
 	pb "notes-bot/proto/search"
 )
 
@@ -73,7 +72,7 @@ func NewSearchClient(host, port string) (*SearchClient, error) {
 		fmt.Sprintf("%s:%s", host, port),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		grpc.WithChainUnaryInterceptor(grpcutil.TimeoutInterceptor(searchCallTimeout)),
+		grpc.WithChainUnaryInterceptor(searchGuard(time.Second, searchCallTimeout, 4)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dial search: %w", err)
