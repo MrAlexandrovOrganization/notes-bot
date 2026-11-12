@@ -1,0 +1,34 @@
+# Optional internal routing when embedding and chat models use separate servers.
+networks:
+  search-ollama:
+    external: true
+    name: ${SEARCH_OLLAMA_NETWORK:?Set the existing embedding server network}
+services:
+  search-llm-router:
+    image: haproxy:${HAPROXY_VERSION:?Run through Make}
+    container_name: notes-search-llm-router
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=1m,mode=1777"]
+    environment:
+      SEARCH_EMBEDDING_ADDRESS: ${SEARCH_EMBEDDING_ADDRESS:?Set the existing embedding endpoint}
+      SEARCH_GENERATION_ADDRESS: ${SEARCH_GENERATION_ADDRESS:?Set the existing generation endpoint}
+      SEARCH_GENERATION_HTTP_HOST: ${SEARCH_GENERATION_HTTP_HOST:?Set the generation HTTP host}
+    volumes:
+      - ./ops/search/model-router.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks: [default, search-ollama]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8404/health]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+    labels:
+      observability.service: notes-bot/search-llm-router
+    deploy:
+      resources:
+        limits: {memory: 64m, cpus: "0.25"}

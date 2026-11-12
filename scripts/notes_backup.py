@@ -54,18 +54,32 @@ def image_fingerprint(metadata):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
+def portable_image_fingerprint(metadata):
+    # Docker's classic and containerd stores expose empty/default config fields
+    # differently. Preserve every non-default field and every filesystem layer.
+    config = {key: value for key, value in (metadata.get("Config") or {}).items()
+              if value is not None and value is not False and value != "" and value != [] and value != {}}
+    return image_fingerprint({**metadata, "Config": config})
+
+
 def restore_image(database, config):
     cached = config.get("image_cache", {}).get(database["image"], {})
     expected = database.get("fingerprint", cached.get("fingerprint"))
+    expected_portable = database.get("portable_fingerprint", cached.get("portable_fingerprint"))
+    if expected_portable and not re.fullmatch(r"[0-9a-f]{64}", expected_portable):
+        raise BackupError("Invalid portable database image fingerprint")
     candidates = [database["image"]]
     if cached.get("reference"):
         candidates.append(cached["reference"])
     for reference in candidates:
         found = subprocess.run(["docker", "image", "inspect", reference], capture_output=True, timeout=30)
         if not found.returncode:
-            if expected and image_fingerprint(json.loads(found.stdout)[0]) != expected:
+            metadata = json.loads(found.stdout)[0]
+            if expected_portable and portable_image_fingerprint(metadata) != expected_portable:
+                raise BackupError("Cached database image differs from portable source fingerprint")
+            if not expected_portable and expected and image_fingerprint(metadata) != expected:
                 raise BackupError("Cached database image differs from source")
-            if reference != database["image"] and not expected:
+            if reference != database["image"] and not (expected_portable or expected):
                 raise BackupError("Imported restore image requires a source fingerprint")
             return reference
     run(["docker", "pull", "--quiet", database["image"]], timeout=600)

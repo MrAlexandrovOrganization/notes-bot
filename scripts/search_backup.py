@@ -49,7 +49,8 @@ def source():
                 common.run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
             metadata = json.loads(common.run(["docker", "image", "inspect", image]))[0]
             manifest = {"format": 1, "kind": "notes-search", "created_at": dt.datetime.now(UTC).isoformat(),
-                        "database": {"image": image, "fingerprint": common.image_fingerprint(metadata)},
+                        "database": {"image": image, "fingerprint": common.image_fingerprint(metadata),
+                                     "portable_fingerprint": common.portable_image_fingerprint(metadata)},
                         "sha256": checksum(root / "search.dump")}
             (root / "manifest.json").write_text(json.dumps(manifest) + "\n")
         with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as archive:
@@ -72,6 +73,8 @@ def validate(path):
             raise ValueError("Unsupported search backup format")
         if not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", manifest["database"]["image"]):
             raise ValueError("Search backup lacks an immutable image")
+        if "portable_fingerprint" in manifest["database"] and not re.fullmatch(r"[0-9a-f]{64}", manifest["database"]["portable_fingerprint"]):
+            raise ValueError("Invalid portable search image fingerprint")
         with archive.extractfile("search.dump") as stream:
             if digest(stream) != manifest["sha256"]:
                 raise ValueError("Search backup checksum mismatch")
@@ -137,7 +140,9 @@ def verify(config):
                         "--security-opt=no-new-privileges:true", "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
                         "-e", "POSTGRES_DB=restore", image])
             for _ in range(90):
-                ready = subprocess.run(["docker", "exec", name, "pg_isready", "-U", "postgres", "-d", "restore"], capture_output=True, timeout=10)
+                ready = subprocess.run(["docker", "exec", name, "sh", "-c",
+                                        'test "$(cat /proc/1/comm)" = postgres && pg_isready -U postgres -d restore'],
+                                       capture_output=True, timeout=10)
                 if ready.returncode == 0:
                     break
                 time.sleep(1)

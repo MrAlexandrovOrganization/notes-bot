@@ -45,6 +45,15 @@ normally each run every five minutes, so updates are asynchronous. The
 `state.json` file records the last successful transfer and generation fingerprint.
 Search can continue serving its last index during a mirror outage.
 
+An embedding request permits a cold CPU model up to 90 seconds to load. The
+frontend readiness probe remains one second and the whole search call remains
+bounded by five minutes. When embedding and generation models evict each other,
+select `compose.search-models.yml`, set `NOTES_LLM_HOST=search-llm-router`, and
+provide the existing model endpoints and embedding Docker network. Only
+`/api/embed` and `/api/chat` are forwarded; no host ports are published. The
+small router uses one thread under its CPU quota and prefers IPv4 on Docker
+Desktop. Keep the original embedding model name to reuse existing stored vectors.
+
 `ops/search/notes-search-sync@.service` and `.timer` run the checked
 `scripts/search_snapshot.py` with a protected per-host configuration. Deployment
 of these native units and the read-only SSH key is an explicit administrator
@@ -99,6 +108,15 @@ retention. A failed WSL backup retains earlier copies and does not block Core
 backups. The verify operation restores into an isolated temporary database with
 no network and deletes only that fixture. Schedule this independently of Core
 backups, and verify an initial restore before leaving the migration.
+
+Search manifests include a portable image fingerprint over architecture,
+filesystem layers and non-default runtime configuration. It normalizes the
+empty/default fields which Docker's classic and containerd stores report
+differently. Existing metadata fingerprints remain supported. For an imported
+restore image and an older archive, an administrator may record an explicitly
+verified `portable_fingerprint` in its `image_cache` entry; a different
+filesystem or runtime command is still rejected. Verification waits for the
+final PostgreSQL process, including completion of first-time initialization.
 
 After WSL accepts index writes, its database is newer than the source cold
 cluster. Rollback requires stopping the destination writer and moving its latest
