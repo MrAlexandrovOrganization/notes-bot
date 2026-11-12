@@ -38,13 +38,19 @@
       "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location-blacklist.json",
       "destination": "Location/location-blacklist.json",
-      "location": "central"
+      "location": "central",
+      "adopt_sha256": [
+        "ec4ba89284d32d4916f1e118685065d82ba3935f7bf0954b27024a0fd3b5c2cd"
+      ]
     },
     {
       "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location.json",
       "destination": "Location/location.json",
-      "location": "central"
+      "location": "central",
+      "adopt_sha256": [
+        "60df02977eb0b179082345e9f232ed0e639422d574b5f15619bb9e3694a17aed"
+      ]
     },
     {
       "kind": "dashboards",
@@ -80,7 +86,10 @@
       "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location-zones.json",
       "destination": "Location/location-zones.json",
-      "location": "central"
+      "location": "central",
+      "adopt_sha256": [
+        "28db22084e2caf95e613608f0450bca89ce207496e3f844e92b87377b1fc0c2d"
+      ]
     }
   ],
   "retire": [

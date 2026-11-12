@@ -53,7 +53,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 0
+        "y": 54
       },
       "id": 101,
       "options": {
@@ -115,7 +115,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 0
+        "y": 54
       },
       "id": 102,
       "options": {
@@ -185,7 +185,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 0
+        "y": 54
       },
       "id": 103,
       "options": {
@@ -255,7 +255,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 0
+        "y": 54
       },
       "id": 104,
       "options": {
@@ -327,7 +327,7 @@
         "h": 24,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 0
       },
       "id": 1,
       "options": {
@@ -475,7 +475,7 @@
         "h": 22,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 24
       },
       "id": 4,
       "options": {
@@ -558,7 +558,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE NOT hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE not hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at",
           "refId": "A",
           "sql": {
             "columns": [
@@ -648,7 +648,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 46
       },
       "id": 2,
       "options": {
@@ -748,7 +748,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 46
       },
       "id": 3,
       "options": {
@@ -784,7 +784,7 @@
     }
   ],
   "preload": false,
-  "refresh": "1m",
+  "refresh": "",
   "schemaVersion": 41,
   "tags": [
     "location",
@@ -795,26 +795,22 @@
     "list": [
       {
         "current": {
-          "selected": false,
           "text": "grafana-postgresql-datasource",
           "value": "eftexe5xy5hxca"
         },
-        "hide": 0,
         "includeAll": false,
         "label": "PostgreSQL",
-        "multi": false,
         "name": "postgres",
         "options": [],
         "query": "grafana-postgresql-datasource",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
         "type": "datasource"
       }
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-12h",
     "to": "now"
   },
   "timepicker": {},
