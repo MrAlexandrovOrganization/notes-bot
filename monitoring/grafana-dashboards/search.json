@@ -131,7 +131,8 @@
           "expr": "sum(rate(search_requests_total[$__rate_interval]))",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Request rate",
@@ -201,7 +202,8 @@
           "expr": "(sum(rate(search_requests_total{status!=\"ok\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(search_requests_total[$__rate_interval])), 0.000001)",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Error ratio",
@@ -271,7 +273,8 @@
           "expr": "histogram_quantile(0.95, sum by (le) (rate(search_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "p95 latency",
@@ -511,17 +514,20 @@
         {
           "expr": "sum by (source) (rate(search_index_notes_processed_total{status=\"ok\"}[$__rate_interval])) * 60",
           "legendFormat": "{{source}} notes/min",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "expr": "sum by (source) (rate(search_index_chunks_embedded_total[$__rate_interval])) * 60",
           "legendFormat": "{{source}} chunks/min",
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         },
         {
           "expr": "sum(rate(search_index_profiles_indexed_total[$__rate_interval])) * 60",
           "legendFormat": "profiles/min",
-          "refId": "C"
+          "refId": "C",
+          "interval": "60s"
         }
       ],
       "title": "Index throughput",
@@ -564,12 +570,14 @@
         {
           "expr": "sum by (status) (rate(search_embed_inputs_total[$__rate_interval])) * 60",
           "legendFormat": "inputs/min {{status}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "expr": "sum by (status) (rate(search_embed_calls_total[$__rate_interval])) * 60",
           "legendFormat": "batches/min {{status}}",
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         }
       ],
       "title": "Embedding throughput",
@@ -612,17 +620,20 @@
         {
           "expr": "histogram_quantile(0.50, sum by (le) (rate(search_embed_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "p50",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "expr": "histogram_quantile(0.95, sum by (le) (rate(search_embed_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "p95",
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         },
         {
           "expr": "histogram_quantile(0.99, sum by (le) (rate(search_embed_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "p99",
-          "refId": "C"
+          "refId": "C",
+          "interval": "60s"
         }
       ],
       "title": "Embedding request latency",
@@ -665,7 +676,8 @@
         {
           "expr": "histogram_quantile(0.95, sum by (le, source) (rate(search_index_note_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "p95 {{source}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Note indexing latency",
@@ -708,7 +720,8 @@
         {
           "expr": "sum by (kind, status) (rate(search_requests_total[$__rate_interval])) * 60",
           "legendFormat": "{{kind}} {{status}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Search requests",
@@ -751,7 +764,8 @@
         {
           "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(search_duration_seconds_bucket{status=\"ok\"}[$__rate_interval])))",
           "legendFormat": "p95 {{kind}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Search latency",
@@ -794,7 +808,8 @@
         {
           "expr": "sum by (stage) (rate(search_hybrid_candidates_sum[$__rate_interval])) / clamp_min(sum by (stage) (rate(search_hybrid_candidates_count[$__rate_interval])), 0.000001)",
           "legendFormat": "{{stage}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Average hybrid candidates",
@@ -837,7 +852,8 @@
         {
           "expr": "sum by (kind) (rate(search_results_sum[$__rate_interval])) / clamp_min(sum by (kind) (rate(search_results_count[$__rate_interval])), 0.000001)",
           "legendFormat": "{{kind}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Average search result count",
@@ -922,7 +938,8 @@
         {
           "expr": "histogram_quantile(0.95, sum by (le, status) (rate(search_agent_duration_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95 {{status}}",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Agent latency",
@@ -965,17 +982,20 @@
         {
           "expr": "sum(rate(search_agent_steps_sum[$__rate_interval])) / clamp_min(sum(rate(search_agent_steps_count[$__rate_interval])), 0.000001)",
           "legendFormat": "avg steps",
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "expr": "sum(rate(search_agent_evidence_chunks_sum[$__rate_interval])) / clamp_min(sum(rate(search_agent_evidence_chunks_count[$__rate_interval])), 0.000001)",
           "legendFormat": "avg evidence chunks",
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         },
         {
           "expr": "sum by (dimension) (rate(search_agent_exhaustive_matches_sum[$__rate_interval])) / clamp_min(sum by (dimension) (rate(search_agent_exhaustive_matches_count[$__rate_interval])), 0.000001)",
           "legendFormat": "exhaustive {{dimension}}",
-          "refId": "C"
+          "refId": "C",
+          "interval": "60s"
         }
       ],
       "title": "Agent breadth",

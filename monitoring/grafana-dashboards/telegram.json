@@ -144,7 +144,8 @@
           "expr": "sum(rate(telegram_updates_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Update rate",
@@ -214,7 +215,8 @@
           "expr": "histogram_quantile(0.95, sum by (le) (rate(telegram_handler_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Handler p95",
@@ -276,7 +278,8 @@
           "expr": "sum(rate(telegram_reminder_delivery_errors_total{instance=~\"$instance\"}[$__rate_interval])) * 60 or vector(0)",
           "legendFormat": "",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Delivery errors",
@@ -372,7 +375,8 @@
           "expr": "sum by (type) (rate(telegram_updates_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "{{type}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Updates by type",
@@ -455,7 +459,8 @@
           "expr": "histogram_quantile(0.50, sum by (le, type) (rate(telegram_handler_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))",
           "legendFormat": "p50 · {{type}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "datasource": {
@@ -466,7 +471,8 @@
           "expr": "histogram_quantile(0.95, sum by (le, type) (rate(telegram_handler_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))",
           "legendFormat": "p95 · {{type}}",
           "range": true,
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         }
       ],
       "title": "Handler latency",
@@ -562,7 +568,8 @@
           "expr": "histogram_quantile(0.95, sum by (le, rpc_method) (rate(rpc_client_call_duration_seconds_bucket{project=\"notes-bot\",instance=~\"$instance\"}[$__rate_interval])))",
           "legendFormat": "{{rpc_method}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Outbound gRPC p95",
@@ -645,7 +652,8 @@
           "expr": "sum by (rpc_method, rpc_response_status_code) (rate(rpc_client_call_duration_seconds_count{project=\"notes-bot\",instance=~\"$instance\",rpc_response_status_code!=\"OK\"}[$__rate_interval]))",
           "legendFormat": "{{rpc_method}} · {{rpc_response_status_code}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Outbound gRPC errors",
@@ -728,7 +736,8 @@
           "expr": "histogram_quantile(0.95, sum by (le, server_address) (rate(http_client_request_duration_seconds_bucket{project=\"notes-bot\",instance=~\"$instance\"}[$__rate_interval])))",
           "legendFormat": "{{server_address}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "Outbound HTTP p95",
@@ -824,7 +833,8 @@
           "expr": "sum(rate(telegram_kafka_messages_consumed_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "consumed",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "datasource": {
@@ -835,7 +845,8 @@
           "expr": "sum(rate(telegram_reminder_delivery_errors_total{instance=~\"$instance\"}[$__rate_interval])) * 60 or vector(0)",
           "legendFormat": "delivery errors",
           "range": true,
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         }
       ],
       "title": "Reminder consumption",
@@ -918,7 +929,8 @@
           "expr": "sum by (intent) (rate(telegram_smart_intent_total_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "classified · {{intent}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         },
         {
           "datasource": {
@@ -929,7 +941,8 @@
           "expr": "sum by (intent) (rate(telegram_smart_intent_confirmed_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "confirmed · {{intent}}",
           "range": true,
-          "refId": "B"
+          "refId": "B",
+          "interval": "60s"
         },
         {
           "datasource": {
@@ -940,7 +953,8 @@
           "expr": "sum by (intent) (rate(telegram_smart_intent_rejected_total{instance=~\"$instance\"}[$__rate_interval])) * 60",
           "legendFormat": "rejected · {{intent}}",
           "range": true,
-          "refId": "C"
+          "refId": "C",
+          "interval": "60s"
         }
       ],
       "title": "Smart intents",
