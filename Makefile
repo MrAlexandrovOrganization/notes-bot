@@ -1,3 +1,4 @@
+DOCKER ?= docker
 DOCKER_COMPOSE_BASE = docker compose --project-directory "$(CURDIR)"
 include makefiles/compose.mk
 DOCKER_COMPOSE = docker compose --project-directory "$(CURDIR)" $(COMPOSE_FLAGS)
@@ -311,6 +312,14 @@ compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.remote-search.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/compose.search-worker.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/compose.search-worker.yml -f compose/compose.search-models.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+
+.PHONY: search-router-check
+search-router-check:
+	$(DOCKER) run --rm --network none -e SEARCH_WORKER_ADDRESS=127.0.0.1 -v "$(CURDIR)/ops/search/router.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" haproxy:$(HAPROXY_VERSION) haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+	$(DOCKER) run --rm --network none -e SEARCH_EMBEDDING_ADDRESS=127.0.0.1:11434 -e SEARCH_GENERATION_ADDRESS=127.0.0.1:11434 -e SEARCH_GENERATION_HTTP_HOST=localhost:11434 -v "$(CURDIR)/ops/search/model-router.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" haproxy:$(HAPROXY_VERSION) haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+
+check: search-router-check
 
 check: compose-layout-check
 

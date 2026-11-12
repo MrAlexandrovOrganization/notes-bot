@@ -37,7 +37,9 @@ func NewEmbedder(host, port, model string, dim int) *Embedder {
 		model:   model,
 		dim:     dim,
 		http: &http.Client{
-			Timeout:   30 * time.Second,
+			// A CPU model can take over 30 seconds to load on a cold worker.
+			// Frontends independently bound readiness probes and search capacity.
+			Timeout:   90 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}

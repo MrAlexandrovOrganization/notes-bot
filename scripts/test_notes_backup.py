@@ -146,6 +146,32 @@ class NotesBackupTests(unittest.TestCase):
             self.assertNotIn("--read-only", args)
             self.assertNotIn("start", args)
 
+    def test_portable_image_check_accepts_equivalent_docker_store_metadata(self):
+        source = {"Architecture": "amd64", "Os": "linux",
+                  "Config": {"Cmd": ["postgres"], "User": "", "AttachStdin": False},
+                  "RootFS": {"Layers": ["a"]}}
+        metadata = {**source, "Config": {"Cmd": ["postgres"], "User": None}}
+        image = "postgres@sha256:" + "a" * 64
+        config = {"image_cache": {image: {"reference": "notes-cache:checked",
+                  "portable_fingerprint": backup.portable_image_fingerprint(source)}}}
+        responses = [subprocess.CompletedProcess([], 1, b''),
+                     subprocess.CompletedProcess([], 0, json.dumps([metadata]).encode())]
+        with patch.object(backup.subprocess, "run", side_effect=responses):
+            self.assertEqual(backup.restore_image({"image": image, "fingerprint": "older-api-shape"}, config),
+                             "notes-cache:checked")
+
+    def test_portable_image_check_rejects_changed_filesystem_and_command(self):
+        source = {"Architecture": "amd64", "Os": "linux", "Config": {"Cmd": ["postgres"]},
+                  "RootFS": {"Layers": ["a"]}}
+        expected = backup.portable_image_fingerprint(source)
+        for metadata in [{**source, "RootFS": {"Layers": ["other"]}},
+                         {**source, "Config": {"Cmd": ["unexpected"]}}]:
+            response = subprocess.CompletedProcess([], 0, json.dumps([metadata]).encode())
+            with patch.object(backup.subprocess, "run", return_value=response):
+                with self.assertRaisesRegex(backup.BackupError, "differs"):
+                    backup.restore_image({"image": "postgres@sha256:" + "a" * 64,
+                                          "portable_fingerprint": expected}, {})
+
     def test_foreground_sync_rejects_unknown_configuration_instead_of_dropping_it(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config.cfg"
