@@ -2,7 +2,7 @@
   "uid": "location-blacklist",
   "id": null,
   "title": "Location · блэклист",
-  "description": "Правила постоянного скрытия координат и кандидаты для ручной проверки. Только чтение; вся история. Generated from monitoring/templates and monitoring/sql/location-blacklist.",
+  "description": "Правила скрытия, предложения и все скрытые точки вне действующего блэклиста. Только чтение; вся история. Generated from monitoring/templates and monitoring/sql/location-blacklist.",
   "tags": [
     "location",
     "blacklist"
@@ -871,6 +871,449 @@
       },
       "pluginVersion": "12.0.0",
       "description": "До 20 локальных центров с подавлением соседей в 500 м. Это предложения, запросы не меняют БД. Числа относятся к окружности 100 м за всю историю, а не к отдельному дню."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Время измерения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID точки"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Открыть место на OpenStreetMap",
+                    "url": "https://www.openstreetmap.org/?mlat=${__data.fields.latitude}&mlon=${__data.fields.longitude}#map=17/${__data.fields.latitude}/${__data.fields.longitude}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "accuracy"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Погрешность"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "provider"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Провайдер"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality_reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Код причины"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина скрытия"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 17
+      },
+      "id": 7,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "osm-standard"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Скрытые вне блэклиста",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "purple"
+                },
+                "lineWidth": 1,
+                "opacity": 0.7,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 5,
+                  "min": 5,
+                  "max": 5
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 11,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              },
+              "showLegend": false
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "lat": 55.9,
+          "lon": 37.6,
+          "zoom": 9
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "hidden-unlisted.sql",
+          "refId": "A"
+        }
+      ],
+      "title": "Скрытые точки вне действующего блэклиста",
+      "type": "geomap",
+      "description": "Все скрытые точки за всю историю, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление."
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Скрытые вне блэклиста · ID и причины",
+      "description": "Те же записи, что на пурпурной карте. Время — время измерения, не получения сервером. Сортировка от новых к старым. Запрос только читает данные.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "hidden-unlisted.sql",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Время измерения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID точки"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Открыть место на OpenStreetMap",
+                    "url": "https://www.openstreetmap.org/?mlat=${__data.fields.latitude}&mlon=${__data.fields.longitude}#map=17/${__data.fields.latitude}/${__data.fields.longitude}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "accuracy"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Погрешность"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "provider"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Провайдер"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality_reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Код причины"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина скрытия"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      },
+      "pluginVersion": "12.0.0"
     }
   ]
 }
