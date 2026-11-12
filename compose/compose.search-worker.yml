@@ -47,7 +47,11 @@ services:
     entrypoint: [/bin/sh, /usr/local/bin/search-tailnet.sh]
     volumes:
       - search-tailnet-state:/var/lib/tailscale
-      - ${SEARCH_TAILNET_AUTH_FILE:?Set the protected one-use registration file}:/run/secrets/search-tailnet-auth:ro
+      - type: bind
+        source: ${SEARCH_TAILNET_AUTH_FILE:?Set the protected one-use registration file}
+        target: /run/secrets/search-tailnet-auth
+        read_only: true
+        bind: {propagation: rprivate, create_host_path: false}
       - ./ops/search/tailnet.sh:/usr/local/bin/search-tailnet.sh:ro
     networks: [default, prometheus-net, jaeger-net]
     healthcheck:
