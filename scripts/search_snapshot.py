@@ -80,9 +80,17 @@ def publish(config, copy=transfer):
         # Create this once. Search holds a shared lock on this exact inode.
         with lock(root / ".snapshot.lock"):
             pass
-        previous = (root / "current").resolve() if (root / "current").is_symlink() else None
+        current = root / "current"
+        if current.exists() and not current.is_symlink():
+            raise ValueError("Current snapshot must be a managed symlink")
+        previous = current.resolve() if current.is_symlink() else None
         if previous is not None and previous.parent != generations:
             raise ValueError("Current snapshot is outside the generation directory")
+        if previous is not None and not previous.is_dir():
+            previous = None
+        for path in generations.iterdir():
+            if re.fullmatch(r"\.staging-[0-9a-f]{32}", path.name) and path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
         name = uuid.uuid4().hex
         stage = generations / (".staging-" + name)
         stage.mkdir(mode=0o700)
