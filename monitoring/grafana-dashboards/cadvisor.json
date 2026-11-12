@@ -442,7 +442,8 @@
           "legendFormat": "{{name}} · {{instance}}",
           "range": true,
           "refId": "A",
-          "useBackend": false
+          "useBackend": false,
+          "interval": "60s"
         }
       ],
       "title": "OOM events",
@@ -876,7 +877,7 @@
           "editorMode": "code",
           "expr": "sum by (instance, name) (rate(container_network_receive_bytes_total{instance=~\"$host\",name=~\"$container\",name!=\"\"}[$__rate_interval]))",
           "hide": false,
-          "interval": "",
+          "interval": "60s",
           "legendFormat": "{{name}} · {{instance}}",
           "range": true,
           "refId": "A"
@@ -980,7 +981,7 @@
           },
           "editorMode": "code",
           "expr": "sum by (instance, name) (rate(container_network_transmit_bytes_total{instance=~\"$host\",name=~\"$container\",name!=\"\"}[$__rate_interval]))",
-          "interval": "",
+          "interval": "60s",
           "legendFormat": "{{name}} · {{instance}}",
           "range": true,
           "refId": "A"
