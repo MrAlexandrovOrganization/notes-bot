@@ -97,15 +97,11 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 
 	log := applog.With(ctx, logger)
 	start := time.Now()
-	if force {
-		for _, m := range ix.materializers {
-			if r, ok := m.(forceResetter); ok {
-				if err := r.InvalidateAll(ctx); err != nil {
-					return stats, err
-				}
-			}
-		}
+	releaseSnapshot, err := acquireSnapshot(ctx, ix.cfg.SnapshotLockFile)
+	if err != nil {
+		return stats, err
 	}
+	defer releaseSnapshot()
 
 	var known map[string]*NoteRow
 	var files []vaultFile
@@ -133,8 +129,22 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		// the index — abort instead and retry next tick.
 		return stats, fmt.Errorf("vault walk had %d errors, skipping deletion reconciliation", walkErrorCount)
 	}
+	if len(files) == 0 && len(known) > 0 {
+		return stats, errors.New("vault listing is empty but index has notes; refusing to purge index")
+	}
+
+	if force {
+		for _, m := range ix.materializers {
+			if r, ok := m.(forceResetter); ok {
+				if err := r.InvalidateAll(ctx); err != nil {
+					return stats, err
+				}
+			}
+		}
+	}
 
 	ix.syncFiles(ctx, log, files, known, force, &stats)
+	releaseSnapshot()
 
 	for _, m := range ix.materializers {
 		if !m.Enabled() {
@@ -146,15 +156,6 @@ func (ix *Indexer) syncOnce(ctx context.Context, force bool) (stats SyncStats, r
 		}
 	}
 
-	if len(files) == 0 && len(known) > 0 {
-		// An entirely empty listing against a non-empty index almost certainly
-		// means the volume is not mounted / not yet populated. Never purge.
-		log.Error("vault listing is empty but index has notes; refusing to purge index",
-			zap.Int("known", len(known)),
-			zap.String("notes_dir", ix.cfg.NotesDir),
-		)
-		stats.Errors++
-	}
 	deletedRelpaths := make([]string, 0, len(known))
 	for rel := range known {
 		deletedRelpaths = append(deletedRelpaths, rel)
@@ -219,7 +220,11 @@ func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *Sy
 	_, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
-	err := filepath.WalkDir(ix.cfg.NotesDir, func(path string, d fs.DirEntry, err error) error {
+	root, err := filepath.EvalSymlinks(ix.cfg.NotesDir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolve vault snapshot: %w", err)
+	}
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Warn("walk error", zap.String("path", path), zap.Error(err))
 			stats.Errors++
@@ -229,7 +234,7 @@ func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *Sy
 		if d.IsDir() {
 			name := d.Name()
 			if strings.HasPrefix(name, ".") || slices.Contains(ix.cfg.IgnoreDirs, name) {
-				if path != ix.cfg.NotesDir {
+				if path != root {
 					return filepath.SkipDir
 				}
 			}
@@ -238,7 +243,7 @@ func (ix *Indexer) discoverFiles(ctx context.Context, log *zap.Logger, stats *Sy
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
 			return nil
 		}
-		rel, err := filepath.Rel(ix.cfg.NotesDir, path)
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			stats.Errors++
 			return nil

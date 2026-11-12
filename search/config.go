@@ -17,8 +17,9 @@ type Config struct {
 	GRPCPort    string
 	MetricsPort string
 
-	NotesDir   string
-	IgnoreDirs []string
+	NotesDir         string
+	SnapshotLockFile string
+	IgnoreDirs       []string
 
 	LLMHost    string
 	LLMPort    string
@@ -161,22 +162,23 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		DBHost:        getEnvStr("DB_HOST", "localhost"),
-		DBPort:        getEnvStr("DB_PORT", "5432"),
-		DBName:        getEnvStr("DB_NAME", "search"),
-		DBUser:        getEnvStr("DB_USER", "search"),
-		DBPassword:    getEnvStr("DB_PASSWORD", ""),
-		GRPCPort:      getEnvStr("GRPC_PORT", "50054"),
-		MetricsPort:   getEnvStr("METRICS_PORT", "9103"),
-		NotesDir:      getEnvStr("NOTES_DIR", "/notes"),
-		IgnoreDirs:    getEnvStrSlice("INDEX_IGNORE_DIRS", []string{".obsidian", ".trash"}),
-		LLMHost:       getEnvStr("LLM_HOST", "ollama"),
-		LLMPort:       getEnvStr("LLM_PORT", "11434"),
-		EmbedModel:    getEnvStr("EMBED_MODEL", "bge-m3:567m"),
-		AgentModel:    getEnvStr("AGENT_MODEL", "qwen2.5:7b"),
-		IndexInterval: getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
-		EmbedDim:      getEnvInt("EMBED_DIM", 1024),
-		Features:      features,
+		DBHost:           getEnvStr("DB_HOST", "localhost"),
+		DBPort:           getEnvStr("DB_PORT", "5432"),
+		DBName:           getEnvStr("DB_NAME", "search"),
+		DBUser:           getEnvStr("DB_USER", "search"),
+		DBPassword:       getEnvStr("DB_PASSWORD", ""),
+		GRPCPort:         getEnvStr("GRPC_PORT", "50054"),
+		MetricsPort:      getEnvStr("METRICS_PORT", "9103"),
+		NotesDir:         getEnvStr("NOTES_DIR", "/notes"),
+		SnapshotLockFile: getEnvStr("SNAPSHOT_LOCK_FILE", ""),
+		IgnoreDirs:       getEnvStrSlice("INDEX_IGNORE_DIRS", []string{".obsidian", ".trash"}),
+		LLMHost:          getEnvStr("LLM_HOST", "ollama"),
+		LLMPort:          getEnvStr("LLM_PORT", "11434"),
+		EmbedModel:       getEnvStr("EMBED_MODEL", "bge-m3:567m"),
+		AgentModel:       getEnvStr("AGENT_MODEL", "qwen2.5:7b"),
+		IndexInterval:    getEnvDuration("INDEX_INTERVAL", 5*time.Minute),
+		EmbedDim:         getEnvInt("EMBED_DIM", 1024),
+		Features:         features,
 		Products: ProductConfig{
 			FindRetrievers: getEnvStrSlice("FIND_RETRIEVERS", []string{RetrieverName, RetrieverLexical}),
 			AskRetrievers:  getEnvStrSlice("ASK_RETRIEVERS", defaultAskRetrievers),

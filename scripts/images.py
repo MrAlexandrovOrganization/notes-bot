@@ -31,6 +31,8 @@ def compose(runtime=False):
     files = os.environ.get("COMPOSE_FILE", os.environ["IMAGE_COMPOSE_FILE"]).split(
         os.pathsep
     )
+    if not runtime and os.environ.get("IMAGE_RUNTIME_ROLE") == "search-worker":
+        files = os.environ["IMAGE_COMPOSE_FILE"].split(os.pathsep)
     if runtime and os.environ.get("IMAGE_RUNTIME_COMPOSE_FILES"):
         files = shlex.split(os.environ["IMAGE_RUNTIME_COMPOSE_FILES"])
     elif runtime and "COMPOSE_FILE" not in os.environ:
@@ -231,15 +233,20 @@ def deploy():
             Path(os.environ.get("IMAGE_MANIFEST", STATE / "release.json")).read_text()
         )
     validate(manifest)
+    active_images = manifest["images"]
+    if os.environ.get("IMAGE_RUNTIME_ROLE") == "search-worker":
+        if "search" not in active_images:
+            raise ValueError("Search worker release lacks the search image")
+        active_images = {"search": active_images["search"]}
     STATE.mkdir(exist_ok=True)
     write(STATE / "requested.json", manifest)
     # Fetch every application image before touching running services or databases.
-    for ref in set(manifest["images"].values()):
+    for ref in set(active_images.values()):
         run("docker", "pull", "--platform", PLATFORM, ref)
     override = {
         "services": {
             name: {"image": ref, "platform": PLATFORM}
-            for name, ref in manifest["images"].items()
+            for name, ref in active_images.items()
         }
     }
     with tempfile.TemporaryDirectory(dir=STATE) as directory:

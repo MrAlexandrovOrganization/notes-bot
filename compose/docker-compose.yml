@@ -288,8 +288,6 @@ services:
     depends_on:
       core:
         condition: service_healthy
-      search:
-        condition: service_healthy
       notifications:
         condition: service_healthy
       postgres:
@@ -341,8 +339,6 @@ services:
       - jaeger-net
     depends_on:
       core:
-        condition: service_healthy
-      search:
         condition: service_healthy
       notifications:
         condition: service_healthy

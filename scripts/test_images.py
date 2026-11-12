@@ -59,6 +59,21 @@ class DeliveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             images.validate(self.manifest)
 
+    def test_search_worker_only_pulls_and_activates_search(self):
+        self.manifest["images"] = {
+            "search": "ghcr.io/example/project/search@sha256:" + "b" * 64,
+            "core": "ghcr.io/example/project/core@sha256:" + "c" * 64,
+        }
+        os.environ["IMAGE_RUNTIME_ROLE"] = "search-worker"
+        self.save_manifest()
+        with patch.object(images, "specs", return_value={"search": {}, "core": {}}), patch.object(images, "run") as run:
+            images.deploy()
+        pulls = [call.args for call in run.call_args_list if call.args[:2] == ("docker", "pull")]
+        self.assertEqual(len(pulls), 1)
+        self.assertEqual(pulls[0][-1], self.manifest["images"]["search"])
+        override = json.loads((images.STATE / "compose.json").read_text())
+        self.assertEqual(set(override["services"]), {"search"})
+
     def test_pull_failure_never_activates_or_overwrites_current(self):
         self.save_manifest()
         current = images.STATE / "current.json"

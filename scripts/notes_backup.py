@@ -129,8 +129,8 @@ def snapshot_vault(root, destination):
     raise BackupError("Vault changed during all snapshot attempts")
 
 
-def database(service):
-    ids = run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=notes-bot",
+def database(service, project="notes-bot"):
+    ids = run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=" + project,
                "--filter", f"label=com.docker.compose.service={service}"]).decode().split()
     if len(ids) != 1:
         raise BackupError("Expected exactly one running database for each notes-bot service")
@@ -179,6 +179,9 @@ def deployment_lock(home):
 def source_export(root, home):
     os.umask(0o077)
     project = root / "telegram-bots/notes-bot"
+    # A remote index is backed up independently. Its availability must never
+    # gate preservation of the primary vault, bot state and notifications DB.
+    remote_search = any(line.strip() == "NOTES_SEARCH_REMOTE=1" for line in (project / ".env").read_text().splitlines())
     with tempfile.TemporaryDirectory(prefix="notes-export-") as temporary:
         directory = Path(temporary)
         with deployment_lock(home):
@@ -190,7 +193,10 @@ def source_export(root, home):
                 archive.add(config, arcname="yandex-disk")
             shutil.copyfile(project / ".env", directory / "application.env")
             databases = {}
-            for service, name in (("postgres", "notifications"), ("postgres-search", "search")):
+            services = [("postgres", "notifications")]
+            if not remote_search:
+                services.append(("postgres-search", "search"))
+            for service, name in services:
                 container, image = database(service)
                 check_tables(container, name)
                 with (directory / f"{name}.dump").open("wb") as stream:
@@ -200,10 +206,12 @@ def source_export(root, home):
                     run(["docker", "exec", "-i", container, "pg_restore", "--list"], source=stream)
                 metadata = json.loads(run(["docker", "image", "inspect", image]))[0]
                 databases[name] = {"image": image, "fingerprint": image_fingerprint(metadata)}
-            manifest = {"format": 1, "created_at": dt.datetime.now(dt.UTC).isoformat(),
+            manifest = {"format": 2 if remote_search else 1, "created_at": dt.datetime.now(dt.UTC).isoformat(),
                         "revision": run(["git", "-C", str(project), "rev-parse", "HEAD"]).decode().strip(),
                         "vault": vault, "databases": databases,
                         "sha256": {p.name: checksum(p) for p in directory.iterdir()}}
+            if remote_search:
+                manifest["search_location"] = "external"
             (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as archive:
             for path in sorted(directory.iterdir()):
@@ -216,14 +224,23 @@ def source_export(root, home):
 def validate(path):
     with tarfile.open(path, "r:") as archive:
         members = archive.getmembers()
-        if len(members) != len(MEMBERS) or {m.name for m in members} != MEMBERS:
+        names = {m.name for m in members}
+        if len(members) != len(names) or "manifest.json" not in names:
             raise BackupError("Unexpected backup archive members")
         if any(not m.isfile() for m in members) or archive.getmember("manifest.json").size > 65536:
             raise BackupError("Invalid backup archive members")
         manifest = json.load(archive.extractfile("manifest.json"))
-        if manifest.get("format") != 1 or set(manifest["sha256"]) != MEMBERS - {"manifest.json"}:
+        if manifest.get("format") == 1:
+            expected = MEMBERS
+            databases = {"notifications", "search"}
+        elif manifest.get("format") == 2 and manifest.get("search_location") == "external":
+            expected = MEMBERS - {"search.dump"}
+            databases = {"notifications"}
+        else:
             raise BackupError("Unsupported backup manifest")
-        if set(manifest["databases"]) != {"notifications", "search"}:
+        if names != expected or set(manifest["sha256"]) != expected - {"manifest.json"}:
+            raise BackupError("Unsupported backup manifest")
+        if set(manifest["databases"]) != databases:
             raise BackupError("Invalid database manifest")
         for db in manifest["databases"].values():
             if not re.fullmatch(r"[a-zA-Z0-9./:_-]+@sha256:[0-9a-f]{64}", db["image"]):
@@ -326,7 +343,7 @@ def verify(config):
                 raise BackupError("Latest backup checksum mismatch")
             manifest = validate(path)
             with tarfile.open(path, "r:") as archive:
-                for name in ("vault.tgz", "notifications.dump", "search.dump"):
+                for name in ["vault.tgz", *(db + ".dump" for db in manifest["databases"])]:
                     with archive.extractfile(name) as source, (temporary / name).open("wb") as output:
                         shutil.copyfileobj(source, output)
         if fingerprint(archive_inventory(temporary / "vault.tgz")) != manifest["vault"]["sha256"]:

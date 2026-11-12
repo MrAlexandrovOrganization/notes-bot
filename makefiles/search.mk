@@ -17,6 +17,19 @@ SEARCH_DOCKER_NET    ?= notes-bot_default
 
 SEARCH_PSQL = docker exec $(SEARCH_DB_CONTAINER) psql -U $(SEARCH_DB_USER) -d $(SEARCH_DB_NAME) -P pager=off -c
 
+SEARCH_TEST_COMPOSE = $(DOCKER_COMPOSE_BASE) -p notes-search-test -f compose/compose.search-test.yml
+.PHONY: test-search-db-up test-search-db-down test-search-db search-snapshot-test
+test-search-db-up:
+	$(SEARCH_TEST_COMPOSE) up -d --wait --wait-timeout 90
+test-search-db-down:
+	$(SEARCH_TEST_COMPOSE) down -v
+test-search-db:
+	go test -race ./search -run TestEmptySnapshotCannotDeleteTheExistingIndex -v
+search-snapshot-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_search_snapshot.py'
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_search_backup.py'
+check: search-snapshot-test
+
 # ── Overview ──────────────────────────────────────────────────────────────────
 
 search-stats:  ## Single-row summary: notes, chunks, sizes, last sync.

@@ -1,0 +1,33 @@
+# Application host: the local search/index database are retained cold, while
+# the original Docker service name resolves to the lightweight remote router.
+services:
+  search:
+    profiles: [local-search]
+  postgres-search:
+    profiles: [local-search]
+  search-router:
+    image: haproxy:${HAPROXY_VERSION:?Run via make}
+    container_name: notes-bot-search-router
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=1m,mode=1777"]
+    environment:
+      SEARCH_WORKER_ADDRESS: ${SEARCH_WORKER_ADDRESS:?Set the private search worker address}
+    volumes:
+      - ./ops/search/router.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      default:
+        aliases: [search, notes-bot-search]
+      prometheus-net: {}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8404/health]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the read-only Notes search snapshot
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=5min
+AccuracySec=10s
+Unit=notes-search-sync@%i.service
+
+[Install]
+WantedBy=timers.target

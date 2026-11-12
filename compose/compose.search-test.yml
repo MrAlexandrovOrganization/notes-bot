@@ -1,0 +1,16 @@
+services:
+  database:
+    image: pgvector/pgvector:${PGVECTOR_VERSION:?Run via make}
+    environment:
+      POSTGRES_DB: search_test
+      POSTGRES_USER: search_test
+      POSTGRES_PASSWORD: synthetic-search-test
+    ports: ["127.0.0.1:55443:5432"]
+    healthcheck:
+      test: [CMD, pg_isready, -U, search_test, -d, search_test]
+      interval: 1s
+      timeout: 3s
+      retries: 40
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 512m}

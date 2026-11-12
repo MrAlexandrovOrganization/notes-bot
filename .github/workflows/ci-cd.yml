@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -73,6 +74,16 @@ jobs:
         if: always()
         run: make test-voice-db-down
 
+      - name: Start isolated search database
+        run: make test-search-db-up
+      - name: Verify snapshot failure cannot purge the search index
+        run: make test-search-db
+        env:
+          TEST_SEARCH_DATABASE_URL: postgres://search_test:synthetic-search-test@127.0.0.1:55443/search_test?sslmode=disable
+      - name: Stop isolated search database
+        if: always()
+        run: make test-search-db-down
+
 
   images:
     name: Build and publish application images
@@ -91,7 +102,7 @@ jobs:
       - name: Build images without runtime secrets
         run: make image-check image-build
       - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -99,10 +110,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish the images built above
         id: publish
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: make image-publish
       - name: Save digest manifest
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: image-release
@@ -110,10 +121,36 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
+  search_worker:
+    name: Deploy search worker to WSL
+    needs: images
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.SEARCH_WORKER_DEPLOY_ENABLED == 'true' && !contains(github.event.head_commit.message, '[resources-only]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-search-worker
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Activate the checked search digest through Russia
+        run: make ci-deploy-search
+        env:
+          SEARCH_WORKER_TRANSPORT_JSON: ${{ secrets.SEARCH_WORKER_TRANSPORT_JSON }}
+          SEARCH_WORKER_SSH_KEY: ${{ secrets.SEARCH_WORKER_SSH_KEY }}
+          SEARCH_WORKER_KNOWN_HOSTS: ${{ secrets.SEARCH_WORKER_KNOWN_HOSTS }}
+          DEPLOY_SHA: ${{ github.sha }}
+          IMAGE_MANIFEST_B64: ${{ needs.images.outputs.manifest }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   deploy:
     name: Deploy published digests to VM
-    needs: images
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[resources-only]')
+    needs: [images, search_worker]
+    if: always() && needs.images.result == 'success' && (needs.search_worker.result == 'success' || needs.search_worker.result == 'skipped') && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[resources-only]')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:

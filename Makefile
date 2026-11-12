@@ -2,6 +2,11 @@ DOCKER_COMPOSE_BASE = docker compose --project-directory "$(CURDIR)"
 include makefiles/compose.mk
 DOCKER_COMPOSE = docker compose --project-directory "$(CURDIR)" $(COMPOSE_FLAGS)
 MONITORING_DATA_DIR ?= $(HOME)/.monitoring
+NOTES_ROLE ?= $(or $(shell sed -n 's/^NOTES_ROLE=//p' .env 2>/dev/null),application)
+ifneq ($(filter-out application search-worker,$(strip $(NOTES_ROLE))),)
+$(error NOTES_ROLE must be application or search-worker)
+endif
+export IMAGE_RUNTIME_ROLE = $(NOTES_ROLE)
 include makefiles/versions.mk
 
 # Per-service targets live in makefiles/ to keep this file focused on
@@ -265,11 +270,22 @@ image-publish:
 	python3 scripts/images.py publish
 image-deploy:
 	python3 scripts/images.py deploy
-image-activate: assert-active monitoring-register
+ci-deploy-search:
+	python3 scripts/search_worker_deploy.py
+.PHONY: ci-deploy-search search-tailnet-up
+search-tailnet-up:
+	@test '$(NOTES_ROLE)' = search-worker || { echo 'Requires search-worker role'; exit 1; }
+	$(DOCKER_COMPOSE) up -d --wait --wait-timeout 90 search-tailnet
+image-activate: assert-active
+ifeq ($(strip $(NOTES_ROLE)),search-worker)
+	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
+else
+	$(MAKE) monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-geo
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
+endif
 
 .PHONY: image-check
 image-check:
@@ -293,6 +309,8 @@ compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.remote-search.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/compose.search-worker.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 
 check: compose-layout-check
 
