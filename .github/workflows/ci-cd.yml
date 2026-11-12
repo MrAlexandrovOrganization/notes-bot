@@ -70,6 +70,11 @@ jobs:
         env:
           TEST_GEO_DATABASE_URL: postgres://voicejobs_test:synthetic-voicejobs-test@127.0.0.1:55442/voicejobs_test?sslmode=disable
 
+      - name: Verify durable task automations
+        run: make test-automations-db
+        env:
+          TEST_AUTOMATIONS_DATABASE_URL: postgres://voicejobs_test:synthetic-voicejobs-test@127.0.0.1:55442/voicejobs_test?sslmode=disable
+
       - name: Stop isolated voice job database
         if: always()
         run: make test-voice-db-down

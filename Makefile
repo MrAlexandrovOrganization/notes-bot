@@ -166,7 +166,7 @@ clean:
 assert-active:
 	@test ! -e .retired || { echo 'This checkout is retired; use the active host.' >&2; exit 1; }
 
-up: assert-active monitoring-register migrate-voice migrate-geo
+up: assert-active monitoring-register migrate-voice migrate-geo migrate-automations
 	$(DOCKER_COMPOSE) up --build -d
 
 # Explicit deployment migration; normal telegram startup only checks the schema.
@@ -245,14 +245,13 @@ proto-lint:
 
 monitoring-register:
 	mkdir -p $(MONITORING_DATA_DIR)/prometheus-targets
-	mkdir -p $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
 	cp monitoring/prometheus-targets.yml $(MONITORING_DATA_DIR)/prometheus-targets/notes-bot.yml
-	@[ -z "$$(ls monitoring/grafana-dashboards/*.json 2>/dev/null)" ] || cp monitoring/grafana-dashboards/*.json $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot/
+	python3 scripts/register_monitoring_dashboards.py --directory "$(MONITORING_DATA_DIR)/grafana-dashboards"
 	@echo "notes-bot: monitoring registered at $(MONITORING_DATA_DIR)"
 
 monitoring-unregister:
 	rm -f $(MONITORING_DATA_DIR)/prometheus-targets/notes-bot.yml
-	rm -rf $(MONITORING_DATA_DIR)/grafana-dashboards/notes-bot
+	python3 scripts/register_monitoring_dashboards.py --unregister --directory "$(MONITORING_DATA_DIR)/grafana-dashboards"
 	@echo "notes-bot: monitoring unregistered"
 
 .PHONY: versions build install-golangci-lint proto-generate proto-breaking test-integration-ci check proto-check migrate-voice test-voice-db test-voice-db-up test-voice-db-down
@@ -283,6 +282,7 @@ else
 	$(MAKE) monitoring-register
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-geo
+	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-automations
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
 endif
@@ -319,3 +319,5 @@ include makefiles/monitoring.mk
 include makefiles/observability.mk
 
 include makefiles/geo.mk
+
+include makefiles/automations.mk

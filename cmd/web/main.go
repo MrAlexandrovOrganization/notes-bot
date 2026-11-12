@@ -84,6 +84,9 @@ func main() {
 		Logger:        logger,
 	}
 
+	if os.Getenv("AUTOMATIONS_ENABLED") == "true" {
+		app.Automations = notifClient.Automations()
+	}
 	router := app.NewRouter()
 	if cfg.MobileOnly {
 		router = app.NewMobileRouter()

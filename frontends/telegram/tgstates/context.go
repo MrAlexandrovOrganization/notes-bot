@@ -4,6 +4,13 @@ package tgstates
 type UserState string
 
 const (
+	StateAutomationTask    UserState = "automation_task"
+	StateAutomationStatus  UserState = "automation_status"
+	StateAutomationText    UserState = "automation_text"
+	StateAutomationDelay   UserState = "automation_delay"
+	StateAutomationRepeat  UserState = "automation_repeat"
+	StateAutomationConfirm UserState = "automation_confirm"
+
 	StateGeoName                    UserState = "geo_name"
 	StateGeoPoint                   UserState = "geo_point"
 	StateGeoRadius                  UserState = "geo_radius"
@@ -49,22 +56,23 @@ const (
 
 // UserContext stores all session data for a user.
 type UserContext struct {
-	GeoDraft                  GeoDraft      `json:"geo_draft"`
-	UserID                    int64         `json:"user_id"`
-	State                     UserState     `json:"state"`
-	ActiveDate                string        `json:"active_date"`
-	CalendarMonth             int           `json:"calendar_month"`
-	CalendarYear              int           `json:"calendar_year"`
-	TaskPage                  int           `json:"task_page"`
-	NotePage                  int           `json:"note_page"`
-	LastMessageID             int           `json:"last_message_id"`
-	ReminderDraft             ReminderDraft `json:"reminder_draft"`
-	PendingPostponeReminderID int64         `json:"pending_postpone_reminder_id"`
-	PendingPostponeDate       string        `json:"pending_postpone_date"`
-	ReminderCalMonth          int           `json:"reminder_cal_month"`
-	ReminderCalYear           int           `json:"reminder_cal_year"`
-	ReminderListPage          int           `json:"reminder_list_page"`
-	SmartDraft                SmartDraft    `json:"smart_draft"`
+	AutomationDraft           AutomationDraft `json:"automation_draft"`
+	GeoDraft                  GeoDraft        `json:"geo_draft"`
+	UserID                    int64           `json:"user_id"`
+	State                     UserState       `json:"state"`
+	ActiveDate                string          `json:"active_date"`
+	CalendarMonth             int             `json:"calendar_month"`
+	CalendarYear              int             `json:"calendar_year"`
+	TaskPage                  int             `json:"task_page"`
+	NotePage                  int             `json:"note_page"`
+	LastMessageID             int             `json:"last_message_id"`
+	ReminderDraft             ReminderDraft   `json:"reminder_draft"`
+	PendingPostponeReminderID int64           `json:"pending_postpone_reminder_id"`
+	PendingPostponeDate       string          `json:"pending_postpone_date"`
+	ReminderCalMonth          int             `json:"reminder_cal_month"`
+	ReminderCalYear           int             `json:"reminder_cal_year"`
+	ReminderListPage          int             `json:"reminder_list_page"`
+	SmartDraft                SmartDraft      `json:"smart_draft"`
 
 	// Find/view/append flow state.
 	FindQuery         string      `json:"find_query"`
@@ -97,4 +105,20 @@ type SearchHit struct {
 	Relpath string `json:"relpath"`
 	Name    string `json:"name"`
 	Snippet string `json:"snippet"`
+}
+
+type AutomationChoice struct {
+	Index int    `json:"index"`
+	Text  string `json:"text"`
+}
+type AutomationDraft struct {
+	Date         string             `json:"date"`
+	RequestID    string             `json:"request_id"`
+	Choices      []AutomationChoice `json:"choices"`
+	TaskID       string             `json:"task_id"`
+	TaskTitle    string             `json:"task_title"`
+	TargetStatus int32              `json:"target_status"`
+	Text         string             `json:"text"`
+	DelaySeconds int32              `json:"delay_seconds"`
+	Repeat       bool               `json:"repeat"`
 }

@@ -16,6 +16,7 @@ service NotesService {
   rpc GetTasks(DateRequest) returns (TasksResponse);
   rpc ToggleTask(ToggleTaskRequest) returns (SuccessResponse);
   rpc SetTaskStatus(SetTaskStatusRequest) returns (SuccessResponse);
+  rpc TrackTask(TrackTaskRequest) returns (TaskResponse);
   rpc AddTask(AddTaskRequest) returns (SuccessResponse);
   rpc AppendToNote(AppendRequest) returns (SuccessResponse);
   rpc AppendToNoteByPath(AppendByPathRequest) returns (SuccessResponse);
@@ -67,6 +68,7 @@ message Task {
   TaskState state = 2;
   int32 index = 3;
   int32 line_number = 4;
+  string id = 5;
 }
 
 message TasksResponse {
@@ -126,4 +128,13 @@ message ListDirectoryResponse {
 
 message GetNoteByPathRequest {
   string relpath = 1;
+}
+
+message TrackTaskRequest {
+  string date = 1;
+  int32 task_index = 2;
+  string expected_text = 3;
+}
+message TaskResponse {
+  Task task = 1;
 }

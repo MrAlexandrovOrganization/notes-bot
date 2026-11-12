@@ -64,6 +64,7 @@ services:
       - ${NOTES_DIR}:/notes:rw
     environment:
       - NOTES_DIR=/notes
+      - AUTOMATIONS_ENABLED=${AUTOMATIONS_ENABLED:-false}
       - GRPC_PORT=50051
       - METRICS_PORT=9100
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
@@ -100,6 +101,7 @@ services:
       - METRICS_PORT=9101
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
+      - AUTOMATIONS_ENABLED=${AUTOMATIONS_ENABLED:-false}
       - GEO_LOCATION_ADDR=${GEO_LOCATION_ADDR:-}
       - GEO_LOCATION_TOKEN=${GEO_LOCATION_TOKEN:-}
       - ROOT_ID=${ROOT_ID}

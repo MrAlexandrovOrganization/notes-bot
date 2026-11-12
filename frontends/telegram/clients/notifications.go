@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"notes-bot/internal/grpcutil"
+	apb "notes-bot/proto/automation/v1"
 	geopb "notes-bot/proto/georeminders/v1"
 	pb "notes-bot/proto/notifications"
 )
@@ -158,4 +159,8 @@ func protoToReminderInfo(r *pb.Reminder) *ReminderInfo {
 		IsActive:     r.IsActive,
 		CreateTask:   r.CreateTask,
 	}
+}
+
+func (c *NotificationsClient) Automations() apb.AutomationsServiceClient {
+	return apb.NewAutomationsServiceClient(c.conn)
 }

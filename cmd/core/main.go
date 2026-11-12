@@ -11,13 +11,19 @@ import (
 	"go.uber.org/zap"
 
 	"notes-bot/core"
+	"notes-bot/internal/automationevents"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
+	apb "notes-bot/proto/automation/v1"
 	pb "notes-bot/proto/notes"
 )
 
 func main() {
 	logger := core.Logger
+	automationsEnabled, err := automationevents.Enabled()
+	if err != nil {
+		logger.Fatal("invalid automations configuration")
+	}
 
 	port := os.Getenv("GRPC_PORT")
 	if port == "" {
@@ -25,6 +31,11 @@ func main() {
 	}
 
 	core.GetConfig(context.Background())
+	if automationsEnabled {
+		if err := core.PrepareTaskEvents(context.Background()); err != nil {
+			logger.Fatal("automation outbox unavailable")
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -40,6 +51,11 @@ func main() {
 		logger.Fatal("failed to init metrics", zap.Error(err))
 	}
 	defer metricsShutdown()
+	if automationsEnabled {
+		if err := core.RegisterTaskEventMetrics(ctx); err != nil {
+			logger.Warn("task event metrics unavailable")
+		}
+	}
 
 	metricsPort := os.Getenv("METRICS_PORT")
 	if metricsPort == "" {
@@ -56,6 +72,7 @@ func main() {
 
 	notesServer := core.NewDefaultNotesServer()
 	pb.RegisterNotesServiceServer(grpcServer, notesServer)
+	apb.RegisterCoreEventsServiceServer(grpcServer, &core.TaskEventsServer{Enabled: automationsEnabled})
 	grpcutil.RegisterHealth(grpcServer)
 
 	go func() {

@@ -8,10 +8,10 @@ import (
 	"slices"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"notes-bot/core/features"
 	"notes-bot/internal/telemetry"
-
-	"go.uber.org/zap"
 )
 
 // --- File locking & atomic writes ---
@@ -388,7 +388,7 @@ func (r *realRatingStore) UpdateRating(ctx context.Context, date string, rating 
 
 // --- realTaskStore ---
 
-type realTaskStore struct{}
+type realTaskStore struct{ emitEvents bool }
 
 func (r *realTaskStore) ParseTasks(ctx context.Context, content string) []features.Task {
 	ctx, span := telemetry.StartSpan(ctx)
@@ -399,6 +399,9 @@ func (r *realTaskStore) ParseTasks(ctx context.Context, content string) []featur
 }
 
 func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) error {
+	if r.emitEvents {
+		return r.changeWithEvent(ctx, date, index, nil)
+	}
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 
@@ -420,7 +423,7 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 	// Parse tasks to get current state
 	tasks := features.ParseTasks(ctx, string(data))
 	if index < 0 || index >= len(tasks) {
-		return fmt.Errorf("invalid task index: %d", index)
+		return fmt.Errorf("%w: %d", errTaskIndex, index)
 	}
 	currentState := tasks[index].State
 	var newState features.TaskState
@@ -441,6 +444,9 @@ func (r *realTaskStore) ToggleTask(ctx context.Context, date string, index int) 
 }
 
 func (r *realTaskStore) SetTaskStatus(ctx context.Context, date string, index int, newState features.TaskState) error {
+	if r.emitEvents {
+		return r.changeWithEvent(ctx, date, index, &newState)
+	}
 	ctx, span := telemetry.StartSpan(ctx)
 	defer span.End()
 

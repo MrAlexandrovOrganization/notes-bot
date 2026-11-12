@@ -6,19 +6,19 @@ import (
 	"fmt"
 	"time"
 
-	"notes-bot/core/features"
-	"notes-bot/internal/telemetry"
-	pb "notes-bot/proto/notes"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-
 	"golang.org/x/sync/errgroup"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"notes-bot/core/features"
+	"notes-bot/internal/automationevents"
+	"notes-bot/internal/taskidentity"
+	"notes-bot/internal/telemetry"
+	pb "notes-bot/proto/notes"
 )
 
 type NotesServer struct {
@@ -61,7 +61,8 @@ func NewNotesServer(cal CalendarStore, notes NoteStore, ratings RatingStore, tas
 }
 
 func NewDefaultNotesServer() *NotesServer {
-	return NewNotesServer(&realCalendarStore{}, &realNoteStore{}, &realRatingStore{}, &realTaskStore{})
+	enabled, _ := automationevents.Enabled()
+	return NewNotesServer(&realCalendarStore{}, &realNoteStore{}, &realRatingStore{}, &realTaskStore{emitEvents: enabled})
 }
 
 func (s *NotesServer) recordRPC(ctx context.Context, method string, err *error) {
@@ -135,7 +136,7 @@ func (s *NotesServer) GetNote(ctx context.Context, req *pb.DateRequest) (resp *p
 	if s.noteFileOps != nil {
 		s.noteFileOps.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "get")))
 	}
-	return &pb.NoteResponse{Content: content}, nil
+	return &pb.NoteResponse{Content: taskidentity.Visible(content)}, nil
 }
 
 func (s *NotesServer) GetRating(ctx context.Context, req *pb.DateRequest) (resp *pb.RatingResponse, err error) {
@@ -256,6 +257,7 @@ func (s *NotesServer) GetTasks(ctx context.Context, req *pb.DateRequest) (resp *
 		}
 		tasks[i] = &pb.Task{
 			Text:       t.Text,
+			Id:         t.ID,
 			State:      state,
 			Index:      int32(t.Index),
 			LineNumber: int32(t.LineNumber),
@@ -268,6 +270,18 @@ func (s *NotesServer) ToggleTask(ctx context.Context, req *pb.ToggleTaskRequest)
 	defer s.recordRPC(ctx, "ToggleTask", &err)
 	if err := validateDate(req.Date); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if store, ok := s.tasks.(interface {
+		ToggleTaskAtomically(context.Context, string, int) error
+	}); ok {
+		if err := store.ToggleTaskAtomically(ctx, req.Date, int(req.TaskIndex)); err != nil {
+			if errors.Is(err, errTaskIndex) {
+				return nil, status.Error(codes.InvalidArgument, "invalid task index")
+			}
+			return nil, status.Error(codes.Internal, "task transition failed")
+		}
+		return &pb.SuccessResponse{Success: true}, nil
 	}
 
 	ctx, span := telemetry.StartSpan(ctx,
@@ -442,5 +456,5 @@ func (s *NotesServer) GetNoteByPath(ctx context.Context, req *pb.GetNoteByPathRe
 	if content == "" {
 		return nil, status.Errorf(codes.NotFound, "note not found: %s", req.Relpath)
 	}
-	return &pb.NoteResponse{Content: content}, nil
+	return &pb.NoteResponse{Content: taskidentity.Visible(content)}, nil
 }

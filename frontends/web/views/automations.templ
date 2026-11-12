@@ -1,0 +1,91 @@
+package views
+
+import (
+	"fmt"
+	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/resources"
+	pb "notes-bot/proto/automation/v1"
+	"strconv"
+)
+
+type AutomationsData struct {
+	Date       string
+	Tasks      []*clients.Task
+	Rules      []*pb.Rule
+	Executions []string
+	Selected   *clients.Task
+	RequestID  string
+	Error      string
+}
+
+templ Automations(d AutomationsData) {
+	@Page("Автоматизации", "automations") {
+		<div class="space-y-6">
+			@ErrorBanner(d.Error)
+			<section class="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+				<h2 class="font-medium">{ resources.AutomationMenu }</h2>
+				<p>{ resources.AutomationList }</p>
+				for _, rule := range d.Rules {
+					<div class="border-t border-slate-100 pt-3">
+						<p class="font-medium">{ rule.TaskTitle } — { resources.AutomationStatus(int32(rule.GetTaskStatus().TargetStatus)) }</p>
+						<p>{ rule.GetNotify().Text }</p>
+						<p class="text-sm text-slate-500">{ rule.GetTaskStatus().Date } · { fmt.Sprintf("Через %d мин.", rule.DelaySeconds/60) }</p>
+						if !rule.Armed {
+							<p class="text-sm text-slate-500">Уже сработало</p>
+						}
+						<form method="post" action={ fmt.Sprintf("/automations/%d/delete", rule.Id) }>
+							<button class="text-sm text-red-600" type="submit">Удалить и отменить ожидающие уведомления</button>
+						</form>
+					</div>
+				}
+			</section>
+			<section class="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+				<h2 class="font-medium">{ resources.AutomationNew }</h2>
+				<form method="get" action="/automations" class="flex gap-2">
+					<label>Дата Notes <input name="date" value={ d.Date } placeholder="12-Nov-2026" required class="rounded border px-2 py-1"/></label>
+					<button type="submit" class="rounded bg-slate-900 px-3 py-1 text-white">Выбрать</button>
+				</form>
+				if d.Selected != nil {
+					<form method="post" action="/automations" class="space-y-3">
+						<input type="hidden" name="date" value={ d.Date }/>
+						<input type="hidden" name="task_id" value={ d.Selected.ID }/>
+						<input type="hidden" name="request_id" value={ d.RequestID }/>
+						<p class="font-medium">{ d.Selected.Text }</p>
+						<label class="block">
+							Когда задача
+							<select name="status" class="rounded border px-2 py-1">
+								<option value="2">Выполнена</option><option value="3">Отклонена</option><option value="1">Возвращена к выполнению</option>
+							</select>
+						</label>
+						<label class="block">Уведомление <input name="text" maxlength="500" required class="w-full rounded border px-2 py-1"/></label>
+						<label class="block">Через сколько минут (0 — сразу) <input type="number" name="minutes" min="0" max="43200" value="0" required class="rounded border px-2 py-1"/></label>
+						<label class="block"><input type="checkbox" name="repeat" value="yes"/> При каждом таком изменении</label>
+						<p class="text-sm text-slate-500">Правило ждёт следующее изменение. Текущее состояние задачи не запускает уведомление.</p>
+						<button type="submit" class="rounded bg-slate-900 px-3 py-2 text-white">Сохранить правило</button>
+					</form>
+				} else {
+					for _, task := range d.Tasks {
+						<form method="post" action="/automations/track" class="flex items-center justify-between gap-3 border-t py-2">
+							<input type="hidden" name="date" value={ d.Date }/>
+							<input type="hidden" name="index" value={ strconv.Itoa(task.Index) }/>
+							<input type="hidden" name="expected" value={ task.Text }/>
+							<span>{ task.Text }</span><button type="submit" class="text-sm underline">Настроить</button>
+						</form>
+					}
+					if len(d.Tasks)==0 {
+						<p>{ resources.AutomationNoTasks }</p>
+					}
+				}
+			</section>
+			<section class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
+				<h2 class="font-medium">{ resources.AutomationHistory }</h2>
+				for _, line := range d.Executions {
+					<p class="text-sm">{ line }</p>
+				}
+				if len(d.Executions)==0 {
+					<p>{ resources.AutomationNoHistory }</p>
+				}
+			</section>
+		</div>
+	}
+}

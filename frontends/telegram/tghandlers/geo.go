@@ -12,6 +12,7 @@ import (
 	"github.com/mymmrac/telego"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
 	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
@@ -241,24 +242,11 @@ func (a *App) deliverGeo(ctx context.Context, b *telego.Bot) (bool, error) {
 	if d.ExpiresAt == nil {
 		return true, status.Error(codes.Internal, "delivery expiry missing")
 	}
-	expiry := d.ExpiresAt.AsTime()
-	deadline := time.Now().Add(20 * time.Second)
-	if expiry.Before(deadline) {
-		deadline = expiry
-	}
-	sendErr := context.DeadlineExceeded
-	if expiry.After(time.Now()) {
-		sendCtx, done := context.WithDeadline(ctx, deadline)
-		sendErr = sendText(sendCtx, b, a.Cfg.RootID, tgfmt.Escape(resources.GeoNotification(d.Title, d.PlaceName, d.Transition)), nil, false)
-		done()
-	}
-	ackCtx, ackCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer ackCancel()
-	_, err = a.Geo.CompleteDelivery(ackCtx, &pb.CompleteDeliveryRequest{UserId: a.Cfg.RootID, DeliveryId: d.Id, LeaseToken: d.LeaseToken, Success: sendErr == nil})
-	if err != nil {
-		return true, err
-	}
-	return true, sendErr
+
+	return true, a.sendLeasedNotification(ctx, b, tgfmt.Escape(resources.GeoNotification(d.Title, d.PlaceName, d.Transition)), d.ExpiresAt.AsTime(), func(ctx context.Context, success bool) error {
+		_, err := a.Geo.CompleteDelivery(ctx, &pb.CompleteDeliveryRequest{UserId: a.Cfg.RootID, DeliveryId: d.Id, LeaseToken: d.LeaseToken, Success: success})
+		return err
+	})
 }
 
 func (a *App) RunGeoDeliveries(ctx context.Context, b *telego.Bot) {

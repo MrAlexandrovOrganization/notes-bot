@@ -37,13 +37,13 @@
     {
       "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location-blacklist.json",
-      "destination": "notes-bot/location-blacklist.json",
+      "destination": "Location/location-blacklist.json",
       "location": "central"
     },
     {
       "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location.json",
-      "destination": "notes-bot/location.json",
+      "destination": "Location/location.json",
       "location": "central"
     },
     {
@@ -75,6 +75,12 @@
       "file": "monitoring/grafana-dashboards/web.json",
       "destination": "notes-bot/web.json",
       "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/location-zones.json",
+      "destination": "Location/location-zones.json",
+      "location": "central"
     }
   ],
   "retire": [
@@ -83,6 +89,23 @@
       "destination": "notes-bot.yml",
       "sha256": [
         "e0994681e9da73c6787ff1c54b5eb0fed7d165d310097ba9a5ed8616d7c9546f"
+      ],
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "destination": "notes-bot/location.json",
+      "sha256": [
+        "20782e7a055dddc4d972ad102b431d34bb9d99829b497a194343485a9a312029",
+        "85b1519c2108d054bf5ea4e739b5dd42f67b6f59bdf91df9754a2507bd48877a"
+      ],
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "destination": "notes-bot/location-blacklist.json",
+      "sha256": [
+        "100cf73bb13b63b37301e8b4b04656eb36e9bbf68fd74049e8703bebaf13d69e"
       ],
       "location": "central"
     }

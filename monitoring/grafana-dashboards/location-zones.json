@@ -1,0 +1,1158 @@
+{
+  "uid": "location-zones",
+  "title": "Location · зоны и радиусы",
+  "tags": [
+    "location",
+    "geofence",
+    "notes-bot"
+  ],
+  "description": "Настроенные через Notes геозоны, реальные границы в метрах и последняя пригодная GPS-точка. Только чтение существующей базы Location.",
+  "editable": true,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Все дашборды локации",
+      "type": "dashboards",
+      "tags": [
+        "location"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "place",
+        "label": "Место из бота",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "eftexe5xy5hxca"
+        },
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "options": [],
+        "current": {},
+        "hide": 0,
+        "skipUrlSync": false,
+        "query": "SELECT name AS __text, id::text AS __value\nFROM public.geo_places\nWHERE enabled\nORDER BY name, id;",
+        "definition": "SELECT name AS __text, id::text AS __value\nFROM public.geo_places\nWHERE enabled\nORDER BY name, id;"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Как читать карту",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Выберите место сверху — список берётся из зон, добавленных в боте. **Синяя окружность** — радиус зоны в метрах; **оранжевая** — порог выхода с запасом max(50 м, 25% радиуса). **Фиолетовая точка** — центр; **зелёная** — последняя пригодная Android GPS-точка (смотрите её возраст).\n\nВход: расстояние + погрешность ≤ радиуса. Выход: расстояние − погрешность ≥ оранжевого порога. Нужны повторные измерения в течение времени подтверждения; положение у границы может быть неопределённым. Карта показывает текущие настройки, обновление — каждые 30 секунд."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Радиус зоны",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (\n    SELECT recorded_at, latitude, longitude, accuracy\n    FROM public.locations\n    WHERE source = 'android' AND NOT hidden AND quality_reason = ''\n      AND accuracy > 0 AND accuracy <= 100\n    ORDER BY recorded_at DESC, id DESC\n    LIMIT 1\n), measured AS (\n    SELECT p.*, s.state, s.candidate, s.candidate_since, s.last_observed_at,\n           l.recorded_at, l.accuracy AS accuracy_m,\n           extract(epoch FROM now()-l.recorded_at) AS age_seconds,\n           CASE WHEN l.recorded_at IS NOT NULL THEN\n             12742000.0 * asin(sqrt(least(1.0, greatest(0.0,\n               power(sin(radians(l.latitude-p.latitude)/2),2)\n               + cos(radians(p.latitude))*cos(radians(l.latitude))\n                 * power(sin(radians(l.longitude-p.longitude)/2),2)\n           )))) END AS distance_m\n    FROM public.geo_places p\n    LEFT JOIN public.geo_states s ON s.place_id = p.id\n    LEFT JOIN latest l ON true\n    WHERE p.enabled AND p.id::text = ${place:sqlstring}\n)\nSELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,\n       confirmation_seconds, distance_m, accuracy_m, age_seconds,\n       recorded_at, last_observed_at,\n       CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN state = 'inside' THEN 'Внутри'\n            WHEN state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       CASE WHEN recorded_at IS NULL THEN 'Нет пригодной GPS-точки'\n            WHEN age_seconds > 180 THEN 'GPS-точка устарела'\n            WHEN age_seconds < -30 THEN 'GPS-точка из будущего'\n            WHEN distance_m + accuracy_m <= radius_m THEN 'Достоверно внутри'\n            WHEN distance_m - accuracy_m >= radius_m + greatest(50.0,radius_m*0.25)\n                THEN 'Достоверно снаружи'\n            ELSE 'Неопределённая граница' END AS latest_position,\n       CASE candidate WHEN 'inside' THEN 'Ожидается подтверждение входа'\n                      WHEN 'outside' THEN 'Ожидается подтверждение выхода'\n                      ELSE 'Нет' END AS pending_transition,\n       candidate_since\nFROM measured;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "lengthm"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "radius_m",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Подтверждённое состояние",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (\n    SELECT recorded_at, latitude, longitude, accuracy\n    FROM public.locations\n    WHERE source = 'android' AND NOT hidden AND quality_reason = ''\n      AND accuracy > 0 AND accuracy <= 100\n    ORDER BY recorded_at DESC, id DESC\n    LIMIT 1\n), measured AS (\n    SELECT p.*, s.state, s.candidate, s.candidate_since, s.last_observed_at,\n           l.recorded_at, l.accuracy AS accuracy_m,\n           extract(epoch FROM now()-l.recorded_at) AS age_seconds,\n           CASE WHEN l.recorded_at IS NOT NULL THEN\n             12742000.0 * asin(sqrt(least(1.0, greatest(0.0,\n               power(sin(radians(l.latitude-p.latitude)/2),2)\n               + cos(radians(p.latitude))*cos(radians(l.latitude))\n                 * power(sin(radians(l.longitude-p.longitude)/2),2)\n           )))) END AS distance_m\n    FROM public.geo_places p\n    LEFT JOIN public.geo_states s ON s.place_id = p.id\n    LEFT JOIN latest l ON true\n    WHERE p.enabled AND p.id::text = ${place:sqlstring}\n)\nSELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,\n       confirmation_seconds, distance_m, accuracy_m, age_seconds,\n       recorded_at, last_observed_at,\n       CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN state = 'inside' THEN 'Внутри'\n            WHEN state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       CASE WHEN recorded_at IS NULL THEN 'Нет пригодной GPS-точки'\n            WHEN age_seconds > 180 THEN 'GPS-точка устарела'\n            WHEN age_seconds < -30 THEN 'GPS-точка из будущего'\n            WHEN distance_m + accuracy_m <= radius_m THEN 'Достоверно внутри'\n            WHEN distance_m - accuracy_m >= radius_m + greatest(50.0,radius_m*0.25)\n                THEN 'Достоверно снаружи'\n            ELSE 'Неопределённая граница' END AS latest_position,\n       CASE candidate WHEN 'inside' THEN 'Ожидается подтверждение входа'\n                      WHEN 'outside' THEN 'Ожидается подтверждение выхода'\n                      ELSE 'Нет' END AS pending_transition,\n       candidate_since\nFROM measured;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "confirmed_state",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Расстояние от GPS-точки до центра",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (\n    SELECT recorded_at, latitude, longitude, accuracy\n    FROM public.locations\n    WHERE source = 'android' AND NOT hidden AND quality_reason = ''\n      AND accuracy > 0 AND accuracy <= 100\n    ORDER BY recorded_at DESC, id DESC\n    LIMIT 1\n), measured AS (\n    SELECT p.*, s.state, s.candidate, s.candidate_since, s.last_observed_at,\n           l.recorded_at, l.accuracy AS accuracy_m,\n           extract(epoch FROM now()-l.recorded_at) AS age_seconds,\n           CASE WHEN l.recorded_at IS NOT NULL THEN\n             12742000.0 * asin(sqrt(least(1.0, greatest(0.0,\n               power(sin(radians(l.latitude-p.latitude)/2),2)\n               + cos(radians(p.latitude))*cos(radians(l.latitude))\n                 * power(sin(radians(l.longitude-p.longitude)/2),2)\n           )))) END AS distance_m\n    FROM public.geo_places p\n    LEFT JOIN public.geo_states s ON s.place_id = p.id\n    LEFT JOIN latest l ON true\n    WHERE p.enabled AND p.id::text = ${place:sqlstring}\n)\nSELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,\n       confirmation_seconds, distance_m, accuracy_m, age_seconds,\n       recorded_at, last_observed_at,\n       CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN state = 'inside' THEN 'Внутри'\n            WHEN state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       CASE WHEN recorded_at IS NULL THEN 'Нет пригодной GPS-точки'\n            WHEN age_seconds > 180 THEN 'GPS-точка устарела'\n            WHEN age_seconds < -30 THEN 'GPS-точка из будущего'\n            WHEN distance_m + accuracy_m <= radius_m THEN 'Достоверно внутри'\n            WHEN distance_m - accuracy_m >= radius_m + greatest(50.0,radius_m*0.25)\n                THEN 'Достоверно снаружи'\n            ELSE 'Неопределённая граница' END AS latest_position,\n       CASE candidate WHEN 'inside' THEN 'Ожидается подтверждение входа'\n                      WHEN 'outside' THEN 'Ожидается подтверждение выхода'\n                      ELSE 'Нет' END AS pending_transition,\n       candidate_since\nFROM measured;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "lengthm"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "distance_m",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Возраст пригодной GPS-точки",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (\n    SELECT recorded_at, latitude, longitude, accuracy\n    FROM public.locations\n    WHERE source = 'android' AND NOT hidden AND quality_reason = ''\n      AND accuracy > 0 AND accuracy <= 100\n    ORDER BY recorded_at DESC, id DESC\n    LIMIT 1\n), measured AS (\n    SELECT p.*, s.state, s.candidate, s.candidate_since, s.last_observed_at,\n           l.recorded_at, l.accuracy AS accuracy_m,\n           extract(epoch FROM now()-l.recorded_at) AS age_seconds,\n           CASE WHEN l.recorded_at IS NOT NULL THEN\n             12742000.0 * asin(sqrt(least(1.0, greatest(0.0,\n               power(sin(radians(l.latitude-p.latitude)/2),2)\n               + cos(radians(p.latitude))*cos(radians(l.latitude))\n                 * power(sin(radians(l.longitude-p.longitude)/2),2)\n           )))) END AS distance_m\n    FROM public.geo_places p\n    LEFT JOIN public.geo_states s ON s.place_id = p.id\n    LEFT JOIN latest l ON true\n    WHERE p.enabled AND p.id::text = ${place:sqlstring}\n)\nSELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,\n       confirmation_seconds, distance_m, accuracy_m, age_seconds,\n       recorded_at, last_observed_at,\n       CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN state = 'inside' THEN 'Внутри'\n            WHEN state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       CASE WHEN recorded_at IS NULL THEN 'Нет пригодной GPS-точки'\n            WHEN age_seconds > 180 THEN 'GPS-точка устарела'\n            WHEN age_seconds < -30 THEN 'GPS-точка из будущего'\n            WHEN distance_m + accuracy_m <= radius_m THEN 'Достоверно внутри'\n            WHEN distance_m - accuracy_m >= radius_m + greatest(50.0,radius_m*0.25)\n                THEN 'Достоверно снаружи'\n            ELSE 'Неопределённая граница' END AS latest_position,\n       CASE candidate WHEN 'inside' THEN 'Ожидается подтверждение входа'\n                      WHEN 'outside' THEN 'Ожидается подтверждение выхода'\n                      ELSE 'Нет' END AS pending_transition,\n       candidate_since\nFROM measured;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "age_seconds",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "geomap",
+      "title": "$place · граница зоны и позиция",
+      "description": "Границы построены по сферической модели Location (радиус Земли 6371000 м), 360 сегментов. Масштаб автоматически подбирается по порогу выхода выбранной зоны. Если GPS-точка далеко, отдалите карту; точное расстояние показано выше. Радиус не зависит от масштаба и не является размером маркера.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Spherical destination points: same Earth radius as the Location detector.\n-- A closed 360-segment ring, in metres rather than screen pixels.\nWITH place AS (\n    SELECT name, latitude, longitude, radius_m,\n           radians(latitude) AS lat, radians(longitude) AS lon,\n           radius_m / 6371000.0 AS delta\n    FROM public.geo_places\n    WHERE enabled AND id::text = ${place:sqlstring}\n), points AS (\n    SELECT p.*, step, radians(step::double precision) AS bearing\n    FROM place p CROSS JOIN generate_series(0, 360) AS step\n), destinations AS (\n    SELECT *, asin(least(1.0, greatest(-1.0,\n        sin(lat)*cos(delta) + cos(lat)*sin(delta)*cos(bearing)\n    ))) AS dest_lat\n    FROM points\n)\nSELECT name, radius_m, degrees(dest_lat) AS latitude,\n       degrees(lon + atan2(sin(bearing)*sin(delta)*cos(lat),\n                          cos(delta)-sin(lat)*sin(dest_lat))) AS longitude\nFROM destinations\nORDER BY step;"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Outside is confirmed beyond radius + max(50 m, 25% radius), plus GPS accuracy.\nWITH place AS (\n    SELECT name, radius_m + greatest(50.0, radius_m*0.25) AS exit_radius_m,\n           radians(latitude) AS lat, radians(longitude) AS lon,\n           (radius_m + greatest(50.0, radius_m*0.25)) / 6371000.0 AS delta\n    FROM public.geo_places\n    WHERE enabled AND id::text = ${place:sqlstring}\n), points AS (\n    SELECT p.*, step, radians(step::double precision) AS bearing\n    FROM place p CROSS JOIN generate_series(0, 360) AS step\n), destinations AS (\n    SELECT *, asin(least(1.0, greatest(-1.0,\n        sin(lat)*cos(delta) + cos(lat)*sin(delta)*cos(bearing)\n    ))) AS dest_lat\n    FROM points\n)\nSELECT name, exit_radius_m, degrees(dest_lat) AS latitude,\n       degrees(lon + atan2(sin(bearing)*sin(delta)*cos(lat),\n                          cos(delta)-sin(lat)*sin(dest_lat))) AS longitude\nFROM destinations\nORDER BY step;"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name, latitude, longitude, radius_m, confirmation_seconds\nFROM public.geo_places\nWHERE enabled AND id::text = ${place:sqlstring};"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT recorded_at, latitude, longitude, accuracy AS accuracy_m,\n       extract(epoch FROM now()-recorded_at) AS age_seconds\nFROM public.locations\nWHERE source = 'android' AND NOT hidden AND quality_reason = ''\n  AND accuracy > 0 AND accuracy <= 100\nORDER BY recorded_at DESC, id DESC\nLIMIT 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "basemap": {
+          "type": "osm-standard",
+          "name": "OpenStreetMap",
+          "config": {}
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "view": {
+          "id": "fit",
+          "allLayers": false,
+          "layer": "Порог выхода",
+          "padding": 20,
+          "maxZoom": 18,
+          "lat": 0,
+          "lon": 0,
+          "zoom": 18
+        },
+        "tooltip": {
+          "mode": "details"
+        },
+        "layers": [
+          {
+            "type": "route",
+            "name": "Порог выхода",
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 2,
+                  "min": 2,
+                  "max": 2
+                },
+                "lineWidth": 3
+              },
+              "arrow": 0
+            }
+          },
+          {
+            "type": "route",
+            "name": "Граница зоны",
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "blue"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 3,
+                  "min": 3,
+                  "max": 3
+                },
+                "lineWidth": 3
+              },
+              "arrow": 0
+            }
+          },
+          {
+            "type": "markers",
+            "name": "Центр зоны",
+            "filterData": {
+              "id": "byRefId",
+              "options": "C"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "purple"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 8,
+                  "min": 8,
+                  "max": 8
+                },
+                "lineWidth": 3,
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "text": {
+                  "field": "name",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "textConfig": {
+                  "fontSize": 12,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              },
+              "showLegend": false
+            }
+          },
+          {
+            "type": "markers",
+            "name": "Последняя пригодная GPS-точка",
+            "filterData": {
+              "id": "byRefId",
+              "options": "D"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "green"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 10,
+                  "min": 10,
+                  "max": 10
+                },
+                "lineWidth": 3,
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                }
+              },
+              "showLegend": false
+            }
+          }
+        ]
+      },
+      "pluginVersion": "12.0.0"
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Выбранная зона · состояние и точность",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest AS (\n    SELECT recorded_at, latitude, longitude, accuracy\n    FROM public.locations\n    WHERE source = 'android' AND NOT hidden AND quality_reason = ''\n      AND accuracy > 0 AND accuracy <= 100\n    ORDER BY recorded_at DESC, id DESC\n    LIMIT 1\n), measured AS (\n    SELECT p.*, s.state, s.candidate, s.candidate_since, s.last_observed_at,\n           l.recorded_at, l.accuracy AS accuracy_m,\n           extract(epoch FROM now()-l.recorded_at) AS age_seconds,\n           CASE WHEN l.recorded_at IS NOT NULL THEN\n             12742000.0 * asin(sqrt(least(1.0, greatest(0.0,\n               power(sin(radians(l.latitude-p.latitude)/2),2)\n               + cos(radians(p.latitude))*cos(radians(l.latitude))\n                 * power(sin(radians(l.longitude-p.longitude)/2),2)\n           )))) END AS distance_m\n    FROM public.geo_places p\n    LEFT JOIN public.geo_states s ON s.place_id = p.id\n    LEFT JOIN latest l ON true\n    WHERE p.enabled AND p.id::text = ${place:sqlstring}\n)\nSELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,\n       confirmation_seconds, distance_m, accuracy_m, age_seconds,\n       recorded_at, last_observed_at,\n       CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN state = 'inside' THEN 'Внутри'\n            WHEN state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       CASE WHEN recorded_at IS NULL THEN 'Нет пригодной GPS-точки'\n            WHEN age_seconds > 180 THEN 'GPS-точка устарела'\n            WHEN age_seconds < -30 THEN 'GPS-точка из будущего'\n            WHEN distance_m + accuracy_m <= radius_m THEN 'Достоверно внутри'\n            WHEN distance_m - accuracy_m >= radius_m + greatest(50.0,radius_m*0.25)\n                THEN 'Достоверно снаружи'\n            ELSE 'Неопределённая граница' END AS latest_position,\n       CASE candidate WHEN 'inside' THEN 'Ожидается подтверждение входа'\n                      WHEN 'outside' THEN 'Ожидается подтверждение выхода'\n                      ELSE 'Нет' END AS pending_transition,\n       candidate_since\nFROM measured;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Место"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус зоны"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "exit_radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Порог выхода"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "confirmation_seconds"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Подтверждение"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "distance_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "До центра"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "accuracy_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Погрешность GPS"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "age_seconds"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Возраст GPS-точки"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "recorded_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "GPS измерен"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last_observed_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Последняя оценка детектора"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "confirmed_state"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Подтверждённое состояние"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latest_position"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Оценка по GPS-точке"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pending_transition"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Ожидаемый переход"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "candidate_since"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Начало подтверждения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID места"
+              },
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "pluginVersion": "12.0.0"
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Все включённые зоны · нажмите название для выбора",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT p.id::text, p.name, p.radius_m,\n       p.radius_m + greatest(50.0,p.radius_m*0.25) AS exit_radius_m,\n       p.confirmation_seconds, p.latitude, p.longitude,\n       CASE WHEN s.last_observed_at IS NULL OR s.last_observed_at < now()-interval '5 minutes'\n                THEN 'Нет свежего подтверждения'\n            WHEN s.state = 'inside' THEN 'Внутри'\n            WHEN s.state = 'outside' THEN 'Снаружи'\n            ELSE 'Не определено' END AS confirmed_state,\n       s.last_observed_at\nFROM public.geo_places p\nLEFT JOIN public.geo_states s ON s.place_id = p.id\nWHERE p.enabled\nORDER BY p.name, p.id;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Место"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Показать границу этой зоны",
+                    "url": "/d/location-zones?var-place=${__data.fields.id}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус зоны"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "exit_radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Порог выхода"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "confirmation_seconds"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Подтверждение"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "distance_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "До центра"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "accuracy_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Погрешность GPS"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "age_seconds"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Возраст GPS-точки"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "recorded_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "GPS измерен"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last_observed_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Последняя оценка детектора"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "confirmed_state"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Подтверждённое состояние"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latest_position"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Оценка по GPS-точке"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pending_transition"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Ожидаемый переход"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "candidate_since"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Начало подтверждения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID места"
+              },
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "pluginVersion": "12.0.0"
+    }
+  ]
+}

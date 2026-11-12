@@ -210,6 +210,10 @@ func main() {
 		VoiceJobs:     voiceStore,
 	}
 
+	if os.Getenv("AUTOMATIONS_ENABLED") == "true" {
+		app.Automations = notifClient.Automations()
+	}
+
 	// Telegram bot
 	httpClient := &http.Client{
 		Transport: telegramTracingTransport{
@@ -237,6 +241,7 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Go(func() { app.RunVoiceJobs(ctx, tgBot) })
 	wg.Go(func() { app.RunGeoDeliveries(ctx, tgBot) })
+	wg.Go(func() { app.RunAutomationDeliveries(ctx, tgBot) })
 	wg.Go(func() {
 		bot.RunKafkaConsumer(ctx, cfg.KafkaBootstrapServers, app.MakeReminderHandler(tgBot), logger)
 	})

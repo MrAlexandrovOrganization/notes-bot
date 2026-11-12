@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -14,11 +15,15 @@ import (
 	"go.uber.org/zap"
 
 	"notes-bot/internal/applog"
+	"notes-bot/internal/automationevents"
+	"notes-bot/internal/automations"
 	"notes-bot/internal/georeminders"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	"notes-bot/notifications"
+	apb "notes-bot/proto/automation/v1"
 	geopb "notes-bot/proto/georeminders/v1"
+	notespb "notes-bot/proto/notes"
 	pb "notes-bot/proto/notifications"
 )
 
@@ -62,6 +67,20 @@ func main() {
 		logger.Fatal("failed to connect to postgres", zap.Error(err))
 	}
 	defer pool.Close()
+	autoEnabled, err := automationevents.Enabled()
+	if err != nil {
+		logger.Fatal("invalid automations configuration")
+	}
+	autoStore := &automations.Store{Pool: pool}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-automations" {
+		migrationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := autoStore.Migrate(migrationCtx); err != nil {
+			logger.Fatal("automation migration failed")
+		}
+		return
+	}
+
 	geoConfig, err := georeminders.LoadConfig()
 	if err != nil {
 		logger.Fatal("invalid geofence configuration")
@@ -110,6 +129,32 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer(logger)
+	autoDone := make(chan struct{})
+	if autoEnabled {
+		owner, err := strconv.ParseInt(os.Getenv("ROOT_ID"), 10, 64)
+		if err != nil || owner <= 0 {
+			logger.Fatal("automations require positive ROOT_ID")
+		}
+		if err := autoStore.Check(ctx); err != nil {
+			logger.Fatal("automation schema unavailable; run make migrate-automations")
+		}
+		if err := autoStore.RegisterMetrics(); err != nil {
+			logger.Warn("automation metrics unavailable")
+		}
+		conn, err := grpcutil.Dial(cfg.CoreGRPCHost, cfg.CoreGRPCPort)
+		if err != nil {
+			logger.Fatal("automation Core connection unavailable")
+		}
+		defer conn.Close()
+		autoServer := &automations.Server{Store: autoStore, Owner: owner, Core: notespb.NewNotesServiceClient(conn), Events: apb.NewCoreEventsServiceClient(conn)}
+		apb.RegisterAutomationsServiceServer(grpcServer, autoServer)
+		go func() {
+			defer close(autoDone)
+			autoServer.Run(ctx, func() { logger.Warn("automation event processing failed; retry retained") })
+		}()
+	} else {
+		close(autoDone)
+	}
 	geoDone := make(chan struct{})
 	if geoConfig.Address != "" {
 		if err := geoStore.Check(ctx); err != nil {
@@ -162,4 +207,5 @@ func main() {
 	// its resources before the deferred pool.Close() runs.
 	<-schedulerDone
 	<-geoDone
+	<-autoDone
 }

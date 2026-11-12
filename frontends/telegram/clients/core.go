@@ -14,6 +14,7 @@ import (
 )
 
 type Task struct {
+	ID         string
 	Text       string
 	State      pb.TaskState
 	Completed  bool // Deprecated: use State instead
@@ -98,6 +99,7 @@ func (c *CoreClient) GetTasks(ctx context.Context, date string) ([]*Task, error)
 	for i, t := range resp.Tasks {
 		tasks[i] = &Task{
 			Text:       t.Text,
+			ID:         t.Id,
 			State:      t.State,
 			Completed:  t.State == pb.TaskState_TASK_STATE_COMPLETED,
 			Index:      int(t.Index),
@@ -210,4 +212,13 @@ func (c *CoreClient) GetNoteByPath(ctx context.Context, relpath string) (string,
 		return "", err
 	}
 	return resp.Content, nil
+}
+
+func (c *CoreClient) TrackTask(ctx context.Context, date string, index int, expected string) (*Task, error) {
+	out, err := c.stub.TrackTask(ctx, &pb.TrackTaskRequest{Date: date, TaskIndex: int32(index), ExpectedText: expected})
+	if err != nil {
+		return nil, err
+	}
+	t := out.Task
+	return &Task{ID: t.Id, Text: t.Text, State: t.State, Completed: t.State == pb.TaskState_TASK_STATE_COMPLETED, Index: int(t.Index), LineNumber: int(t.LineNumber)}, nil
 }

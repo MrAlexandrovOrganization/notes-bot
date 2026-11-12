@@ -5,6 +5,7 @@ import (
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
+
 	"notes-bot/frontends/telegram/resources"
 )
 
@@ -38,6 +39,9 @@ func MainMenu(_ string) telego.InlineKeyboardMarkup {
 		tu.InlineKeyboardRow(
 			tu.InlineKeyboardButton("🔔 Уведомления").WithCallbackData("menu:notifications"),
 			tu.InlineKeyboardButton(resources.GeoMenu).WithCallbackData("geo:list:0"),
+		),
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(resources.AutomationMenu).WithCallbackData("automation:list:0"),
 		),
 		tu.InlineKeyboardRow(
 			tu.InlineKeyboardButton("✨ Понять и сделать").WithCallbackData("menu:smart"),

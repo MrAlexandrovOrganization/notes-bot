@@ -3,11 +3,13 @@ package features
 import (
 	"context"
 	"fmt"
-	"notes-bot/internal/telemetry"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+
+	"notes-bot/internal/taskidentity"
+	"notes-bot/internal/telemetry"
 )
 
 type TaskState int
@@ -19,10 +21,13 @@ const (
 )
 
 type Task struct {
-	Text       string
-	State      TaskState
-	Index      int
-	LineNumber int
+	ID          string
+	Revision    uint64
+	LastEventID string
+	Text        string
+	State       TaskState
+	Index       int
+	LineNumber  int
 }
 
 func (t Task) Completed() bool {
@@ -59,6 +64,8 @@ func ParseTasks(ctx context.Context, content string) []Task {
 
 	for i, line := range lines {
 		stripped := strings.TrimSpace(line)
+		id, revision, eventID := taskidentity.TaskIdentity(stripped)
+		stripped = taskidentity.StripTaskIdentity(stripped)
 
 		taskText := ""
 		var state TaskState
@@ -85,7 +92,8 @@ func ParseTasks(ctx context.Context, content string) []Task {
 		}
 
 		tasks = append(tasks, Task{
-			Text:       taskText,
+			Text: taskText,
+			ID:   id, Revision: revision, LastEventID: eventID,
 			State:      state,
 			Index:      taskIndex,
 			LineNumber: lineOffset + i,
@@ -117,6 +125,8 @@ func SetTaskStatusContent(ctx context.Context, content string, taskIndex int, ne
 	}
 
 	line := lines[lineIdx]
+	id, revision, eventID := taskidentity.TaskIdentity(line)
+	line = taskidentity.StripTaskIdentity(line)
 
 	var newLine string
 	switch newState {
@@ -171,6 +181,9 @@ func SetTaskStatusContent(ctx context.Context, content string, taskIndex int, ne
 		return "", fmt.Errorf("invalid task state: %d", newState)
 	}
 
+	if id != "" {
+		newLine = taskidentity.WithTaskIdentity(newLine, id, revision, eventID)
+	}
 	lines[lineIdx] = newLine
 	return strings.Join(lines, "\n"), nil
 }

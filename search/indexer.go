@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"notes-bot/internal/applog"
+	"notes-bot/internal/taskidentity"
 	"notes-bot/internal/telemetry"
 )
 
@@ -279,7 +280,8 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, exist
 	if err != nil {
 		return fmt.Errorf("read: %w", err)
 	}
-	hash := sha256Hash(data)
+	visible := taskidentity.Visible(string(data))
+	hash := sha256Hash([]byte(visible))
 
 	if !force && existing != nil && bytesEqual(existing.ContentHash, hash) {
 		// Same content, only metadata drifted.
@@ -291,7 +293,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, exist
 	}
 
 	name := strings.TrimSuffix(filepath.Base(relpath), filepath.Ext(relpath))
-	doc := ParseDocument(string(data), name)
+	doc := ParseDocument(visible, name)
 	full := NoteFull{
 		NoteRow: NoteRow{
 			Relpath:     relpath,
@@ -300,7 +302,7 @@ func (ix *Indexer) syncFile(ctx context.Context, fullPath, relpath string, exist
 			Size:        info.Size(),
 			ContentHash: hash,
 		},
-		Content:  string(data),
+		Content:  visible,
 		Body:     doc.Body,
 		Metadata: doc.Metadata,
 	}

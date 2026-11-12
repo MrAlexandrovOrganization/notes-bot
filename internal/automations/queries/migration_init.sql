@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS automation_migrations(name TEXT PRIMARY KEY,applied_at TIMESTAMPTZ NOT NULL DEFAULT now())

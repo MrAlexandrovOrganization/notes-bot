@@ -1,0 +1,131 @@
+syntax = "proto3";
+package automation.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "notes-bot/proto/automation/v1;automationv1";
+
+// Core's durable outbox. Acknowledge only after recording effects downstream.
+service CoreEventsService {
+  rpc ReadEvents(ReadEventsRequest) returns (ReadEventsResponse);
+  rpc AckEvent(AckEventRequest) returns (AckEventResponse);
+}
+service AutomationsService {
+  rpc CreateRule(CreateRuleRequest) returns (CreateRuleResponse);
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+  rpc DeleteRule(DeleteRuleRequest) returns (DeleteRuleResponse);
+  rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse);
+  rpc ClaimDelivery(ClaimDeliveryRequest) returns (ClaimDeliveryResponse);
+  rpc CompleteDelivery(CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
+}
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING = 1;
+  TASK_STATUS_COMPLETED = 2;
+  TASK_STATUS_REJECTED = 3;
+}
+message TaskStatusChanged {
+  string date = 1;
+  string task_id = 2;
+  string title = 3;
+  TaskStatus before = 4;
+  TaskStatus after = 5;
+  uint64 revision = 6;
+}
+
+// The source owns the meaning of each versioned event type and stable subject.
+message Event {
+  string id = 1;
+  string source = 2;
+  string type = 3;
+  string subject = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  string traceparent = 6;
+  string tracestate = 7;
+  oneof data {
+    TaskStatusChanged task_status_changed = 8;
+  }
+}
+message ReadEventsRequest {
+  int32 limit = 1;
+}
+message ReadEventsResponse {
+  repeated Event events = 1;
+}
+message AckEventRequest {
+  Event event = 1;
+}
+message AckEventResponse {}
+message TaskTrigger {
+  string date = 1;
+  string task_id = 2;
+  TaskStatus target_status = 3;
+}
+message NotifyAction {
+  string text = 1;
+}
+message Rule {
+  int64 id = 1;
+  oneof trigger {
+    TaskTrigger task_status = 2;
+  }
+  oneof action {
+    NotifyAction notify = 3;
+  }
+  int32 delay_seconds = 4;
+  bool repeat = 5;
+  bool armed = 6;
+  string task_title = 7;
+}
+message CreateRuleRequest {
+  int64 user_id = 1;
+  string request_id = 2;
+  Rule rule = 3;
+}
+message CreateRuleResponse {
+  Rule rule = 1;
+}
+message ListRulesRequest {
+  int64 user_id = 1;
+}
+message ListRulesResponse {
+  repeated Rule rules = 1;
+}
+message DeleteRuleRequest {
+  int64 user_id = 1;
+  int64 rule_id = 2;
+}
+message DeleteRuleResponse {}
+message Execution {
+  int64 id = 1;
+  int64 rule_id = 2;
+  string status = 3;
+  int32 attempts = 4;
+  google.protobuf.Timestamp due_at = 5;
+  string task_title = 6;
+}
+message ListExecutionsRequest {
+  int64 user_id = 1;
+}
+message ListExecutionsResponse {
+  repeated Execution executions = 1;
+}
+message Delivery {
+  int64 id = 1;
+  string lease_token = 2;
+  string text = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+message ClaimDeliveryRequest {
+  int64 user_id = 1;
+}
+message ClaimDeliveryResponse {
+  Delivery delivery = 1;
+}
+message CompleteDeliveryRequest {
+  int64 user_id = 1;
+  int64 delivery_id = 2;
+  string lease_token = 3;
+  bool success = 4;
+}
+message CompleteDeliveryResponse {}

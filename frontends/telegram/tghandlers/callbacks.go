@@ -26,16 +26,17 @@ import (
 )
 
 var callbackActionHandlers = map[string]func(*App, context.Context, *telego.Bot, *telego.CallbackQuery, int64, []string) error{
-	"geo":      (*App).handleGeoAction,
-	"menu":     (*App).handleMenuAction,
-	"task":     (*App).handleTaskAction,
-	"cal":      (*App).handleCalAction,
-	"reminder": (*App).handleReminderAction,
-	"note":     (*App).handleNoteAction,
-	"voice":    (*App).handleVoiceAction,
-	"smart":    (*App).handleSmartAction,
-	"find":     (*App).handleFindAction,
-	"browse":   (*App).handleBrowseAction,
+	"automation": (*App).handleAutomationAction,
+	"geo":        (*App).handleGeoAction,
+	"menu":       (*App).handleMenuAction,
+	"task":       (*App).handleTaskAction,
+	"cal":        (*App).handleCalAction,
+	"reminder":   (*App).handleReminderAction,
+	"note":       (*App).handleNoteAction,
+	"voice":      (*App).handleVoiceAction,
+	"smart":      (*App).handleSmartAction,
+	"find":       (*App).handleFindAction,
+	"browse":     (*App).handleBrowseAction,
 }
 
 func (a *App) HandleCallback(ctx context.Context, tgBot *telego.Bot, update *telego.Update) {

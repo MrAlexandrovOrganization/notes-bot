@@ -74,3 +74,8 @@ var _ CoreService = (*CoreClient)(nil)
 var _ NotificationsService = (*NotificationsClient)(nil)
 var _ WhisperService = (*WhisperClient)(nil)
 var _ SearchService = (*SearchClient)(nil)
+
+// TrackedTaskService binds automation rules to a stable identity under Core's note lock.
+type TrackedTaskService interface {
+	TrackTask(context.Context, string, int, string) (*Task, error)
+}

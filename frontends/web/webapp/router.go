@@ -21,6 +21,7 @@ func (a *App) NewRouter() http.Handler {
 	protected.HandleFunc("GET /logout", a.handleLogout)
 
 	a.registerDayRoutes(protected)
+	a.registerAutomationRoutes(protected)
 	a.registerCalendarRoutes(protected)
 	a.registerReminderRoutes(protected)
 	a.registerSearchRoutes(protected)
