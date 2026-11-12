@@ -119,7 +119,8 @@
           "legendFormat": "{{name}} · {{instance}}",
           "range": true,
           "refId": "A",
-          "useBackend": false
+          "useBackend": false,
+          "interval": "60s"
         }
       ],
       "title": "CPU quota utilization",
@@ -341,7 +342,7 @@
           "editorMode": "code",
           "expr": "sum by (instance, name) (rate(container_cpu_usage_seconds_total{instance=~\"$host\",name=~\"$container\",name!=\"\"}[$__rate_interval]))",
           "hide": false,
-          "interval": "",
+          "interval": "60s",
           "legendFormat": "{{name}} · {{instance}}",
           "range": true,
           "refId": "A"

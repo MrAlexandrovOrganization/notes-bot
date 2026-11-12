@@ -1119,7 +1119,8 @@
           "expr": "rate(process_cpu_seconds_total{project=\"notes-bot\",instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{instance}}",
           "range": true,
-          "refId": "A"
+          "refId": "A",
+          "interval": "60s"
         }
       ],
       "title": "CPU usage",
