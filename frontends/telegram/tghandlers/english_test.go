@@ -194,8 +194,8 @@ func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
 	require.NoError(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "grade", e.Nonce, "miss"}))
 	require.Contains(t, api.markups[len(api.markups)-1], "english:grade:"+e.Nonce+":miss")
 	englishAction(t, app, bot, q, "grade", e.Nonce, "miss")
-	require.Len(t, state.value.English.Queue, 5)
-	require.Equal(t, e.Current.Id, state.value.English.Queue[3])
+	require.Len(t, state.value.English.Queue, 4)
+	require.Equal(t, []string{e.Current.Id}, state.value.English.ReviewMissed)
 	englishAction(t, app, bot, q, "grade", e.Nonce, "easy")
 	require.Equal(t, 2, client.grades)
 	englishAction(t, app, bot, q, "next", e.Nonce)
@@ -218,7 +218,7 @@ func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
 		}
 	}
 	require.NoDirExists(t, filepath.Join(client.server.Vault, "Daily"))
-	require.Empty(t, englishRetryQueue(nil, "forgotten")) // A single card is due soon, no forced immediate loop.
+	require.NotContains(t, state.value.English.Queue, e.Current.Id)
 }
 func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 	for _, kind := range []string{"word", "phrase"} {

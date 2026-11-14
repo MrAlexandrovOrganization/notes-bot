@@ -144,6 +144,9 @@ type EnglishContext struct {
 	Draft              *pb.Card `json:"draft,omitempty"`
 	Question           string   `json:"question"`
 	Queue              []string `json:"queue,omitempty"`
+	ReviewSeen         []string `json:"review_seen,omitempty"`
+	ReviewMissed       []string `json:"review_missed,omitempty"`
+	ReviewTotal        int      `json:"review_total,omitempty"`
 	Current            *pb.Card `json:"current,omitempty"`
 	Revealed           bool     `json:"revealed"`
 	Graded             bool     `json:"graded"`

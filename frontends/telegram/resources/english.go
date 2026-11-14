@@ -27,7 +27,7 @@ const (
 	EnglishExplanationLabel = "Оборот: "
 	EnglishExampleLabel     = "Пример: "
 	EnglishContextLabel     = "Контекст: "
-	EnglishReviewHelp       = "Вспомни про себя или произнеси вслух, затем покажи ответ и оцени себя. Вводить ответ не нужно. Другие правильные формулировки допустимы; оценивай вспоминание выбранного материала."
+	EnglishReviewHelp       = "Вспомни про себя или произнеси вслух, затем покажи ответ и оцени себя. Вводить ответ не нужно. За один проход каждая карточка показывается один раз. В конце можно отдельно повторить забытые. Другие правильные формулировки допустимы; оценивай вспоминание выбранного материала."
 	EnglishReviewNoInput    = "В этом режиме достаточно кнопок: «Показать ответ» и самооценка. Для текста или голоса выбери «Добавить слово» или «Как выразить мысль»."
 	EnglishWords            = "Слова"
 	EnglishPhrases          = "Фразы"
@@ -81,3 +81,17 @@ const EnglishGradeFailure = "⏳ Не удалось подтвердить оц
 const EnglishPreparing = "⏳ Готовлю вариант. При первом запуске модель может загружаться несколько минут."
 
 const EnglishPhraseSourcePrompt = "Пришли саму русскую мысль отдельно, до 600 символов. Английскую попытку можно добавить с новой строки после «Мой вариант:». Этот ввод заменит предыдущий черновик."
+
+func EnglishPassPosition(current, total int) string {
+	return fmt.Sprintf("Карточка %d из %d", current, total)
+}
+func EnglishRepeatMissed(count int) string {
+	return fmt.Sprintf("Повторить забытые (%d)", count)
+}
+func EnglishPassFinished(seen, missed int) string {
+	text := fmt.Sprintf("✅ Проход завершён.\n\nПросмотрено разных карточек: %d.\nНе вспомнили: %d.", seen, missed)
+	if missed > 0 {
+		text += "\n\nЗабытые карточки можно повторить отдельным проходом."
+	}
+	return text
+}

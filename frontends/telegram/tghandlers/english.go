@@ -9,8 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mymmrac/telego"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"notes-bot/frontends/telegram/clients"
 	r "notes-bot/frontends/telegram/resources"
@@ -18,7 +16,6 @@ import (
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/englishtutor"
-	"notes-bot/internal/timeutil"
 	pb "notes-bot/proto/english/v1"
 )
 
@@ -235,9 +232,13 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 				e.Queue = append(e.Queue, c.Id)
 			}
 		}
+		e.ReviewTotal = len(e.Queue)
 		return a.nextEnglishCard(ctx, b, q, user, e)
 	}
 	if len(parts) < 3 || parts[2] != e.Nonce || e.Nonce == "" || !englishState(uc.State) {
+		if uc.State == tgstates.StateEnglishReview {
+			return nil
+		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishStale), tgkeyboards.EnglishBack())
 	}
 	if uc.State == tgstates.StateEnglishReview {
@@ -287,131 +288,6 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 			path = "Tags/English/phrases.md"
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(fmt.Sprintf(r.EnglishSaved, path, e.Date)), tgkeyboards.EnglishBack())
-	}
-	return nil
-}
-
-func (a *App) englishReviewMenu(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64) error {
-	cards, err := a.English.ListCards(ctx, &pb.ListCardsRequest{})
-	if err != nil {
-		return err
-	}
-	words, phrases, forgotten := 0, 0, 0
-	for _, c := range cards.Cards {
-		if c.Lapses >= 2 {
-			forgotten++
-		}
-		if c.NextAt <= time.Now().Unix() {
-			if c.Kind == "word" {
-				words++
-			} else {
-				phrases++
-			}
-		}
-	}
-	if err = a.setEnglish(ctx, user, tgstates.StateEnglishMenu, tgstates.EnglishContext{}); err != nil {
-		return err
-	}
-	return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishCounts(words, phrases, len(cards.Cards), forgotten)), tgkeyboards.EnglishReviewKinds())
-}
-func (a *App) nextEnglishCard(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext) error {
-	latest, err := a.English.ListCards(ctx, &pb.ListCardsRequest{})
-	if err != nil {
-		return err
-	}
-	byID := map[string]*pb.Card{}
-	for _, c := range latest.Cards {
-		byID[c.Id] = c
-	}
-	e.Current = nil
-	for len(e.Queue) > 0 {
-		id := e.Queue[0]
-		e.Queue = e.Queue[1:]
-		if c := byID[id]; c != nil {
-			e.Current = c
-			break
-		}
-	}
-	e.Nonce = englishNonce()
-	e.Revealed = false
-	e.Graded = false
-	if err = a.setEnglish(ctx, user, tgstates.StateEnglishReview, e); err != nil {
-		return err
-	}
-	if e.Current == nil {
-		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishEmpty), tgkeyboards.EnglishBack())
-	}
-	return replyToCallback(ctx, b, q, englishFront(e.Current), tgkeyboards.EnglishCard(e.Nonce, false, false))
-}
-func englishFront(c *pb.Card) tgfmt.HTML {
-	date := r.EnglishUndated
-	if c.Date != "" {
-		date = "[[" + c.Date + "]]"
-	}
-	return tgfmt.Join(tgfmt.Escape(r.EnglishReviewFront), tgfmt.Blockquote(tgfmt.Escape(c.Source)), tgfmt.Escape("\n\n"+date))
-}
-func englishRetryQueue(queue []string, id string) []string {
-	if len(queue) == 0 {
-		return queue
-	}
-	index := min(3, len(queue))
-	result := append([]string(nil), queue[:index]...)
-	result = append(result, id)
-	return append(result, queue[index:]...)
-}
-func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext, parts []string) error {
-	c := e.Current
-	if c == nil {
-		return nil
-	}
-	switch parts[1] {
-	case "skip":
-		if !e.Graded {
-			return a.nextEnglishCard(ctx, b, q, user, e)
-		}
-	case "next":
-		if e.Graded {
-			return a.nextEnglishCard(ctx, b, q, user, e)
-		}
-	case "hint":
-		if e.Revealed || e.Graded {
-			return nil
-		}
-		first := []rune(c.English)
-		if len(first) == 0 {
-			return nil
-		}
-		return replyToCallback(ctx, b, q, tgfmt.Join(englishFront(c), tgfmt.Escape("\n\n"+r.EnglishHintLabel+string(first[:1])+"…")), tgkeyboards.EnglishCard(e.Nonce, false, false))
-	case "show":
-		if e.Graded {
-			return nil
-		}
-		e.Revealed = true
-		if err := a.setEnglish(ctx, user, tgstates.StateEnglishReview, e); err != nil {
-			return err
-		}
-		return replyToCallback(ctx, b, q, englishAnswerText(c), tgkeyboards.EnglishCard(e.Nonce, true, false))
-	case "grade":
-		if !e.Revealed || e.Graded || len(parts) != 4 {
-			return nil
-		}
-		result, err := a.English.GradeCard(ctx, &pb.GradeCardRequest{Id: c.Id, Revision: c.Revision, Grade: parts[3]})
-		if status.Code(err) == codes.FailedPrecondition || status.Code(err) == codes.NotFound {
-			return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishStale), tgkeyboards.EnglishBack())
-		}
-		if err != nil {
-			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishGradeFailure+"\n\n"), englishAnswerText(c)), tgkeyboards.EnglishCard(e.Nonce, true, false))
-		}
-		e.Current = result.Card
-		e.Graded = true
-		if parts[3] == "miss" {
-			e.Queue = englishRetryQueue(e.Queue, c.Id)
-		}
-		if err = a.setEnglish(ctx, user, tgstates.StateEnglishReview, e); err != nil {
-			return err
-		}
-		next := time.Unix(result.Card.NextAt, 0).In(timeutil.FixedZone(a.Cfg.TimezoneOffsetHours)).Format("02-Jan-2006 15:04")
-		return replyToCallback(ctx, b, q, tgfmt.Escape(fmt.Sprintf(r.EnglishReviewSaved, next, result.Card.Streak, r.EnglishInterval(result.Card.IntervalSeconds), result.Card.Lapses)), tgkeyboards.EnglishCard(e.Nonce, true, true))
 	}
 	return nil
 }

@@ -50,3 +50,12 @@ func EnglishCard(nonce string, revealed, graded bool) *telego.InlineKeyboardMark
 	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishFinish).WithCallbackData("english:menu")))
 	return tu.InlineKeyboard(rows...)
 }
+
+func EnglishReviewComplete(nonce string, missed int) *telego.InlineKeyboardMarkup {
+	rows := [][]telego.InlineKeyboardButton{}
+	if missed > 0 {
+		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishRepeatMissed(missed)).WithCallbackData("english:missed:"+nonce)))
+	}
+	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishFinish).WithCallbackData("english:menu")))
+	return tu.InlineKeyboard(rows...)
+}
