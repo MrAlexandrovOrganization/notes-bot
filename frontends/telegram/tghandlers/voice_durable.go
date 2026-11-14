@@ -136,7 +136,11 @@ func (a *App) RunVoiceJobs(ctx context.Context, b *telego.Bot) {
 			wait = 10 * time.Second
 		}
 		if j != nil {
-			stepCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
+			stepTimeout := 180 * time.Second
+			if strings.HasPrefix(j.Mode, "english:") && j.ResultReady && j.Acked {
+				stepTimeout = 5 * time.Minute
+			}
+			stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
 			stepCtx = otel.GetTextMapPropagator().Extract(stepCtx, propagation.MapCarrier{"traceparent": j.Traceparent, "tracestate": j.Tracestate})
 			stepCtx, span := otel.Tracer("telegram").Start(stepCtx, "voice.resume")
 			done, delay, stepErr := a.voiceStep(stepCtx, b, j)
@@ -285,6 +289,9 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 		return true, 0, a.showDurableVoicePage(ctx, b, j, 0)
 	}
 	if len(j.Prepared) == 0 {
+		if strings.HasPrefix(j.Mode, "english:") {
+			a.updateDurableVoiceStatus(ctx, b, j, resources.EnglishPreparing)
+		}
 		prepared, err := a.prepareVoiceIntent(ctx, j)
 		if err != nil {
 			return false, retry, err

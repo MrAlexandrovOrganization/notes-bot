@@ -85,6 +85,7 @@ func englishLLMDraft(c *pb.Card) *clients.EnglishDraft {
 	return &clients.EnglishDraft{Source: c.Source, English: c.English, Explanation: c.Explanation, Example: c.Example, Context: c.Context}
 }
 func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int64, e tgstates.EnglishContext) error {
+	_ = a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishPreparing), tgkeyboards.EnglishBack())
 	prepared, err := a.prepareEnglishDraft(ctx, e)
 	if err != nil {
 		return a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishFailure), tgkeyboards.EnglishPreview(e.Nonce, false))

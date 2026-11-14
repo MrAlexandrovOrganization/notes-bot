@@ -36,7 +36,7 @@ func (s *TutorServer) Prepare(ctx context.Context, req *pb.PrepareRequest) (*pb.
 	default:
 		return nil, status.Error(codes.ResourceExhausted, "learning model busy")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	var previous *englishtutor.Draft
 	if c := req.Previous; c != nil {
