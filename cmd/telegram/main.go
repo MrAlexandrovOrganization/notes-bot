@@ -253,6 +253,7 @@ func main() {
 	} else {
 		runPolling(ctx, tgBot, app, &wg, logger)
 	}
+	app.WaitEnglishGenerations()
 }
 
 func newTelegramBot(cfg *config.Config, client *http.Client, log *zap.Logger) (*telego.Bot, error) {

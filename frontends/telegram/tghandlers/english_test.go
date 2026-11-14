@@ -96,10 +96,12 @@ func englishFlowFixture(t *testing.T) (*App, *englishFlowClient, *englishFlowLLM
 func englishAction(t *testing.T, a *App, b *telego.Bot, q *telego.CallbackQuery, parts ...string) {
 	t.Helper()
 	require.NoError(t, a.handleEnglishAction(t.Context(), b, q, 42, append([]string{"english"}, parts...)))
+	a.WaitEnglishGenerations()
 }
 func englishText(t *testing.T, a *App, b *telego.Bot, text string) {
 	t.Helper()
 	a.HandleTextMessage(t.Context(), b, &telego.Update{Message: &telego.Message{MessageID: 99, From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Text: text}})
+	a.WaitEnglishGenerations()
 }
 func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	app, client, llm, api, bot, state, q := englishFlowFixture(t)

@@ -34,6 +34,9 @@ type App struct {
 	Logger        *zap.Logger
 	VoiceJobs     voicejobs.Repository
 
+	englishJobs sync.Map // map[int64]*englishGeneration
+	englishWG   sync.WaitGroup
+
 	// voiceCancels stores cancel functions for in-progress transcription jobs.
 	// Key: jobID (string), Value: context.CancelFunc.
 	voiceCancels sync.Map
@@ -57,6 +60,10 @@ type App struct {
 	// either wrote its changes.
 	userMu sync.Map // map[int64]*sync.Mutex
 }
+
+// WaitEnglishGenerations drains background work after update handlers stop.
+// Callers must stop starting new generations before waiting.
+func (a *App) WaitEnglishGenerations() { a.englishWG.Wait() }
 
 // LockUser acquires the per-user handler mutex and returns the unlock func.
 // Exported: cmd/telegram serializes whole-update handling with it.

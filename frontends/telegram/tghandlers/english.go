@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mymmrac/telego"
+	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
 	r "notes-bot/frontends/telegram/resources"
@@ -91,17 +92,61 @@ func englishLLMDraft(c *pb.Card) *clients.EnglishDraft {
 	}
 	return &clients.EnglishDraft{Source: c.Source, English: c.English, Explanation: c.Explanation, Example: c.Example, Context: c.Context}
 }
+
+type englishGeneration struct{ cancel context.CancelFunc }
+
+// The caller holds LockUser. Only publishing the result needs that lock again;
+// the slow model request must leave navigation and other updates available.
 func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int64, e tgstates.EnglishContext) error {
-	_ = a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishPreparing), tgkeyboards.EnglishBack())
-	prepared, err := a.prepareEnglishDraft(ctx, e)
-	if err != nil {
-		return a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishFailure), tgkeyboards.EnglishPreview(e.Nonce, false))
-	}
-	e = prepared
-	if err = a.setEnglish(ctx, user, tgstates.StateEnglishPreview, e); err != nil {
+	if err := a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishPreparing), tgkeyboards.EnglishBack()); err != nil {
 		return err
 	}
-	return a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(e), tgkeyboards.EnglishPreview(e.Nonce, e.Question == ""))
+	uc, err := a.State.GetContext(ctx, user)
+	if err != nil {
+		return err
+	}
+	messageID := uc.LastMessageID
+	modelCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	job := &englishGeneration{cancel: cancel}
+	if previous, loaded := a.englishJobs.Swap(user, job); loaded {
+		previous.(*englishGeneration).cancel()
+	}
+	a.englishWG.Go(func() {
+		defer cancel()
+		defer a.englishJobs.CompareAndDelete(user, job)
+		defer func() {
+			if recover() != nil {
+				a.Logger.Error("panic in english generation")
+			}
+		}()
+		prepared, prepareErr := a.prepareEnglishDraft(modelCtx, e)
+		cancel()
+		unlock := a.LockUser(user)
+		defer unlock()
+		if ctx.Err() != nil {
+			return
+		}
+		current, err := a.State.GetContext(ctx, user)
+		if err != nil {
+			a.Logger.Error("get english generation state", zap.Int64("user_id", user))
+			return
+		}
+		// Leaving the preview, replacing the input, or changing the active
+		// message invalidates this result, including late failures.
+		if current.State != tgstates.StateEnglishPreview || current.English.Nonce != e.Nonce ||
+			current.English.OperationID != e.OperationID || current.LastMessageID != messageID {
+			return
+		}
+		if prepareErr != nil {
+			err = a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishFailure), tgkeyboards.EnglishPreview(e.Nonce, false))
+		} else if err = a.setEnglish(ctx, user, tgstates.StateEnglishPreview, prepared); err == nil {
+			err = a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(prepared), tgkeyboards.EnglishPreview(prepared.Nonce, prepared.Question == ""))
+		}
+		if err != nil {
+			a.Logger.Warn("publish english generation failed", zap.Int64("user_id", user))
+		}
+	})
+	return nil
 }
 func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext) (tgstates.EnglishContext, error) {
 	source := ""
