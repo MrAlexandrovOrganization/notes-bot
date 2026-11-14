@@ -218,6 +218,11 @@ func (s *EnglishServer) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (
 			}
 			for _, stored := range cards {
 				if stored.Id == c.Id {
+					journal, e := s.journal()
+					if e != nil {
+						return nil, englishError(e)
+					}
+					applyEnglishProgress(stored, journal.Cards[stored.Id])
 					return &pb.SaveCardResponse{Card: stored}, nil
 				}
 			}
@@ -258,7 +263,11 @@ func (s *EnglishServer) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (
 	if err = writeFileAtomic(path, []byte(text), perm); err != nil {
 		return nil, englishError(err)
 	}
-	applyEnglishProgress(c, nil)
+	journal, err := s.journal()
+	if err != nil {
+		return nil, englishError(err)
+	}
+	applyEnglishProgress(c, journal.Cards[c.Id])
 	return &pb.SaveCardResponse{Card: c}, nil
 }
 

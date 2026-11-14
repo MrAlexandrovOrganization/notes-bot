@@ -120,5 +120,5 @@ func renderEnglish(c *pb.Card, payloadHash string) string {
 			line += "  " + field[0] + ": " + field[1] + "\n"
 		}
 	}
-	return line
+	return line + "\n"
 }
