@@ -122,7 +122,8 @@ func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	state.value = tgstates.UserContext{}
 	require.NoError(t, json.Unmarshal(raw, &state.value))
 	client.loseSave = true
-	require.Error(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "save", nonce}))
+	require.NoError(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "save", nonce}))
+	require.Contains(t, api.markups[len(api.markups)-1], "english:save:"+nonce)
 	englishAction(t, app, bot, q, "save", nonce)
 	require.Equal(t, tgstates.StateEnglishInput, state.value.State)
 	englishAction(t, app, bot, q, "save", nonce)
@@ -189,7 +190,8 @@ func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
 	englishAction(t, app, bot, q, "show", e.Nonce)
 	require.Contains(t, api.texts[len(api.texts)-1], "gate")
 	client.loseGrade = true
-	require.Error(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "grade", e.Nonce, "miss"}))
+	require.NoError(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "grade", e.Nonce, "miss"}))
+	require.Contains(t, api.markups[len(api.markups)-1], "english:grade:"+e.Nonce+":miss")
 	englishAction(t, app, bot, q, "grade", e.Nonce, "miss")
 	require.Len(t, state.value.English.Queue, 5)
 	require.Equal(t, e.Current.Id, state.value.English.Queue[3])
@@ -296,4 +298,20 @@ func TestEnglishReviewVoiceCannotFallThroughToDiary(t *testing.T) {
 		require.NoError(t, app.AcceptVoice(t.Context(), bot, &telego.Update{Message: &telego.Message{MessageID: 7, From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "synthetic"}}}))
 	}
 	require.Empty(t, app.VoiceJobs.(*durableVoiceRepo).jobs)
+}
+
+func (*englishFlowCore) EnsureNote(context.Context, string) (bool, error) { return true, nil }
+func (*englishFlowCore) GetNote(context.Context, string) (string, error) {
+	return "synthetic daily note", nil
+}
+func (*englishFlowCore) GetRating(context.Context, string) (int, bool, error) { return 0, false, nil }
+func TestEnglishSwitchingToNoteChangesNewVoiceDestination(t *testing.T) {
+	app, _, _, _, bot, state, q := englishFlowFixture(t)
+	englishAction(t, app, bot, q, "start", "word")
+	require.NoError(t, app.handleMenuAction(t.Context(), bot, q, 42, []string{"menu", "note"}))
+	require.Equal(t, tgstates.StateIdle, state.value.State)
+	require.NoError(t, app.AcceptVoice(t.Context(), bot, &telego.Update{Message: &telego.Message{MessageID: 44, Date: time.Now().Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "new daily voice"}}}))
+	job, err := app.VoiceJobs.Find(t.Context(), 42, 44)
+	require.NoError(t, err)
+	require.Equal(t, "note", job.Mode)
 }

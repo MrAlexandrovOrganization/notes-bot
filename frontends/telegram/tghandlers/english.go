@@ -237,7 +237,7 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		_, err = a.English.SaveCard(ctx, &pb.SaveCardRequest{OperationId: e.OperationID, Card: e.Draft})
 		if err != nil {
-			return err
+			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishSaveFailure+"\n\n"), englishPreviewText(e)), tgkeyboards.EnglishPreview(e.Nonce, true))
 		}
 		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: e.Kind}); err != nil {
 			return err
@@ -360,7 +360,7 @@ func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.
 			return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishStale), tgkeyboards.EnglishBack())
 		}
 		if err != nil {
-			return err
+			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishGradeFailure+"\n\n"), englishAnswerText(c)), tgkeyboards.EnglishCard(e.Nonce, true, false))
 		}
 		e.Current = result.Card
 		e.Graded = true

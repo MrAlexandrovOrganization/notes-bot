@@ -74,3 +74,6 @@ func EnglishInterval(seconds int64) string {
 const EnglishTranscriptLabel = "Распознано: "
 
 const EnglishUndated = "Без даты"
+
+const EnglishSaveFailure = "⏳ Не удалось подтвердить сохранение. Нажми «Сохранить» ещё раз: повтор не создаст дубль."
+const EnglishGradeFailure = "⏳ Не удалось подтвердить оценку. Нажми ту же оценку ещё раз: повтор не изменит прогресс дважды."

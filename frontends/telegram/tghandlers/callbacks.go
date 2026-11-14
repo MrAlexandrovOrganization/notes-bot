@@ -145,7 +145,7 @@ func (a *App) handleMenuAction(ctx context.Context, tgBot *telego.Bot, query *te
 		return a.showTasks(ctx, tgBot, query, userID)
 
 	case "note":
-		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = 0 })
+		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.NotePage = 0; u.State = tgstates.StateIdle })
 		return a.showNote(ctx, tgBot, query, userID)
 
 	case "calendar":
