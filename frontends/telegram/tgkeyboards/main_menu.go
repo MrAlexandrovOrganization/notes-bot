@@ -28,6 +28,7 @@ func RatingPrompt(hasRating bool, currentRating int) telego.InlineKeyboardMarkup
 
 func MainMenu(_ string) telego.InlineKeyboardMarkup {
 	return *tu.InlineKeyboard(
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(resources.EnglishMenu).WithCallbackData("english:menu")),
 		tu.InlineKeyboardRow(
 			tu.InlineKeyboardButton("📊 Оценка").WithCallbackData("menu:rating"),
 			tu.InlineKeyboardButton("✅ Задачи").WithCallbackData("menu:tasks"),

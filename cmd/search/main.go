@@ -18,6 +18,7 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
+	englishpb "notes-bot/proto/english/v1"
 	pb "notes-bot/proto/search"
 	"notes-bot/search"
 )
@@ -105,6 +106,11 @@ func main() {
 
 	grpcServer := grpcutil.NewServer(logger)
 	pb.RegisterSearchServiceServer(grpcServer, search.NewSearchServer(pool, cfg, indexer, metrics, embedder, agent))
+	var tutorChat *search.ChatClient
+	if cfg.Features.LLMGeneration {
+		tutorChat = search.NewChatClient(cfg.LLMHost, cfg.LLMPort, cfg.AgentModel)
+	}
+	englishpb.RegisterTutorServiceServer(grpcServer, search.NewTutorServer(tutorChat))
 	grpc_health_v1.RegisterHealthServer(grpcServer, search.NewHealthServer(pool))
 
 	go func() {

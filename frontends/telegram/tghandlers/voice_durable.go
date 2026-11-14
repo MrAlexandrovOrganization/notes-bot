@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,8 +52,20 @@ func (a *App) AcceptVoice(ctx context.Context, b *telego.Bot, update *telego.Upd
 	if err != nil {
 		return err
 	}
+	if uc.State == tgstates.StateEnglishMenu || uc.State == tgstates.StateEnglishReview {
+		return sendText(ctx, b, m.Chat.ID, tgfmt.Escape(resources.EnglishReviewNoInput), tgkeyboards.EnglishMenu(), true)
+	}
 	j := &voicejobs.Job{ID: uuid.NewString(), ChatID: m.Chat.ID, MessageID: m.MessageID, UserID: m.From.ID, ActiveDate: uc.ActiveDate,
 		Mode: "note", SentAt: time.Unix(m.Date, 0).UTC(), TimezoneOffset: a.Cfg.TimezoneOffsetHours, DayStartHour: a.Cfg.DayStartHour}
+	if englishState(uc.State) {
+		j.Mode = "english:" + uc.English.Kind
+		j.ActiveDate = timeutil.TodayDateAt(j.SentAt, j.TimezoneOffset, j.DayStartHour)
+		j.LearningState = string(uc.State)
+		j.LearningContext, err = json.Marshal(uc.English)
+		if err != nil {
+			return err
+		}
+	}
 	if uc.State == tgstates.StateAppendToNoteInput {
 		if uc.ActiveRelpath == "" {
 			uiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -102,6 +115,9 @@ func (a *App) AcceptVoice(ctx context.Context, b *telego.Bot, update *telego.Upd
 	// input is durable, a UI failure must not reject it or delay transcription.
 	menuCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	if strings.HasPrefix(j.Mode, "english:") {
+		return sendText(menuCtx, b, j.ChatID, tgfmt.Escape(resources.EnglishVoiceAccepted), tgkeyboards.EnglishBack(), true)
+	}
 	kb := a.getMainMenuKeyboard(menuCtx)
 	if err := sendText(menuCtx, b, j.ChatID, tgfmt.Escape(resources.VoiceContinue), &kb, true); err != nil {
 		a.Logger.Warn("voice acceptance menu unavailable", zap.String("operation_id", j.ID))
@@ -265,6 +281,9 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 		}
 		return true, 0, a.showDurableVoicePage(ctx, b, j, 0)
 	}
+	if strings.HasPrefix(j.Mode, "english:") && !validEnglishInput(j.Text) {
+		return true, 0, a.showDurableVoicePage(ctx, b, j, 0)
+	}
 	if len(j.Prepared) == 0 {
 		prepared, err := a.prepareVoiceIntent(ctx, j)
 		if err != nil {
@@ -274,10 +293,17 @@ func (a *App) voiceStep(ctx context.Context, b *telego.Bot, j *voicejobs.Job) (b
 		return false, 0, a.VoiceJobs.Save(ctx, j)
 	}
 	text := resources.VoiceSmartPreview
+	if strings.HasPrefix(j.Mode, "english:") {
+		text = resources.EnglishVoiceReady
+	}
 	if j.Mode == "reminder" {
 		text = resources.VoiceReminderPreview
 	}
-	kb := tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(resources.VoiceOpen).WithCallbackData("voice:open:" + j.ID)))
+	label := resources.VoiceOpen
+	if strings.HasPrefix(j.Mode, "english:") {
+		label = resources.EnglishVoiceOpen
+	}
+	kb := tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(label).WithCallbackData("voice:open:" + j.ID)))
 	return true, 0, a.editDurableResult(ctx, b, j, tgfmt.Escape(text), kb)
 }
 
@@ -339,6 +365,9 @@ func (a *App) showDurableVoicePage(ctx context.Context, b *telego.Bot, j *voicej
 	if j.Mode != "note" {
 		header = resources.VoiceResult
 	}
+	if strings.HasPrefix(j.Mode, "english:") {
+		header = resources.EnglishVoiceTooLong
+	}
 	destination := tgfmt.Escape("")
 	if j.Mode == "note" && j.ActiveRelpath != "" {
 		destination = tgfmt.Join(tgfmt.Escape(" "), tgfmt.Code(tgfmt.Escape(j.ActiveRelpath)))
@@ -360,6 +389,7 @@ func (a *App) showDurableVoicePage(ctx context.Context, b *telego.Bot, j *voicej
 }
 
 type voicePrepared struct {
+	English  *tgstates.EnglishContext   `json:"english,omitempty"`
 	Intent   *clients.LLMIntentResult   `json:"intent,omitempty"`
 	Reminder *clients.LLMReminderResult `json:"reminder,omitempty"`
 }
@@ -375,6 +405,22 @@ func (a *App) prepareVoiceIntent(ctx context.Context, j *voicejobs.Job) (json.Ra
 	tomorrow := logical.AddDate(0, 0, 1).Format("2006-01-02")
 	after := logical.AddDate(0, 0, 2).Format("2006-01-02")
 	var p voicePrepared
+	if strings.HasPrefix(j.Mode, "english:") {
+		e, err := englishVoiceInput(j)
+		if err != nil {
+			return nil, err
+		}
+		prepared, prepareErr := a.prepareEnglishDraft(ctx, e)
+		if prepareErr != nil {
+			// A model outage must not hide a completed transcript or block the chat's
+			// durable delivery queue. Opening it offers correction and an explicit retry.
+			e.Question = resources.EnglishFailure
+		} else {
+			e = prepared
+		}
+		p.English = &e
+		return json.Marshal(p)
+	}
 	if j.Mode == "smart" {
 		r, err := a.LLM.ClassifyIntent(ctx, j.Text, current)
 		if err != nil {
@@ -407,6 +453,15 @@ func (a *App) openDurableVoice(ctx context.Context, b *telego.Bot, q *telego.Cal
 	if err = json.Unmarshal(j.Prepared, &p); err != nil {
 		return err
 	}
+	if p.English != nil {
+		if !strings.HasPrefix(j.Mode, "english:") {
+			return errors.New("invalid learning destination")
+		}
+		if err = a.setEnglish(ctx, user, tgstates.StateEnglishPreview, *p.English); err != nil {
+			return err
+		}
+		return replyToCallback(ctx, b, q, englishPreviewText(*p.English), tgkeyboards.EnglishPreview(p.English.Nonce, p.English.Question == ""))
+	}
 	err = a.restoreVoiceDraft(ctx, j, p)
 	if err != nil {
 		return err
@@ -423,4 +478,38 @@ func (a *App) openDurableVoice(ctx context.Context, b *telego.Bot, q *telego.Cal
 		return replyToCallback(ctx, b, q, formatNLReminderPreview(p.Reminder), &kb)
 	}
 	return errors.New("missing prepared voice result")
+}
+
+// The durable snapshot, rather than the current Redis mode, determines whether
+// a transcript starts a word/phrase or clarifies the original selected input.
+func englishVoiceInput(j *voicejobs.Job) (tgstates.EnglishContext, error) {
+	var e tgstates.EnglishContext
+	if err := json.Unmarshal(j.LearningContext, &e); err != nil {
+		return e, err
+	}
+	if (e.Kind != "word" && e.Kind != "phrase") || j.Mode != "english:"+e.Kind || !validEnglishInput(j.Text) {
+		return e, errors.New("invalid learning input")
+	}
+	if j.LearningState == string(tgstates.StateEnglishInput) {
+		e = tgstates.EnglishContext{Kind: e.Kind, Input: j.Text, Date: j.ActiveDate}
+	} else if j.LearningState == string(tgstates.StateEnglishPreview) || j.LearningState == string(tgstates.StateEnglishClarify) {
+		if corrected, ok := strings.CutPrefix(j.Text, resources.EnglishCorrection); ok {
+			corrected = strings.TrimSpace(corrected)
+			if validEnglishInput(corrected) {
+				e.Input = corrected
+				e.Instruction = ""
+				e.Draft = nil
+			} else {
+				e.Instruction = j.Text
+			}
+		} else {
+			e.Instruction = j.Text
+		}
+	} else {
+		return e, errors.New("invalid learning state")
+	}
+	e.Transcript = j.Text
+	e.Nonce = englishNonce()
+	e.OperationID = "voice:" + j.ID
+	return e, nil
 }

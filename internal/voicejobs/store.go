@@ -27,6 +27,8 @@ func query(name string) string {
 }
 
 type Job struct {
+	LearningContext json.RawMessage `json:"learning_context,omitempty"`
+	LearningState   string          `json:"learning_state,omitempty"`
 	ID              string          `json:"id"`
 	ChatID          int64           `json:"chat_id"`
 	MessageID       int             `json:"message_id"`

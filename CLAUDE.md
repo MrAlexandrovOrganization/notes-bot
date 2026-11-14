@@ -404,3 +404,20 @@ $NOTES_DIR/
 - `grpc_health_probe` installed at build time (version in `makefiles/versions.mk`)
 - `.dockerignore` excludes `.git`, `docs/`, `notes/`, `third_party/`, test artifacts, env files
 - `compose/docker-compose.base.yml` defines shared logging + resource limits
+
+### English learning
+
+Telegram's main menu has words, thoughts-to-English and self-assessed review;
+see `docs/english.md` for editable dated Markdown formats and scheduling policy.
+`core/english*.go` implements `english.v1.EnglishService`: canonical material is
+parsed from `Tags/English/{words,phrases}.md`; only review history/schedules live
+in the separate atomic `.notes-bot/english-progress.json` journal. Reading does
+not import or rewrite notes. Never introduce another editable material store.
+`search/english.go` implements the separate `TutorService` on the existing remote
+model worker, with no retrieval/vault/DB dependency. Prompts and validation are
+in `internal/englishtutor`; Telegram uses the guarded search gRPC connection,
+not its historical direct Ollama address. Voice jobs persist the learning
+context and destination before acknowledgement; completion does not save to the
+diary. Keep synthetic tests for text, restart/retry, manual edits and stale
+ratings when changing these flows. CI activates the WSL worker before Russia;
+validate the new Tutor RPC through the real route after rollout.

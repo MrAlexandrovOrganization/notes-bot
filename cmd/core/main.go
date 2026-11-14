@@ -15,6 +15,7 @@ import (
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	apb "notes-bot/proto/automation/v1"
+	englishpb "notes-bot/proto/english/v1"
 	pb "notes-bot/proto/notes"
 )
 
@@ -30,7 +31,7 @@ func main() {
 		port = "50051"
 	}
 
-	core.GetConfig(context.Background())
+	cfg := core.GetConfig(context.Background())
 	if automationsEnabled {
 		if err := core.PrepareTaskEvents(context.Background()); err != nil {
 			logger.Fatal("automation outbox unavailable")
@@ -72,6 +73,7 @@ func main() {
 
 	notesServer := core.NewDefaultNotesServer()
 	pb.RegisterNotesServiceServer(grpcServer, notesServer)
+	englishpb.RegisterEnglishServiceServer(grpcServer, &core.EnglishServer{Vault: cfg.NotesDir})
 	apb.RegisterCoreEventsServiceServer(grpcServer, &core.TaskEventsServer{Enabled: automationsEnabled})
 	grpcutil.RegisterHealth(grpcServer)
 

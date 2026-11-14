@@ -182,6 +182,8 @@ check: proto-generate templ proto-check
 	$(MAKE) test test-integration-ci
 
 proto-check: proto-lint proto-breaking
+	buf format --diff --exit-code proto --path proto/english
+	buf build proto -o /dev/null
 
 test-voice-db:
 	@test -n "$(TEST_VOICE_DATABASE_URL)" || { echo 'Set TEST_VOICE_DATABASE_URL to an isolated local PostgreSQL database'; exit 1; }

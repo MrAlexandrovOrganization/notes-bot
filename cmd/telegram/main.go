@@ -198,6 +198,8 @@ func main() {
 
 	app := &tghandlers.App{
 		Geo:           notifClient.Geo(),
+		English:       coreClient.English(),
+		Tutor:         searchClient,
 		Cfg:           cfg,
 		Core:          coreClient,
 		Notifications: notifClient,

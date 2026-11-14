@@ -1,0 +1,62 @@
+syntax = "proto3";
+package english.v1;
+
+option go_package = "notes-bot/proto/english/v1;englishv1";
+
+// Core owns both the editable Markdown material and its separate review journal.
+service EnglishService {
+  rpc SaveCard(SaveCardRequest) returns (SaveCardResponse);
+  rpc ListCards(ListCardsRequest) returns (ListCardsResponse);
+  rpc GradeCard(GradeCardRequest) returns (GradeCardResponse);
+}
+message Card {
+  string id = 1;
+  string kind = 2; // word or phrase
+  string source = 3; // Russian cue
+  string english = 4;
+  string explanation = 5;
+  string example = 6;
+  string context = 7;
+  string date = 8; // Notes logical date, DD-Mmm-YYYY
+  string revision = 9; // material + review version; compare-and-set token
+  int64 next_at = 10;
+  int64 interval_seconds = 11;
+  int32 streak = 12;
+  int32 lapses = 13;
+}
+message SaveCardRequest {
+  string operation_id = 1;
+  Card card = 2;
+}
+message SaveCardResponse {
+  Card card = 1;
+}
+message ListCardsRequest {
+  string kind = 1;
+}
+message ListCardsResponse {
+  repeated Card cards = 1;
+}
+message GradeCardRequest {
+  string id = 1;
+  string revision = 2;
+  string grade = 3; // miss, hard, easy
+}
+message GradeCardResponse {
+  Card card = 1;
+}
+
+// Hosted by the existing remote search/model worker; no retrieval or vault input.
+service TutorService {
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+}
+message PrepareRequest {
+  string kind = 1;
+  string input = 2;
+  string instruction = 3;
+  Card previous = 4;
+}
+message PrepareResponse {
+  Card card = 1;
+  string question = 2;
+}

@@ -13,11 +13,14 @@ import (
 	"notes-bot/internal/timeutil"
 	"notes-bot/internal/voicejobs"
 	apb "notes-bot/proto/automation/v1"
+	englishpb "notes-bot/proto/english/v1"
 	geopb "notes-bot/proto/georeminders/v1"
 )
 
 // App holds shared dependencies for all handlers.
 type App struct {
+	Tutor         clients.EnglishGenerator
+	English       englishpb.EnglishServiceClient
 	Automations   apb.AutomationsServiceClient
 	Geo           geopb.GeoRemindersServiceClient
 	Cfg           *config.Config

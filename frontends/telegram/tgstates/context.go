@@ -1,9 +1,16 @@
 package tgstates
 
+import pb "notes-bot/proto/english/v1"
+
 // UserState represents the current state of a user in the bot workflow.
 type UserState string
 
 const (
+	StateEnglishMenu       UserState = "english_menu"
+	StateEnglishInput      UserState = "english_input"
+	StateEnglishPreview    UserState = "english_preview"
+	StateEnglishClarify    UserState = "english_clarify"
+	StateEnglishReview     UserState = "english_review"
 	StateAutomationTask    UserState = "automation_task"
 	StateAutomationStatus  UserState = "automation_status"
 	StateAutomationText    UserState = "automation_text"
@@ -56,6 +63,7 @@ const (
 
 // UserContext stores all session data for a user.
 type UserContext struct {
+	English                   EnglishContext  `json:"english"`
 	AutomationDraft           AutomationDraft `json:"automation_draft"`
 	GeoDraft                  GeoDraft        `json:"geo_draft"`
 	UserID                    int64           `json:"user_id"`
@@ -121,4 +129,22 @@ type AutomationDraft struct {
 	Text         string             `json:"text"`
 	DelaySeconds int32              `json:"delay_seconds"`
 	Repeat       bool               `json:"repeat"`
+}
+
+// EnglishContext is a resumable UI snapshot; Core rereads canonical Markdown
+// and checks revisions before any rating. No learning progress lives in Redis.
+type EnglishContext struct {
+	Transcript  string   `json:"transcript,omitempty"`
+	Kind        string   `json:"kind"`
+	Input       string   `json:"input"`
+	Date        string   `json:"date"`
+	OperationID string   `json:"operation_id"`
+	Nonce       string   `json:"nonce"`
+	Draft       *pb.Card `json:"draft,omitempty"`
+	Question    string   `json:"question"`
+	Queue       []string `json:"queue,omitempty"`
+	Current     *pb.Card `json:"current,omitempty"`
+	Revealed    bool     `json:"revealed"`
+	Graded      bool     `json:"graded"`
+	Instruction string   `json:"instruction"`
 }
