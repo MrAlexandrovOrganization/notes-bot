@@ -148,6 +148,7 @@ func TestEnglishWordAmbiguityClarificationAndCorrection(t *testing.T) {
 	englishText(t, app, bot, "На дорожном знаке")
 	require.Equal(t, "yield", llm.input)
 	require.Equal(t, "На дорожном знаке", llm.instruction)
+	require.Contains(t, state.value.English.Draft.Context, "yield / На дорожном знаке")
 	englishAction(t, app, bot, q, "clarify", state.value.English.Nonce)
 	englishText(t, app, bot, "Исправление: yield to pedestrians")
 	require.Equal(t, "yield to pedestrians", llm.input)
@@ -224,6 +225,9 @@ func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			app, client, llm, api, bot, state, q := englishFlowFixture(t)
 			englishAction(t, app, bot, q, "start", kind)
+			if kind == "phrase" {
+				app.Whisper.(*durableVoiceWhisper).result.Text = "Я хочу <voice> & помощи"
+			}
 			sent := time.Date(2026, 11, 14, 0, 30, 0, 0, time.UTC)
 			update := &telego.Update{Message: &telego.Message{MessageID: 7, Date: sent.Unix(), From: &telego.User{ID: 42}, Chat: telego.Chat{ID: 42}, Voice: &telego.Voice{FileID: "original"}}}
 			require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
@@ -254,7 +258,11 @@ func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 			require.False(t, job.NoteSaved)
 			require.NoError(t, app.openDurableVoice(t.Context(), bot, q, 42, j.ID))
 			require.Equal(t, kind, state.value.English.Kind)
-			require.Contains(t, api.texts[len(api.texts)-1], "synthetic &lt;voice&gt; &amp; result")
+			if kind == "phrase" {
+				require.Contains(t, api.texts[len(api.texts)-1], "Я хочу &lt;voice&gt; &amp; помощи")
+			} else {
+				require.Contains(t, api.texts[len(api.texts)-1], "synthetic &lt;voice&gt; &amp; result")
+			}
 			englishAction(t, app, bot, q, "save", state.value.English.Nonce)
 			require.NoError(t, app.openDurableVoice(t.Context(), bot, q, 42, j.ID))
 			englishAction(t, app, bot, q, "save", state.value.English.Nonce)
@@ -314,4 +322,25 @@ func TestEnglishSwitchingToNoteChangesNewVoiceDestination(t *testing.T) {
 	job, err := app.VoiceJobs.Find(t.Context(), 42, 44)
 	require.NoError(t, err)
 	require.Equal(t, "note", job.Mode)
+}
+
+func TestEnglishPhraseUsesUserThoughtAndSeparatesAttempt(t *testing.T) {
+	app, _, llm, _, bot, state, q := englishFlowFixture(t)
+	englishAction(t, app, bot, q, "start", "phrase")
+	thought := "Я потратил полчаса, пытаясь это исправить"
+	input := thought + "\nМой вариант: I spend half hour to fix it."
+	englishText(t, app, bot, input)
+	require.Equal(t, input, llm.input)
+	require.Equal(t, thought, state.value.English.Draft.Source)
+	require.NotContains(t, state.value.English.Draft.Source, "I spend")
+	englishAction(t, app, bot, q, "clarify", state.value.English.Nonce)
+	englishText(t, app, bot, "исправление. Я потратил час, пытаясь это исправить")
+	require.Equal(t, "Я потратил час, пытаясь это исправить", state.value.English.Draft.Source)
+	englishAction(t, app, bot, q, "new", state.value.English.Nonce)
+	englishText(t, app, bot, "Я хочу кофе. I want coffee.")
+	require.Equal(t, r.EnglishPhraseSourcePrompt, state.value.English.Question)
+	require.Nil(t, state.value.English.Draft)
+	englishText(t, app, bot, "Я хочу кофе.")
+	require.Empty(t, state.value.English.Question)
+	require.Equal(t, "Я хочу кофе.", state.value.English.Draft.Source)
 }

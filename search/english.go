@@ -27,6 +27,11 @@ func (s *TutorServer) Prepare(ctx context.Context, req *pb.PrepareRequest) (*pb.
 	if req == nil || (req.Kind != "word" && req.Kind != "phrase") || strings.TrimSpace(req.Input) == "" || !utf8.ValidString(req.Input) || len([]rune(req.Input)) > 1000 || len([]rune(req.Instruction)) > 1000 {
 		return nil, status.Error(codes.InvalidArgument, "invalid learning input")
 	}
+	if req.Kind == "phrase" {
+		if _, ok := englishtutor.RussianThought(req.Input); !ok {
+			return nil, status.Error(codes.InvalidArgument, "separate Russian thought required")
+		}
+	}
 	if s.chat == nil {
 		return nil, status.Error(codes.Unavailable, "learning model disabled")
 	}

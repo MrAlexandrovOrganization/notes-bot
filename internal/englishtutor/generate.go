@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
-//go:embed resources/prompt.txt
-var systemPrompt string
+//go:embed resources/phrase.txt
+var phrasePrompt string
+
+//go:embed resources/word.txt
+var wordPrompt string
 
 type Chat func(context.Context, string, string, any, int) (string, error)
 
@@ -27,16 +31,16 @@ type Generator interface {
 	PrepareEnglish(context.Context, string, string, string, *Draft) (*Draft, error)
 }
 
-var englishSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"source": map[string]any{"type": "string"}, "english": map[string]any{"type": "string"},
-		"explanation": map[string]any{"type": "string"}, "example": map[string]any{"type": "string"},
-		"context": map[string]any{"type": "string"}, "question": map[string]any{"type": "string"},
-	},
-	"required":             []string{"source", "english", "explanation", "example", "context", "question"},
-	"additionalProperties": false,
+func draftSchema(fields ...string) map[string]any {
+	properties := map[string]any{}
+	for _, field := range fields {
+		properties[field] = map[string]any{"type": "string"}
+	}
+	return map[string]any{"type": "object", "properties": properties, "required": fields, "additionalProperties": false}
 }
+
+var wordSchema = draftSchema("source", "english", "explanation", "example", "context", "question")
+var phraseSchema = draftSchema("english", "explanation", "example", "context", "question")
 
 func Prepare(ctx context.Context, kind, input, instruction string, previous *Draft, chat Chat) (*Draft, error) {
 	if (kind != "word" && kind != "phrase") || strings.TrimSpace(input) == "" || !utf8.ValidString(input) || !utf8.ValidString(instruction) || len([]rune(input)) > 1000 || len([]rune(instruction)) > 1000 {
@@ -51,10 +55,25 @@ func Prepare(ctx context.Context, kind, input, instruction string, previous *Dra
 	}
 	// Only the selected input and its current preview go to the model. No vault search.
 	payload, _ := json.Marshal(struct {
-		Kind, Input, Instruction string
-		Previous                 *Draft
+		Kind        string `json:"kind"`
+		Input       string `json:"input"`
+		Instruction string `json:"instruction"`
+		Previous    *Draft `json:"previous"`
 	}{kind, input, instruction, previous})
-	content, err := chat(ctx, systemPrompt, string(payload), englishSchema, 700)
+	prompt := phrasePrompt
+	schema := phraseSchema
+	source := ""
+	if kind == "word" {
+		prompt = wordPrompt
+		schema = wordSchema
+	} else {
+		var ok bool
+		source, ok = RussianThought(input)
+		if !ok {
+			return nil, fmt.Errorf("separate Russian thought required")
+		}
+	}
+	content, err := chat(ctx, prompt, string(payload), schema, 700)
 	if err != nil {
 		return nil, err
 	}
@@ -62,14 +81,23 @@ func Prepare(ctx context.Context, kind, input, instruction string, previous *Dra
 	if json.Unmarshal([]byte(content), &result) != nil {
 		return nil, fmt.Errorf("invalid English response")
 	}
+	if kind == "phrase" {
+		result.Source = source
+	}
 	for _, target := range []*string{&result.Source, &result.English, &result.Explanation, &result.Example, &result.Context, &result.Question} {
 		*target = strings.TrimSpace(*target)
 		if len([]rune(*target)) > 600 || strings.ContainsAny(*target, "\r\n\x00") || strings.Contains(*target, "<!--") {
 			return nil, fmt.Errorf("invalid English field")
 		}
 	}
-	if result.Question == "" && (result.Source == "" || result.English == "" || result.Example == "") {
-		return nil, fmt.Errorf("incomplete English response")
+	if result.Question == "" {
+		hasRussianSource := strings.ContainsFunc(result.Source, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) })
+		if !hasRussianSource || result.English == "" || result.Example == "" || kind == "phrase" && result.Explanation == "" {
+			return nil, fmt.Errorf("incomplete English response")
+		}
+		if strings.Contains(strings.ToLower(result.Source), strings.ToLower(result.English)) {
+			return nil, fmt.Errorf("english answer leaked into cue")
+		}
 	}
 	if strings.Contains(result.English, "`") || strings.Contains(result.Source, " → ") {
 		return nil, fmt.Errorf("invalid English delimiters")

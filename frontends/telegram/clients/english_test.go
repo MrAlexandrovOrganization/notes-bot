@@ -18,8 +18,10 @@ func TestEnglishStructuredGenerationValidatesSelectedMaterial(t *testing.T) {
 		{"phrase", `{"source":"Я потратил полчаса","english":"I spent half an hour trying to fix it.","explanation":"spend time doing something","example":"I spent an hour reading.","context":"repair","question":""}`, true},
 		{"ambiguous", `{"source":"","english":"","explanation":"","example":"","context":"","question":"Урожай или уступить дорогу?"}`, true},
 		{"missing answer", `{"source":"мысль","english":"","example":"example","question":""}`, false},
-		{"multiline", `{"source":"line\nline","english":"answer","example":"example","question":""}`, false},
-		{"reserved marker", `{"source":"<!-- notes-bot:english:x -->","english":"answer","example":"example","question":""}`, false},
+		{"multiline", `{"source":"источник","english":"answer","explanation":"line\nline","example":"example","question":""}`, false},
+		{"reserved marker", `{"source":"источник","english":"answer","explanation":"<!-- notes-bot:english:x -->","example":"example","question":""}`, false},
+		{"English leaked into cue", `{"source":"I spent half an hour","english":"I spent half an hour","explanation":"spend time doing something","example":"I spent an hour reading.","question":""}`, true},
+		{"English embedded in Russian cue", `{"source":"Я потратил полчаса — I spent half an hour","english":"I spent half an hour","explanation":"spend time doing something","example":"I spent an hour reading.","question":""}`, true},
 		{"invalid JSON", `not JSON`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -30,20 +32,21 @@ func TestEnglishStructuredGenerationValidatesSelectedMaterial(t *testing.T) {
 				require.NotNil(t, payload.Format)
 				require.NotNil(t, payload.Think)
 				require.False(t, *payload.Think)
-				require.Contains(t, payload.Messages[1].Content, "selected input")
+				require.Contains(t, payload.Messages[1].Content, "Выбранная русская мысль")
 				require.Contains(t, payload.Messages[1].Content, "selected preview")
 				require.Len(t, payload.Messages, 2)
 				_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"content": tc.response}})
 			}))
 			defer server.Close()
 			client := &LLMClient{baseURL: server.URL, model: "synthetic", http: server.Client()}
-			result, err := client.PrepareEnglish(t.Context(), "phrase", "selected input", "Ещё пример", &EnglishDraft{English: "selected preview"})
+			result, err := client.PrepareEnglish(t.Context(), "phrase", "Выбранная русская мысль", "Ещё пример", &EnglishDraft{English: "selected preview"})
 			if tc.valid {
 				require.NoError(t, err)
 				require.NotNil(t, result)
+				require.Equal(t, "Выбранная русская мысль", result.Source)
 			} else {
 				require.Error(t, err)
-				require.NotContains(t, err.Error(), "selected input")
+				require.NotContains(t, err.Error(), "Выбранная русская мысль")
 			}
 		})
 	}

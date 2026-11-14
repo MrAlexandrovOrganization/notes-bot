@@ -17,6 +17,7 @@ import (
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/englishtutor"
 	"notes-bot/internal/timeutil"
 	pb "notes-bot/proto/english/v1"
 )
@@ -56,10 +57,19 @@ func (a *App) englishInput(ctx context.Context, b *telego.Bot, chat, user int64,
 			return err
 		}
 		e = tgstates.EnglishContext{Kind: e.Kind, Input: text, Date: date}
+	} else if e.NeedsRussianSource {
+		e.Input = text
+		if corrected, ok := englishtutor.CorrectedInput(text); ok {
+			e.Input = corrected
+		}
+		e.Draft = nil
+		e.Instruction = ""
+		e.Question = ""
+		e.NeedsRussianSource = false
 	} else {
 		// A correction replaces the transcript instead of forcing the model to keep
 		// a misrecognition as context. Ordinary clarification keeps the selected input.
-		if replacement, ok := strings.CutPrefix(text, r.EnglishCorrection); ok {
+		if replacement, ok := englishtutor.CorrectedInput(text); ok {
 			replacement = strings.TrimSpace(replacement)
 			if !validEnglishInput(replacement) {
 				return sendText(ctx, b, chat, tgfmt.Escape(r.EnglishInvalid), tgkeyboards.EnglishBack(), true)
@@ -97,6 +107,18 @@ func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int
 	return a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(e), tgkeyboards.EnglishPreview(e.Nonce, e.Question == ""))
 }
 func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext) (tgstates.EnglishContext, error) {
+	source := ""
+	if e.Kind == "phrase" {
+		var ok bool
+		source, ok = englishtutor.RussianThought(e.Input)
+		if !ok {
+			e.Question = r.EnglishPhraseSourcePrompt
+			e.NeedsRussianSource = true
+			e.Draft = nil
+			return e, nil
+		}
+	}
+	e.NeedsRussianSource = false
 	generator := a.Tutor
 	if generator == nil {
 		return e, fmt.Errorf("english generation unavailable")
@@ -104,6 +126,23 @@ func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext
 	draft, err := generator.PrepareEnglish(ctx, e.Kind, e.Input, e.Instruction, englishLLMDraft(e.Draft))
 	if err != nil {
 		return e, err
+	}
+	if e.Kind == "phrase" {
+		draft.Source = source
+	} else {
+		// Keep the chosen source text verbatim (apart from whitespace), rather than
+		// trusting a model-generated reconstruction of where the word appeared.
+		selected := strings.Join(strings.Fields(e.Input), " ")
+		context := selected
+		if e.Instruction != "" && e.Instruction != r.EnglishExampleInstruction && e.Instruction != r.EnglishDetailInstruction {
+			clarified := selected + " / " + strings.Join(strings.Fields(e.Instruction), " ")
+			if len([]rune(clarified)) <= 600 {
+				context = clarified
+			}
+		}
+		if len([]rune(context)) <= 600 {
+			draft.Context = context
+		}
 	}
 	if e.Draft != nil && (e.Instruction == r.EnglishExampleInstruction || e.Instruction == r.EnglishDetailInstruction) {
 		draft.Source = e.Draft.Source

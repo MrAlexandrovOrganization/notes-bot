@@ -22,6 +22,7 @@ import (
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/englishtutor"
 	"notes-bot/internal/timeutil"
 	"notes-bot/internal/voicejobs"
 	pb "notes-bot/proto/whisper"
@@ -500,7 +501,16 @@ func englishVoiceInput(j *voicejobs.Job) (tgstates.EnglishContext, error) {
 	if j.LearningState == string(tgstates.StateEnglishInput) {
 		e = tgstates.EnglishContext{Kind: e.Kind, Input: j.Text, Date: j.ActiveDate}
 	} else if j.LearningState == string(tgstates.StateEnglishPreview) || j.LearningState == string(tgstates.StateEnglishClarify) {
-		if corrected, ok := strings.CutPrefix(j.Text, resources.EnglishCorrection); ok {
+		if e.NeedsRussianSource {
+			e.Input = j.Text
+			if corrected, ok := englishtutor.CorrectedInput(j.Text); ok {
+				e.Input = corrected
+			}
+			e.Instruction = ""
+			e.Draft = nil
+			e.Question = ""
+			e.NeedsRussianSource = false
+		} else if corrected, ok := englishtutor.CorrectedInput(j.Text); ok {
 			corrected = strings.TrimSpace(corrected)
 			if validEnglishInput(corrected) {
 				e.Input = corrected

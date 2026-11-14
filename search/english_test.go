@@ -31,7 +31,7 @@ func TestEnglishTutorUsesOnlySelectedInputOverGRPC(t *testing.T) {
 		require.NotNil(t, body.Format)
 		require.False(t, *body.Think)
 		require.Equal(t, "synthetic-model", body.Model)
-		require.Contains(t, body.Messages[1].Content, "selected thought")
+		require.Contains(t, body.Messages[1].Content, "Выбранная мысль")
 		require.NotContains(t, body.Messages[1].Content, "vault")
 		tutorResponse(w)
 	}))
@@ -49,9 +49,10 @@ func TestEnglishTutorUsesOnlySelectedInputOverGRPC(t *testing.T) {
 	client, err := clients.NewSearchClient(host, port)
 	require.NoError(t, err)
 	defer client.Close()
-	result, err := client.PrepareEnglish(t.Context(), "phrase", "selected thought", "", nil)
+	result, err := client.PrepareEnglish(t.Context(), "phrase", "Выбранная мысль", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "I spent half an hour trying to fix it.", result.English)
+	require.Equal(t, "Выбранная мысль", result.Source)
 }
 func TestEnglishTutorLimitsConcurrencyAndHidesUpstreamErrors(t *testing.T) {
 	release := make(chan struct{})
@@ -84,6 +85,8 @@ func TestEnglishTutorLimitsConcurrencyAndHidesUpstreamErrors(t *testing.T) {
 	}
 	_, err = NewTutorServer(nil).Prepare(t.Context(), request)
 	require.Equal(t, codes.Unavailable, status.Code(err))
+	_, err = tutor.Prepare(t.Context(), &pb.PrepareRequest{Kind: "phrase", Input: "I want coffee."})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = tutor.Prepare(t.Context(), &pb.PrepareRequest{Kind: "phrase", Input: strings.Repeat("x", 1001)})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
