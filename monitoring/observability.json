@@ -40,7 +40,8 @@
       "destination": "Location/location-blacklist.json",
       "location": "central",
       "adopt_sha256": [
-        "ec4ba89284d32d4916f1e118685065d82ba3935f7bf0954b27024a0fd3b5c2cd"
+        "ec4ba89284d32d4916f1e118685065d82ba3935f7bf0954b27024a0fd3b5c2cd",
+        "ea7cb565798dad84be19766464714f5952cd90268db11093107d4bde0a62b5cc"
       ]
     },
     {
