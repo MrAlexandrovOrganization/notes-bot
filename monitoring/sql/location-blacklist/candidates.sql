@@ -2,7 +2,8 @@
 WITH eligible AS MATERIALIZED (
     SELECT latitude, longitude, hidden, source, recorded_at
     FROM public.locations
-    WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
+    WHERE $__timeFilter(recorded_at)
+      AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
       AND CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)
         THEN NOT public.location_blacklist_matches(latitude, longitude)
         ELSE true END
