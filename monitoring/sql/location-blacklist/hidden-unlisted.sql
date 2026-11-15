@@ -1,4 +1,4 @@
--- Every hidden location outside enabled exact/radius rules, without proposal thresholds.
+-- Hidden locations with no exact-coordinate blacklist entry and outside enabled radii.
 -- Read-only review: a hidden measurement is not proof of a permanently bad coordinate.
 SELECT l.recorded_at AS "time", l.id, l.latitude, l.longitude, l.accuracy,
        l.source::text AS source, l.provider, l.quality_reason,
@@ -19,5 +19,11 @@ FROM public.locations l
 WHERE l.hidden
   AND $__timeFilter(l.recorded_at)
   AND l.latitude BETWEEN -90 AND 90 AND l.longitude BETWEEN -180 AND 180
+  -- Exact coordinates stay excluded even if the corresponding rule is disabled.
+  AND NOT EXISTS (
+      SELECT FROM public.location_blacklist b
+      WHERE b.latitude = l.latitude AND b.longitude = l.longitude
+  )
+  -- Active radius rules continue to exclude nearby points as well.
   AND NOT public.location_blacklist_matches(l.latitude, l.longitude)
 ORDER BY l.recorded_at DESC, l.id;
