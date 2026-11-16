@@ -143,6 +143,22 @@ def snapshot_vault(root, destination):
     raise BackupError("Vault changed during all snapshot attempts")
 
 
+def snapshot_sync_config(home, destination):
+    """Preserve active notes credentials without collecting unrelated rclone remotes."""
+    legacy = home / ".config/yandex-disk"
+    notes_config = home / ".config/rclone/notes.conf"
+    if notes_config.is_symlink():
+        raise BackupError("Notes rclone configuration must not be a symlink")
+    legacy_auth = (legacy / "config.cfg").is_file() and (legacy / "passwd").is_file()
+    if not legacy_auth and not notes_config.is_file():
+        raise BackupError("Notes synchronization credentials are missing")
+    with tarfile.open(destination, "w:gz", dereference=False) as archive:
+        if legacy.is_dir():
+            archive.add(legacy, arcname="yandex-disk")
+        if notes_config.is_file():
+            archive.add(notes_config, arcname="rclone/notes.conf")
+
+
 def database(service, project="notes-bot"):
     ids = run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=" + project,
                "--filter", f"label=com.docker.compose.service={service}"]).decode().split()
@@ -200,11 +216,7 @@ def source_export(root, home):
         directory = Path(temporary)
         with deployment_lock(home):
             vault = snapshot_vault(home / "Yandex.Disk/notes", directory / "vault.tgz")
-            config = home / ".config/yandex-disk"
-            if not (config / "config.cfg").is_file() or not (config / "passwd").is_file():
-                raise BackupError("Yandex Disk configuration or auth file is missing")
-            with tarfile.open(directory / "yandex-config.tgz", "w:gz", dereference=False) as archive:
-                archive.add(config, arcname="yandex-disk")
+            snapshot_sync_config(home, directory / "yandex-config.tgz")
             shutil.copyfile(project / ".env", directory / "application.env")
             databases = {}
             services = [("postgres", "notifications")]

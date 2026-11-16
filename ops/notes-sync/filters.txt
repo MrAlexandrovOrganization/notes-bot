@@ -1,0 +1,4 @@
+# Git history stays local and in the full ASUS backups; excluded cloud files stay untouched.
+- /.git/**
+- .DS_Store
+- **/*.notes-bot.lock

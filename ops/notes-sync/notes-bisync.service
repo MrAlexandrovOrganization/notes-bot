@@ -1,0 +1,24 @@
+[Unit]
+Description=Bidirectional notes synchronization with Yandex Disk
+Wants=network-online.target
+After=network-online.target yandex-disk.service
+Conflicts=yandex-disk.service
+
+[Service]
+Type=oneshot
+User=maxim
+Group=maxim
+Environment=HOME=/home/maxim
+Environment=RCLONE_CACHE_DIR=/home/maxim/.local/state/notes-bisync/cache
+ExecStart=/usr/bin/python3 /usr/local/lib/notes-sync/notes_sync.py run
+TimeoutStartSec=10min
+TimeoutStopSec=45s
+KillSignal=SIGINT
+UMask=0077
+Nice=10
+MemoryMax=384M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/maxim/Yandex.Disk/notes /home/maxim/.config/rclone /home/maxim/.local/state/notes-bisync /home/maxim/.local/state/notes-bisync-backups

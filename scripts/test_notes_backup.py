@@ -17,6 +17,57 @@ import yandex_disk
 
 
 class NotesBackupTests(unittest.TestCase):
+    def test_sync_credentials_support_either_client_independently(self):
+        for kind in ("legacy", "rclone"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                if kind == "legacy":
+                    path = home / ".config/yandex-disk"
+                    path.mkdir(parents=True)
+                    (path / "config.cfg").write_text("synthetic configuration")
+                    (path / "passwd").write_text("synthetic credential")
+                    expected = "yandex-disk/passwd"
+                else:
+                    path = home / ".config/rclone"
+                    path.mkdir(parents=True)
+                    (path / "notes.conf").write_text("synthetic credential")
+                    expected = "rclone/notes.conf"
+                archive = home / "credentials.tgz"
+                backup.snapshot_sync_config(home, archive)
+                with tarfile.open(archive) as stream:
+                    self.assertIn(expected, stream.getnames())
+
+    def test_sync_credentials_missing_aborts_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(backup.BackupError):
+                backup.snapshot_sync_config(Path(directory), Path(directory) / "credentials.tgz")
+
+    def test_sync_credentials_include_only_notes_rclone_remote(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            legacy = home / ".config/yandex-disk"
+            legacy.mkdir(parents=True)
+            (legacy / "passwd").write_text("synthetic legacy credential")
+            rclone = home / ".config/rclone"
+            rclone.mkdir()
+            (rclone / "notes.conf").write_text("synthetic notes credential")
+            (rclone / "other.conf").write_text("unrelated credential")
+            archive = home / "credentials.tgz"
+            backup.snapshot_sync_config(home, archive)
+            with tarfile.open(archive) as stream:
+                self.assertIn("yandex-disk/passwd", stream.getnames())
+                self.assertIn("rclone/notes.conf", stream.getnames())
+                self.assertNotIn("rclone/other.conf", stream.getnames())
+
+    def test_sync_credentials_refuse_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            (home / ".config/yandex-disk").mkdir(parents=True)
+            (home / ".config/rclone").mkdir()
+            (home / ".config/rclone/notes.conf").symlink_to(home / "elsewhere")
+            with self.assertRaises(backup.BackupError):
+                backup.snapshot_sync_config(home, home / "credentials.tgz")
+
     def test_backup_and_deploy_are_mutually_exclusive(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

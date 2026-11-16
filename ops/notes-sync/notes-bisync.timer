@@ -1,0 +1,11 @@
+[Unit]
+Description=Synchronize notes one minute after the previous run
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+Unit=notes-bisync.service
+
+[Install]
+WantedBy=timers.target
