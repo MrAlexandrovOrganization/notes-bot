@@ -497,7 +497,7 @@ func englishVoiceInput(j *voicejobs.Job) (tgstates.EnglishContext, error) {
 	if err := json.Unmarshal(j.LearningContext, &e); err != nil {
 		return e, err
 	}
-	if (e.Kind != "word" && e.Kind != "phrase") || j.Mode != "english:"+e.Kind || !validEnglishInput(j.Text) {
+	if (e.Kind != englishEntryMode && e.Kind != "word" && e.Kind != "phrase") || j.Mode != "english:"+e.Kind || !validEnglishInput(j.Text) {
 		return e, errors.New("invalid learning input")
 	}
 	if j.LearningState == string(tgstates.StateEnglishInput) {

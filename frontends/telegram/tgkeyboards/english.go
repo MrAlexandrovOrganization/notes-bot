@@ -8,8 +8,7 @@ import (
 
 func EnglishMenu() *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishWord).WithCallbackData("english:start:word")),
-		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishPhrase).WithCallbackData("english:start:phrase")),
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishAdd).WithCallbackData("english:start")),
 		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishReview).WithCallbackData("english:review")),
 		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishBack).WithCallbackData("menu:back")),
 	)
@@ -44,9 +43,9 @@ func EnglishPreview(nonce string, ready, manual bool) *telego.InlineKeyboardMark
 	kb.InlineKeyboard = append(rows, kb.InlineKeyboard...)
 	return kb
 }
-func EnglishReviewKinds() *telego.InlineKeyboardMarkup {
+func EnglishReviewStart() *telego.InlineKeyboardMarkup {
 	kb := EnglishBack()
-	kb.InlineKeyboard = append([][]telego.InlineKeyboardButton{tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishWords).WithCallbackData("english:queue:word"), tu.InlineKeyboardButton(r.EnglishPhrases).WithCallbackData("english:queue:phrase"), tu.InlineKeyboardButton(r.EnglishAll).WithCallbackData("english:queue:all"))}, kb.InlineKeyboard...)
+	kb.InlineKeyboard = append([][]telego.InlineKeyboardButton{tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishStartReview).WithCallbackData("english:queue"))}, kb.InlineKeyboard...)
 	return kb
 }
 func EnglishCard(nonce string, revealed, graded bool) *telego.InlineKeyboardMarkup {

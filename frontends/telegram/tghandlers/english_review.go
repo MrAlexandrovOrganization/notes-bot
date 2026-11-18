@@ -22,23 +22,20 @@ func (a *App) englishReviewMenu(ctx context.Context, b *telego.Bot, q *telego.Ca
 	if err != nil {
 		return err
 	}
-	words, phrases, forgotten := 0, 0, 0
+	due, forgotten := 0, 0
+	now := time.Now().Unix()
 	for _, c := range cards.Cards {
 		if c.Lapses >= 2 {
 			forgotten++
 		}
-		if c.NextAt <= time.Now().Unix() {
-			if c.Kind == "word" {
-				words++
-			} else {
-				phrases++
-			}
+		if c.NextAt <= now {
+			due++
 		}
 	}
 	if err = a.setEnglish(ctx, user, tgstates.StateEnglishMenu, tgstates.EnglishContext{}); err != nil {
 		return err
 	}
-	return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishCounts(words, phrases, len(cards.Cards), forgotten)), tgkeyboards.EnglishReviewKinds())
+	return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishCounts(due, len(cards.Cards), forgotten)), tgkeyboards.EnglishReviewStart())
 }
 
 // Review snapshots hold only queue IDs. A card is shown once per pass, even if

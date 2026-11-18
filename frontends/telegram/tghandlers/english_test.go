@@ -132,7 +132,7 @@ func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	require.Equal(t, tgstates.StateEnglishInput, state.value.State)
 	englishAction(t, app, bot, q, "save", nonce)
 	require.Equal(t, 2, client.saves)
-	data, err := os.ReadFile(filepath.Join(client.server.Vault, "Tags/English/phrases.md"))
+	data, err := os.ReadFile(filepath.Join(client.server.Vault, "Tags/English/words.md"))
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(string(data), "I spent half an hour trying to fix it."))
 	require.Contains(t, string(data), "[[14-Nov-2026]]")
@@ -182,20 +182,21 @@ func TestEnglishModelFailureKeepsInputAndOffersRetry(t *testing.T) {
 
 func TestEnglishManualPairsSaveWithoutModel(t *testing.T) {
 	for _, tc := range []struct {
-		name, kind, russian, english string
-		messages                     []string
+		name, russian, english string
+		messages               []string
 	}{
-		{"English word first", "word", "яблоко", "apple", []string{"apple — яблоко"}},
-		{"Russian word first", "word", "яблоко", "apple", []string{"яблоко\napple"}},
-		{"English phrase first", "phrase", "Я уже в пути", "I'm on my way.", []string{"I'm on my way.\nЯ уже в пути"}},
-		{"Russian phrase first", "phrase", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути — I'm on my way."}},
-		{"Separate English first", "word", "яблоко", "apple", []string{"apple", "яблоко"}},
-		{"Separate Russian first", "phrase", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути", "I'm on my way."}},
+		{"English word first", "яблоко", "apple", []string{"apple — яблоко"}},
+		{"Russian word first", "яблоко", "apple", []string{"яблоко\napple"}},
+		{"English phrase first", "Я уже в пути", "I'm on my way.", []string{"I'm on my way.\nЯ уже в пути"}},
+		{"Russian phrase first", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути — I'm on my way."}},
+		{"Separate English first", "яблоко", "apple", []string{"apple", "яблоко"}},
+		{"Separate Russian first", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути", "I'm on my way."}},
+		{"Three words and one translation", "терпеть", "put up with", []string{"терпеть — put up with"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app, client, llm, api, bot, state, q := englishFlowFixture(t)
 			llm.fail = true
-			englishAction(t, app, bot, q, "start", tc.kind)
+			englishAction(t, app, bot, q, "start")
 			for i, msg := range tc.messages {
 				englishText(t, app, bot, msg)
 				if i+1 < len(tc.messages) {
@@ -215,6 +216,9 @@ func TestEnglishManualPairsSaveWithoutModel(t *testing.T) {
 			require.Equal(t, tc.russian, cards.Cards[0].Source)
 			require.Equal(t, tc.english, cards.Cards[0].English)
 			require.Empty(t, cards.Cards[0].Example)
+			data, err := os.ReadFile(filepath.Join(client.server.Vault, "Tags/English/words.md"))
+			require.NoError(t, err)
+			require.Contains(t, string(data), "- `"+tc.english+"` - "+tc.russian)
 			require.Zero(t, llm.calls)
 		})
 	}
@@ -239,10 +243,12 @@ func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
 	app, client, llm, api, bot, state, q := englishFlowFixture(t)
 	path := filepath.Join(client.server.Vault, "Tags/English")
 	require.NoError(t, os.MkdirAll(path, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(path, "words.md"), []byte("[[10-Oct-2026]]\n- `gate` - выход на посадку\n- `aisle` - проход\n- `layover` - пересадка\n- `yield` - уступить дорогу\n- `boarding` - посадка\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(path, "words.md"), []byte("[[10-Oct-2026]]\n- `gate` - выход на посадку\n- `aisle` - проход\n- `layover` - пересадка\n- `yield` - уступить дорогу\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(path, "phrases.md"), []byte("[[10-Oct-2026]]\n- Мы уже садимся → We're already boarding.\n"), 0644))
 	englishAction(t, app, bot, q, "review")
-	require.Contains(t, api.texts[len(api.texts)-1], "5 (слова: 5, фразы: 0)")
-	englishAction(t, app, bot, q, "queue", "all")
+	require.Contains(t, api.texts[len(api.texts)-1], "Подошло к повторению: 5.")
+	require.NotContains(t, api.markups[len(api.markups)-1], "english:queue:")
+	englishAction(t, app, bot, q, "queue")
 	e := state.value.English
 	require.NotContains(t, api.texts[len(api.texts)-1], "gate")
 	require.Contains(t, api.texts[len(api.texts)-1], "выход на посадку")
@@ -287,7 +293,7 @@ func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 	for _, kind := range []string{"word", "phrase"} {
 		t.Run(kind, func(t *testing.T) {
 			app, client, llm, api, bot, state, q := englishFlowFixture(t)
-			englishAction(t, app, bot, q, "start", kind)
+			englishAction(t, app, bot, q, "start")
 			if kind == "phrase" {
 				app.Whisper.(*durableVoiceWhisper).result.Text = "Я хочу <voice> & помощи"
 			}
@@ -297,7 +303,7 @@ func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 			repo := app.VoiceJobs.(*durableVoiceRepo)
 			j, err := repo.Find(t.Context(), 42, 7)
 			require.NoError(t, err)
-			require.Equal(t, "english:"+kind, j.Mode)
+			require.Equal(t, "english:entry", j.Mode)
 			require.Equal(t, "13-Nov-2026", j.ActiveDate)
 			state.value = tgstates.UserContext{State: tgstates.StateIdle, ActiveDate: "01-Jan-2020"}
 			require.NoError(t, app.AcceptVoice(t.Context(), bot, update))
@@ -316,11 +322,12 @@ func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 			require.True(t, done)
 			require.Contains(t, api.texts[len(api.texts)-1], r.EnglishVoiceReady)
 			require.Equal(t, 1, llm.calls)
+			require.Equal(t, kind, llm.kind)
 			job, err := repo.Get(t.Context(), j.ID, 42)
 			require.NoError(t, err)
 			require.False(t, job.NoteSaved)
 			require.NoError(t, app.openDurableVoice(t.Context(), bot, q, 42, j.ID))
-			require.Equal(t, kind, state.value.English.Kind)
+			require.Equal(t, englishEntryMode, state.value.English.Kind)
 			if kind == "phrase" {
 				require.Contains(t, api.texts[len(api.texts)-1], "Я хочу &lt;voice&gt; &amp; помощи")
 			} else {

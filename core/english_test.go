@@ -198,13 +198,14 @@ func TestEnglishFailureSafetyAndPhraseCreation(t *testing.T) {
 	req.Card.Source = "Я потратил полчаса, пытаясь это исправить"
 	_, err := s.SaveCard(t.Context(), req)
 	require.NoError(t, err)
-	data, err := os.ReadFile(filepath.Join(s.Vault, englishPhrases))
+	data, err := os.ReadFile(filepath.Join(s.Vault, englishWords))
 	require.NoError(t, err)
-	require.Contains(t, string(data), "[[14-Nov-2026]]\n- Я потратил")
+	require.Contains(t, string(data), "[[14-Nov-2026]]\n- `I spent half an hour trying to fix it.` - Я потратил")
+	require.NoFileExists(t, filepath.Join(s.Vault, englishPhrases))
 	list, err := s.ListCards(t.Context(), &pb.ListCardsRequest{})
 	require.NoError(t, err)
 	require.Len(t, list.Cards, 1)
-	require.NoError(t, os.Remove(filepath.Join(s.Vault, englishPhrases)))
+	require.NoError(t, os.Remove(filepath.Join(s.Vault, englishWords)))
 	_, err = s.GradeCard(t.Context(), &pb.GradeCardRequest{Id: list.Cards[0].Id, Revision: list.Cards[0].Revision, Grade: "easy"})
 	require.Equal(t, codes.NotFound, status.Code(err))
 	req.Card.Source = "unsafe\nline"
@@ -216,7 +217,68 @@ func TestEnglishFailureSafetyAndPhraseCreation(t *testing.T) {
 	req.Card.Source = "safe"
 	_, err = s.SaveCard(t.Context(), req)
 	require.Equal(t, codes.Internal, status.Code(err))
-	require.NoFileExists(t, filepath.Join(outside, "English/phrases.md"))
+	require.NoFileExists(t, filepath.Join(outside, "English/words.md"))
+}
+
+func TestEnglishMigrationPreservesMaterialProgressAndSaveRetries(t *testing.T) {
+	s := englishFixture(t)
+	ctx := t.Context()
+	oldSave := englishRequest()
+	oldSave.Card.Kind = "phrase"
+	oldSave.Card.Example, oldSave.Card.Context = "", ""
+	oldSave.Card.English, oldSave.Card.Source = "put up with", "терпеть"
+	oldID := englishHash("english:" + oldSave.OperationId)
+	oldHash := englishHash(englishPayload(oldSave.Card))
+	words := "---\ntags: [english]\n---\n\n[[14-Nov-2026]]\n- `yield` - уступать\n"
+	phrases := "- Нажми клавишу → Press the `Enter` key.\n  Пример: Press `Enter`.\n\n[[14-Nov-2026]]\n" +
+		"- терпеть → put up with <!-- notes-bot:english:" + oldID + ":" + oldHash + " -->\n" +
+		"\n[[15-Nov-2026]]\n- Я в пути → I'm on my way.\n  Пояснение: сообщает, что уже вышел\n"
+	englishWrite(t, s, englishWords, words)
+	englishWrite(t, s, englishPhrases, phrases)
+	oldRetry, err := s.SaveCard(ctx, oldSave)
+	require.NoError(t, err)
+	grade := &pb.GradeCardRequest{Id: oldID, Revision: oldRetry.Card.Revision, Grade: "miss"}
+	graded, err := s.GradeCard(ctx, grade)
+	require.NoError(t, err)
+	before, err := s.ListCards(ctx, &pb.ListCardsRequest{})
+	require.NoError(t, err)
+
+	count, err := s.MigrateEnglish(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 3, count)
+	merged, err := os.ReadFile(filepath.Join(s.Vault, englishWords))
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(string(merged), "---\ntags: [english]\n---\n"))
+	require.Equal(t, 1, strings.Count(string(merged), "[[14-Nov-2026]]"))
+	require.Contains(t, string(merged), "- `` Press the `Enter` key. `` - Нажми клавишу")
+	require.Contains(t, string(merged), "- `put up with` - терпеть")
+	require.Contains(t, string(merged), "- `I'm on my way.` - Я в пути")
+	archived, err := os.ReadFile(filepath.Join(s.Vault, englishPhrases))
+	require.NoError(t, err)
+	require.Equal(t, phrases, string(archived))
+
+	after, err := s.ListCards(ctx, &pb.ListCardsRequest{})
+	require.NoError(t, err)
+	require.Len(t, after.Cards, len(before.Cards))
+	byID := map[string]*pb.Card{}
+	for _, card := range after.Cards {
+		byID[card.Id] = card
+	}
+	for _, card := range before.Cards {
+		require.True(t, proto.Equal(card, byID[card.Id]))
+	}
+	savedAgain, err := s.SaveCard(ctx, oldSave)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(graded.Card, savedAgain.Card))
+	gradedAgain, err := s.GradeCard(ctx, grade)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(graded.Card, gradedAgain.Card))
+	count, err = s.MigrateEnglish(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	unchanged, err := os.ReadFile(filepath.Join(s.Vault, englishWords))
+	require.NoError(t, err)
+	require.Equal(t, merged, unchanged)
 }
 func TestEnglishReadAndSkipDoNotGrade(t *testing.T) {
 	s := englishFixture(t)

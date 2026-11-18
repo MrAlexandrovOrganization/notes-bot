@@ -13,10 +13,12 @@ import (
 
 const englishWords = "Tags/English/words.md"
 const englishPhrases = "Tags/English/phrases.md"
+const englishPhrasesMigrated = "<!-- notes-bot:english-phrases-migrated -->"
 
 var englishDate = regexp.MustCompile(`^\s*(?:#{1,6}\s*)?\[\[([0-9]{2}-[A-Za-z]{3}-[0-9]{4})\]\]\s*$`)
-var englishWord = regexp.MustCompile("^[-*] +`([^`]+)` +[-–—] +(.+)$")
-var englishMarker = regexp.MustCompile(` <!-- notes-bot:english:([a-f0-9]{64}):([a-f0-9]{64}) -->$`)
+var englishWord = regexp.MustCompile("^[-*] +(`+)")
+var englishSeparator = regexp.MustCompile(`^ +[-–—] +`)
+var englishMarker = regexp.MustCompile(` <!-- notes-bot:english:([a-f0-9]{64}):([a-f0-9]{64})(?::(phrase))? -->$`)
 
 func englishHash(text string) string {
 	h := sha256.Sum256([]byte(text))
@@ -54,12 +56,11 @@ func parseEnglish(text, kind string) ([]*pb.Card, error) {
 		}
 		c := &pb.Card{Kind: kind, Date: date}
 		if kind == "word" {
-			m := englishWord.FindStringSubmatch(raw)
-			if m == nil {
+			var ok bool
+			c.English, c.Source, ok = parseEnglishWord(raw)
+			if !ok {
 				continue
 			}
-			c.English = m[1]
-			c.Source = m[2]
 		} else {
 			if !strings.HasPrefix(raw, "- ") && !strings.HasPrefix(raw, "* ") {
 				continue
@@ -79,6 +80,9 @@ func parseEnglish(text, kind string) ([]*pb.Card, error) {
 		c.Id = englishHash(kind + "\x00" + date + "\x00" + c.Source + "\x00" + c.English)
 		if marker != nil {
 			c.Id = marker[1]
+			if marker[3] != "" {
+				c.Kind = marker[3]
+			}
 		}
 		if seen[c.Id] { // Repeated identical handwritten lines are one card.
 			if marker != nil {
@@ -91,6 +95,19 @@ func parseEnglish(text, kind string) ([]*pb.Card, error) {
 		current = c
 	}
 	return cards, nil
+}
+
+func parseEnglishWord(line string) (english, source string, ok bool) {
+	match := englishWord.FindStringSubmatch(line)
+	if match == nil {
+		return "", "", false
+	}
+	english, rest, found := strings.Cut(line[len(match[0]):], match[1])
+	separator := englishSeparator.FindString(rest)
+	if !found || separator == "" {
+		return "", "", false
+	}
+	return english, rest[len(separator):], true
 }
 
 func englishPayload(c *pb.Card) string {
@@ -110,11 +127,22 @@ func validateEnglishCard(c *pb.Card) bool {
 }
 
 func renderEnglish(c *pb.Card, payloadHash string) string {
-	line := "- " + c.Source + " → " + c.English
-	if c.Kind == "word" {
-		line = "- `" + c.English + "` - " + c.Source
+	fenceSize := 1
+	for run := range strings.FieldsFuncSeq(c.English, func(r rune) bool { return r != '`' }) {
+		fenceSize = max(fenceSize, len(run)+1)
 	}
-	line += " <!-- notes-bot:english:" + c.Id + ":" + payloadHash + " -->\n"
+	fence := strings.Repeat("`", fenceSize)
+	english := c.English
+	if len(fence) > 1 {
+		english = " " + english + " "
+	}
+	line := "- " + fence + english + fence + " - " + c.Source
+	marker := c.Id + ":" + payloadHash
+	if c.Kind == "phrase" {
+		// Preserve the old wire kind and revision through a format change.
+		marker += ":phrase"
+	}
+	line += " <!-- notes-bot:english:" + marker + " -->\n"
 	for _, field := range [][2]string{{"Пояснение", c.Explanation}, {"Пример", c.Example}, {"Контекст", c.Context}} {
 		if field[1] != "" {
 			line += "  " + field[0] + ": " + field[1] + "\n"

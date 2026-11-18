@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -21,6 +22,8 @@ import (
 	pb "notes-bot/proto/english/v1"
 )
 
+const englishEntryMode = "entry"
+
 func englishNonce() string                       { return strings.ReplaceAll(uuid.NewString(), "-", "")[:12] }
 func englishState(state tgstates.UserState) bool { return strings.HasPrefix(string(state), "english_") }
 func (a *App) setEnglish(ctx context.Context, user int64, state tgstates.UserState, e tgstates.EnglishContext) error {
@@ -31,12 +34,6 @@ func (a *App) setEnglish(ctx context.Context, user int64, state tgstates.UserSta
 		previous.(*englishGeneration).cancel()
 	}
 	return nil
-}
-func englishPrompt(kind string) string {
-	if kind == "word" {
-		return r.EnglishWordPrompt
-	}
-	return r.EnglishPhrasePrompt
 }
 func englishStateText(a *App, ctx context.Context, b *telego.Bot, _ *telego.Update, chat, user int64, text string, uc *tgstates.UserContext) {
 	if uc.State == tgstates.StateEnglishMenu || uc.State == tgstates.StateEnglishReview {
@@ -125,7 +122,15 @@ func setManualEnglishPair(e *tgstates.EnglishContext, source, english string) {
 	e.AwaitingTranslation = false
 	e.Manual = true
 	e.Instruction = ""
-	e.Draft = &pb.Card{Kind: e.Kind, Date: e.Date, Source: source, English: english}
+	e.Draft = &pb.Card{Kind: englishCardKind(e.Kind), Date: e.Date, Source: source, English: english}
+}
+
+// Preserve the wire kind of older drafts so an interrupted save can be retried.
+func englishCardKind(mode string) string {
+	if mode == "phrase" {
+		return "phrase"
+	}
+	return "word"
 }
 
 func (a *App) showEnglishInput(ctx context.Context, b *telego.Bot, chat, user int64, e tgstates.EnglishContext) error {
@@ -216,15 +221,27 @@ func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int
 	return nil
 }
 func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext) (tgstates.EnglishContext, error) {
+	kind := englishCardKind(e.Kind)
 	input := e.Input
 	if e.Manual && e.Draft != nil {
 		input = e.Draft.English
-		if e.Kind == "phrase" {
+		if kind == "phrase" {
 			input = e.Draft.Source
+		}
+	} else if e.Kind == englishEntryMode {
+		// The two existing tutor prompts translate in opposite directions.
+		// The first letter selects the prompt, independently of card storage.
+		for _, letter := range input {
+			if unicode.IsLetter(letter) {
+				if unicode.Is(unicode.Cyrillic, letter) {
+					kind = "phrase"
+				}
+				break
+			}
 		}
 	}
 	source := ""
-	if e.Kind == "phrase" {
+	if kind == "phrase" {
 		var ok bool
 		source, ok = englishtutor.RussianThought(input)
 		if !ok {
@@ -242,14 +259,14 @@ func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext
 	if generator == nil {
 		return e, fmt.Errorf("english generation unavailable")
 	}
-	draft, err := generator.PrepareEnglish(ctx, e.Kind, input, e.Instruction, englishLLMDraft(e.Draft))
+	draft, err := generator.PrepareEnglish(ctx, kind, input, e.Instruction, englishLLMDraft(e.Draft))
 	if err != nil {
 		return e, err
 	}
 	if e.Manual && draft.Question != "" {
 		return e, fmt.Errorf("english enrichment needs clarification")
 	}
-	if e.Kind == "phrase" {
+	if kind == "phrase" {
 		draft.Source = source
 	} else {
 		// Keep the chosen source text verbatim (apart from whitespace), rather than
@@ -277,7 +294,7 @@ func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext
 		}
 	}
 	e.Question = draft.Question
-	e.Draft = &pb.Card{Kind: e.Kind, Date: e.Date, Source: draft.Source, English: draft.English, Explanation: draft.Explanation, Example: draft.Example, Context: draft.Context}
+	e.Draft = &pb.Card{Kind: englishCardKind(e.Kind), Date: e.Date, Source: draft.Source, English: draft.English, Explanation: draft.Explanation, Example: draft.Example, Context: draft.Context}
 	return e, nil
 }
 
@@ -306,7 +323,7 @@ func englishPreviewText(e tgstates.EnglishContext) tgfmt.HTML {
 	return tgfmt.Join(text, tgfmt.Escape("\n\n"), englishAnswerText(e.Draft))
 }
 func englishAnswerText(c *pb.Card) tgfmt.HTML {
-	text := tgfmt.Join(tgfmt.Escape(r.EnglishSourceLabel+c.Source+"\n"), tgfmt.Bold(tgfmt.Escape(c.English)))
+	text := tgfmt.Join(tgfmt.Bold(tgfmt.Escape(c.English)), tgfmt.Escape("\n"+r.EnglishSourceLabel+c.Source))
 	for _, v := range [][2]string{{r.EnglishExplanationLabel, c.Explanation}, {r.EnglishExampleLabel, c.Example}, {r.EnglishContextLabel, c.Context}} {
 		if v[1] != "" {
 			text = tgfmt.Join(text, tgfmt.Escape("\n\n"+v[0]+v[1]))
@@ -334,20 +351,17 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishIntro), tgkeyboards.EnglishMenu())
 	case "start":
-		if len(parts) != 3 || (parts[2] != "word" && parts[2] != "phrase") {
+		if len(parts) != 2 && (len(parts) != 3 || (parts[2] != "word" && parts[2] != "phrase")) {
 			return nil
 		}
-		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: parts[2]}); err != nil {
+		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: englishEntryMode}); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(englishPrompt(parts[2])), tgkeyboards.EnglishBack())
+		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishPrompt), tgkeyboards.EnglishBack())
 	case "review":
 		return a.englishReviewMenu(ctx, b, q, user)
 	case "queue":
-		if len(parts) != 3 || uc.State != tgstates.StateEnglishMenu {
-			return nil
-		}
-		if parts[2] != "word" && parts[2] != "phrase" && parts[2] != "all" {
+		if uc.State != tgstates.StateEnglishMenu || (len(parts) != 2 && (len(parts) != 3 || (parts[2] != "word" && parts[2] != "phrase" && parts[2] != "all"))) {
 			return nil
 		}
 		cards, err := a.English.ListCards(ctx, &pb.ListCardsRequest{})
@@ -355,8 +369,9 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 			return err
 		}
 		e = tgstates.EnglishContext{}
+		now := time.Now().Unix()
 		for _, c := range cards.Cards {
-			if c.NextAt <= time.Now().Unix() && (parts[2] == "all" || c.Kind == parts[2]) {
+			if c.NextAt <= now {
 				e.Queue = append(e.Queue, c.Id)
 			}
 		}
@@ -385,10 +400,10 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Join(englishPreviewText(e), tgfmt.Escape("\n\n"+r.EnglishClarifyPrompt)), tgkeyboards.EnglishBack())
 	case "new":
-		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: e.Kind}); err != nil {
+		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: englishEntryMode}); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(englishPrompt(e.Kind)), tgkeyboards.EnglishBack())
+		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishPrompt), tgkeyboards.EnglishBack())
 	case "generate", "retry", "example", "detail":
 		if (parts[1] == "generate") != e.AwaitingTranslation {
 			return nil
@@ -415,14 +430,10 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		if err != nil {
 			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishSaveFailure+"\n\n"), englishPreviewText(e)), englishPreviewKeyboard(e))
 		}
-		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: e.Kind}); err != nil {
+		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: englishEntryMode}); err != nil {
 			return err
 		}
-		path := "Tags/English/words.md"
-		if e.Kind == "phrase" {
-			path = "Tags/English/phrases.md"
-		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(fmt.Sprintf(r.EnglishSaved, path, e.Date)), tgkeyboards.EnglishBack())
+		return replyToCallback(ctx, b, q, tgfmt.Escape(fmt.Sprintf(r.EnglishSaved, e.Date)), tgkeyboards.EnglishBack())
 	}
 	return nil
 }

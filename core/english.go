@@ -74,14 +74,33 @@ func (s *EnglishServer) read(rel string) ([]byte, error) {
 	}
 	return os.ReadFile(path)
 }
-func (s *EnglishServer) material() ([]*pb.Card, error) {
-	var all []*pb.Card
-	for _, file := range [][2]string{{englishWords, "word"}, {englishPhrases, "phrase"}} {
-		data, err := s.read(file[0])
+
+type englishFile struct{ path, kind, text string }
+
+func (s *EnglishServer) englishFiles() ([]englishFile, error) {
+	words, err := s.read(englishWords)
+	if err != nil {
+		return nil, err
+	}
+	files := []englishFile{{englishWords, "word", string(words)}}
+	if !englishMigrationDone(files[0].text) {
+		phrases, err := s.read(englishPhrases)
 		if err != nil {
 			return nil, err
 		}
-		cards, err := parseEnglish(string(data), file[1])
+		files = append(files, englishFile{englishPhrases, "phrase", string(phrases)})
+	}
+	return files, nil
+}
+
+func (s *EnglishServer) material() ([]*pb.Card, error) {
+	files, err := s.englishFiles()
+	if err != nil {
+		return nil, err
+	}
+	var all []*pb.Card
+	for _, file := range files {
+		cards, err := parseEnglish(file.text, file.kind)
 		if err != nil {
 			return nil, err
 		}
@@ -154,65 +173,35 @@ func (s *EnglishServer) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (
 	if req == nil || validateOperationID(req.OperationId) != nil || !validateEnglishCard(req.Card) {
 		return nil, status.Error(codes.InvalidArgument, "invalid English card")
 	}
-	operationUnlock, err := lockFile(ctx, filepath.Join(s.Vault, "english-save-operations"))
-	if err != nil {
-		return nil, englishError(err)
-	}
-	defer operationUnlock()
 	c := proto.Clone(req.Card).(*pb.Card)
 	if err := validateDate(c.Date); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid date")
 	}
 	c.Id = englishHash("english:" + req.OperationId)
-	rel := englishWords
-	if c.Kind == "phrase" {
-		rel = englishPhrases
-	}
-	path, err := s.path(rel)
-	if err != nil {
-		return nil, englishError(err)
-	}
-	if err = s.prepareDirectory(filepath.Dir(path), 0755); err != nil {
-		return nil, englishError(err)
-	}
-	unlock, err := lockFile(ctx, path)
+	path, unlock, err := s.lockEnglishDictionary(ctx)
 	if err != nil {
 		return nil, englishError(err)
 	}
 	defer unlock()
-	data, err := s.read(rel)
+	files, err := s.englishFiles()
 	if err != nil {
 		return nil, englishError(err)
 	}
 	payloadHash := englishHash(englishPayload(c))
-	// Search both files: an operation cannot be reused with another kind.
-	for _, f := range []string{englishWords, englishPhrases} {
-		prior, e := s.read(f)
-		if e != nil {
-			return nil, englishError(e)
-		}
-		for _, line := range strings.Split(string(prior), "\n") {
+	for _, file := range files {
+		for line := range strings.SplitSeq(file.text, "\n") {
 			m := englishMarker.FindStringSubmatch(strings.TrimSpace(line))
 			if m == nil || m[1] != c.Id {
 				continue
 			}
-			if f != rel || m[2] != payloadHash {
+			if m[2] != payloadHash {
 				return nil, status.Error(codes.AlreadyExists, "English save operation conflict")
 			}
 			// A previous write may have renamed successfully before its reply failed.
-			handle, e := os.Open(path)
-			if e != nil {
+			if e := s.syncEnglishFile(file.path); e != nil {
 				return nil, englishError(e)
 			}
-			e = handle.Sync()
-			handle.Close() //nolint:errcheck
-			if e == nil {
-				e = syncDirectory(filepath.Dir(path))
-			}
-			if e != nil {
-				return nil, englishError(e)
-			}
-			cards, e := parseEnglish(string(prior), c.Kind)
+			cards, e := parseEnglish(file.text, file.kind)
 			if e != nil {
 				return nil, englishError(e)
 			}
@@ -229,38 +218,8 @@ func (s *EnglishServer) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (
 			return nil, status.Error(codes.FailedPrecondition, "saved card was edited; inspect English note")
 		}
 	}
-	// Place the new entry inside its date section, preserving every existing byte.
-	text := string(data)
-	section := "[[" + c.Date + "]]"
-	lines := strings.SplitAfter(text, "\n")
-	start := -1
-	offset := 0
-	insert := len(text)
-	for _, line := range lines {
-		if m := englishDate.FindStringSubmatch(strings.TrimSuffix(line, "\n")); m != nil {
-			if start >= 0 {
-				insert = offset
-				break
-			}
-			if m[1] == c.Date {
-				start = offset
-			}
-		}
-		offset += len(line)
-	}
-	prefix := ""
-	if start < 0 {
-		prefix = "\n" + section + "\n"
-	}
-	if insert > 0 && text[insert-1] != '\n' {
-		prefix = "\n" + prefix
-	}
-	text = text[:insert] + prefix + renderEnglish(c, payloadHash) + text[insert:]
-	perm := os.FileMode(0644)
-	if info, e := os.Stat(path); e == nil {
-		perm = info.Mode().Perm()
-	}
-	if err = writeFileAtomic(path, []byte(text), perm); err != nil {
+	text := insertEnglish(files[0].text, c.Date, renderEnglish(c, payloadHash))
+	if err = writeEnglishDictionary(path, text); err != nil {
 		return nil, englishError(err)
 	}
 	journal, err := s.journal()
@@ -269,6 +228,81 @@ func (s *EnglishServer) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (
 	}
 	applyEnglishProgress(c, journal.Cards[c.Id])
 	return &pb.SaveCardResponse{Card: c}, nil
+}
+
+func (s *EnglishServer) lockEnglishDictionary(ctx context.Context) (string, func(), error) {
+	operationUnlock, err := lockFile(ctx, filepath.Join(s.Vault, "english-save-operations"))
+	if err != nil {
+		return "", nil, err
+	}
+	path, err := s.path(englishWords)
+	if err == nil {
+		err = s.prepareDirectory(filepath.Dir(path), 0755)
+	}
+	if err != nil {
+		operationUnlock()
+		return "", nil, err
+	}
+	unlock, err := lockFile(ctx, path)
+	if err != nil {
+		operationUnlock()
+		return "", nil, err
+	}
+	return path, func() { unlock(); operationUnlock() }, nil
+}
+
+func (s *EnglishServer) syncEnglishFile(rel string) error {
+	path, err := s.path(rel)
+	if err != nil {
+		return err
+	}
+	handle, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	if err := handle.Sync(); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+// Place the new entry inside its date section, preserving every existing byte.
+func insertEnglish(text, date, entry string) string {
+	start := -1
+	offset := 0
+	insert := len(text)
+	for line := range strings.SplitAfterSeq(text, "\n") {
+		if m := englishDate.FindStringSubmatch(strings.TrimSuffix(line, "\n")); m != nil {
+			if start >= 0 {
+				insert = offset
+				break
+			}
+			if m[1] == date {
+				start = offset
+			}
+		}
+		offset += len(line)
+	}
+	prefix := ""
+	if start < 0 {
+		prefix = "\n[[" + date + "]]\n"
+	}
+	if insert > 0 && text[insert-1] != '\n' {
+		prefix = "\n" + prefix
+	}
+	return text[:insert] + prefix + entry + text[insert:]
+}
+
+func writeEnglishDictionary(path, text string) error {
+	if len(text) > 16<<20 {
+		return errors.New("dictionary exceeds size limit")
+	}
+	perm := os.FileMode(0644)
+	if info, e := os.Stat(path); e == nil {
+		perm = info.Mode().Perm()
+	}
+	return writeFileAtomic(path, []byte(text), perm)
 }
 
 // GradeCard is serialized across processes, compares material + history version,

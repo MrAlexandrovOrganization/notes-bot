@@ -176,6 +176,10 @@ migrate-voice: assert-active
 	$(DOCKER_COMPOSE) build telegram
 	$(DOCKER_COMPOSE) run --rm --no-deps telegram /telegram migrate-voice
 
+.PHONY: migrate-english
+migrate-english: assert-active
+	$(DOCKER_COMPOSE) exec -T core /core migrate-english
+
 check: proto-generate templ proto-check
 	@files=$$(gofmt -l $(GO_DIRS)); test -z "$$files" || { echo "$$files"; exit 1; }
 	go vet ./...

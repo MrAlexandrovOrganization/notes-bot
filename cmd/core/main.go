@@ -21,6 +21,20 @@ import (
 
 func main() {
 	logger := core.Logger
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if len(os.Args) == 2 && os.Args[1] == "migrate-english" {
+		vault := os.Getenv("NOTES_DIR")
+		if vault == "" {
+			logger.Fatal("NOTES_DIR is required for English migration")
+		}
+		count, err := (&core.EnglishServer{Vault: vault}).MigrateEnglish(ctx)
+		if err != nil {
+			logger.Fatal("English dictionary migration failed", zap.Error(err))
+		}
+		logger.Info("English dictionary migration complete", zap.Int("imported", count))
+		return
+	}
 	automationsEnabled, err := automationevents.Enabled()
 	if err != nil {
 		logger.Fatal("invalid automations configuration")
@@ -37,9 +51,6 @@ func main() {
 			logger.Fatal("automation outbox unavailable")
 		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	shutdown, err := telemetry.InitTracer(ctx, "core")
 	if err != nil {
