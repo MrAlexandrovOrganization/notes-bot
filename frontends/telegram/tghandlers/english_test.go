@@ -107,6 +107,8 @@ func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	app, client, llm, api, bot, state, q := englishFlowFixture(t)
 	englishAction(t, app, bot, q, "start", "phrase")
 	englishText(t, app, bot, "Я потратил полчаса, пытаясь это исправить <&>")
+	require.Zero(t, llm.calls)
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.Equal(t, 1, llm.calls)
 	require.Equal(t, 0, client.saves)
 	require.Equal(t, "14-Nov-2026", state.value.English.Date)
@@ -135,6 +137,7 @@ func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	require.Equal(t, 1, strings.Count(string(data), "I spent half an hour trying to fix it."))
 	require.Contains(t, string(data), "[[14-Nov-2026]]")
 	englishText(t, app, bot, "Следующая мысль")
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.Equal(t, "Следующая мысль", llm.input)
 	require.Equal(t, tgstates.StateEnglishPreview, state.value.State)
 	require.NoDirExists(t, filepath.Join(client.server.Vault, "Daily"))
@@ -143,6 +146,7 @@ func TestEnglishWordAmbiguityClarificationAndCorrection(t *testing.T) {
 	app, client, llm, _, bot, state, q := englishFlowFixture(t)
 	englishAction(t, app, bot, q, "start", "word")
 	englishText(t, app, bot, "yield")
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.NotEmpty(t, state.value.English.Question)
 	englishAction(t, app, bot, q, "save", state.value.English.Nonce)
 	require.Zero(t, client.saves)
@@ -167,12 +171,69 @@ func TestEnglishModelFailureKeepsInputAndOffersRetry(t *testing.T) {
 	llm.fail = true
 	englishAction(t, app, bot, q, "start", "phrase")
 	englishText(t, app, bot, "Моя мысль")
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.Equal(t, "Моя мысль", state.value.English.Input)
 	require.Contains(t, api.texts[len(api.texts)-1], r.EnglishFailure)
 	require.Zero(t, client.saves)
 	llm.fail = false
 	englishAction(t, app, bot, q, "retry", state.value.English.Nonce)
 	require.NotNil(t, state.value.English.Draft)
+}
+
+func TestEnglishManualPairsSaveWithoutModel(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, russian, english string
+		messages                     []string
+	}{
+		{"English word first", "word", "яблоко", "apple", []string{"apple — яблоко"}},
+		{"Russian word first", "word", "яблоко", "apple", []string{"яблоко\napple"}},
+		{"English phrase first", "phrase", "Я уже в пути", "I'm on my way.", []string{"I'm on my way.\nЯ уже в пути"}},
+		{"Russian phrase first", "phrase", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути — I'm on my way."}},
+		{"Separate English first", "word", "яблоко", "apple", []string{"apple", "яблоко"}},
+		{"Separate Russian first", "phrase", "Я уже в пути", "I'm on my way.", []string{"Я уже в пути", "I'm on my way."}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, client, llm, api, bot, state, q := englishFlowFixture(t)
+			llm.fail = true
+			englishAction(t, app, bot, q, "start", tc.kind)
+			for i, msg := range tc.messages {
+				englishText(t, app, bot, msg)
+				if i+1 < len(tc.messages) {
+					require.Contains(t, api.markups[len(api.markups)-1], "english:generate:"+state.value.English.Nonce)
+					require.NotContains(t, api.markups[len(api.markups)-1], "english:save:")
+				}
+			}
+			require.Zero(t, llm.calls)
+			require.Zero(t, client.saves)
+			require.NotNil(t, state.value.English.Draft)
+			require.Equal(t, tc.russian, state.value.English.Draft.Source)
+			require.Equal(t, tc.english, state.value.English.Draft.English)
+			englishAction(t, app, bot, q, "save", state.value.English.Nonce)
+			cards, err := client.ListCards(t.Context(), &pb.ListCardsRequest{})
+			require.NoError(t, err)
+			require.Len(t, cards.Cards, 1)
+			require.Equal(t, tc.russian, cards.Cards[0].Source)
+			require.Equal(t, tc.english, cards.Cards[0].English)
+			require.Empty(t, cards.Cards[0].Example)
+			require.Zero(t, llm.calls)
+		})
+	}
+}
+
+func TestEnglishManualPairSurvivesModelEnrichment(t *testing.T) {
+	app, client, llm, api, bot, state, q := englishFlowFixture(t)
+	englishAction(t, app, bot, q, "start", "word")
+	englishText(t, app, bot, "пропускать вперёд — yield")
+	englishAction(t, app, bot, q, "example", state.value.English.Nonce)
+	require.Equal(t, "yield", llm.input)
+	require.Equal(t, "пропускать вперёд", state.value.English.Draft.Source)
+	require.Equal(t, "Yield to pedestrians.", state.value.English.Draft.Example)
+	llm.fail = true
+	englishAction(t, app, bot, q, "detail", state.value.English.Nonce)
+	require.Contains(t, api.texts[len(api.texts)-1], r.EnglishEnrichmentFailure)
+	require.Contains(t, api.markups[len(api.markups)-1], "english:save:"+state.value.English.Nonce)
+	englishAction(t, app, bot, q, "save", state.value.English.Nonce)
+	require.Equal(t, 1, client.saves)
 }
 func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
 	app, client, llm, api, bot, state, q := englishFlowFixture(t)
@@ -332,6 +393,7 @@ func TestEnglishPhraseUsesUserThoughtAndSeparatesAttempt(t *testing.T) {
 	thought := "Я потратил полчаса, пытаясь это исправить"
 	input := thought + "\nМой вариант: I spend half hour to fix it."
 	englishText(t, app, bot, input)
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.Equal(t, input, llm.input)
 	require.Equal(t, thought, state.value.English.Draft.Source)
 	require.NotContains(t, state.value.English.Draft.Source, "I spend")
@@ -340,6 +402,7 @@ func TestEnglishPhraseUsesUserThoughtAndSeparatesAttempt(t *testing.T) {
 	require.Equal(t, "Я потратил час, пытаясь это исправить", state.value.English.Draft.Source)
 	englishAction(t, app, bot, q, "new", state.value.English.Nonce)
 	englishText(t, app, bot, "Я хочу кофе. I want coffee.")
+	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
 	require.Equal(t, r.EnglishPhraseSourcePrompt, state.value.English.Question)
 	require.Nil(t, state.value.English.Draft)
 	englishText(t, app, bot, "Я хочу кофе.")

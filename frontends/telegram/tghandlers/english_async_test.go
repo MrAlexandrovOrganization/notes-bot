@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/require"
 
 	"notes-bot/frontends/telegram/clients"
@@ -58,7 +59,7 @@ func TestEnglishGenerationAllowsNavigationAndDiscardsLateResult(t *testing.T) {
 			t.Cleanup(func() { cancel(); app.WaitEnglishGenerations() })
 			englishAction(t, app, bot, q, "start", "word")
 			englishUpdate(t, app, func() error {
-				return app.englishInput(ctx, bot, 42, 42, "road sign", &state.value)
+				return startEnglishGeneration(ctx, app, bot, q, state, "road sign")
 			})
 			select {
 			case <-started:
@@ -79,7 +80,7 @@ func TestEnglishGenerationAllowsNavigationAndDiscardsLateResult(t *testing.T) {
 	}
 }
 
-func TestEnglishGenerationNewInputSupersedesPendingRequest(t *testing.T) {
+func TestEnglishManualPairSupersedesPendingRequest(t *testing.T) {
 	app, _, _, api, bot, state, q := englishFlowFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	oldStarted := make(chan struct{})
@@ -100,17 +101,14 @@ func TestEnglishGenerationNewInputSupersedesPendingRequest(t *testing.T) {
 	})
 	t.Cleanup(func() { cancel(); app.WaitEnglishGenerations() })
 	englishAction(t, app, bot, q, "start", "word")
-	englishUpdate(t, app, func() error { return app.englishInput(ctx, bot, 42, 42, "old", &state.value) })
+	englishUpdate(t, app, func() error { return startEnglishGeneration(ctx, app, bot, q, state, "old") })
 	select {
 	case <-oldStarted:
 	case <-time.After(3 * time.Second):
 		t.Fatal("old request did not start")
 	}
 	englishUpdate(t, app, func() error {
-		if err := app.handleEnglishAction(ctx, bot, q, 42, []string{"english", "new", state.value.English.Nonce}); err != nil {
-			return err
-		}
-		return app.englishInput(ctx, bot, 42, 42, "new", &state.value)
+		return app.englishInput(ctx, bot, 42, 42, "новый — new", &state.value)
 	})
 	select {
 	case <-oldCanceled:
@@ -119,7 +117,7 @@ func TestEnglishGenerationNewInputSupersedesPendingRequest(t *testing.T) {
 	}
 	close(releaseOld)
 	app.WaitEnglishGenerations()
-	require.Equal(t, "new", state.value.English.Input)
+	require.Equal(t, "новый — new", state.value.English.Input)
 	require.Equal(t, "new", state.value.English.Draft.English)
 	require.NotContains(t, api.texts[len(api.texts)-1], "old")
 }
@@ -133,7 +131,7 @@ func TestEnglishGenerationStopsOnShutdown(t *testing.T) {
 	})
 	t.Cleanup(func() { cancel(); app.WaitEnglishGenerations() })
 	englishAction(t, app, bot, q, "start", "word")
-	englishUpdate(t, app, func() error { return app.englishInput(ctx, bot, 42, 42, "pending", &state.value) })
+	englishUpdate(t, app, func() error { return startEnglishGeneration(ctx, app, bot, q, state, "pending") })
 	cancel()
 	done := make(chan struct{})
 	go func() { app.WaitEnglishGenerations(); close(done) }()
@@ -143,4 +141,11 @@ func TestEnglishGenerationStopsOnShutdown(t *testing.T) {
 		t.Fatal("shutdown did not cancel the model request")
 	}
 	require.Equal(t, r.EnglishPreparing, api.texts[len(api.texts)-1])
+}
+
+func startEnglishGeneration(ctx context.Context, app *App, bot *telego.Bot, q *telego.CallbackQuery, state *noteFlowState, input string) error {
+	if err := app.englishInput(ctx, bot, 42, 42, input, &state.value); err != nil {
+		return err
+	}
+	return app.handleEnglishAction(ctx, bot, q, 42, []string{"english", "generate", state.value.English.Nonce})
 }

@@ -17,7 +17,16 @@ func EnglishMenu() *telego.InlineKeyboardMarkup {
 func EnglishBack() *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishBack).WithCallbackData("english:menu")))
 }
-func EnglishPreview(nonce string, ready bool) *telego.InlineKeyboardMarkup {
+func EnglishPending(nonce string) *telego.InlineKeyboardMarkup {
+	kb := EnglishBack()
+	kb.InlineKeyboard = append([][]telego.InlineKeyboardButton{
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishGenerate).WithCallbackData("english:generate:" + nonce)),
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishNew).WithCallbackData("english:new:" + nonce)),
+	}, kb.InlineKeyboard...)
+	return kb
+}
+
+func EnglishPreview(nonce string, ready, manual bool) *telego.InlineKeyboardMarkup {
 	kb := EnglishBack()
 	rows := [][]telego.InlineKeyboardButton{}
 	if ready {
@@ -26,7 +35,12 @@ func EnglishPreview(nonce string, ready bool) *telego.InlineKeyboardMarkup {
 	} else {
 		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishRetry).WithCallbackData("english:retry:"+nonce)))
 	}
-	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishClarify).WithCallbackData("english:clarify:"+nonce), tu.InlineKeyboardButton(r.EnglishNew).WithCallbackData("english:new:"+nonce)))
+	newInput := tu.InlineKeyboardButton(r.EnglishNew).WithCallbackData("english:new:" + nonce)
+	if manual {
+		rows = append(rows, tu.InlineKeyboardRow(newInput))
+	} else {
+		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishClarify).WithCallbackData("english:clarify:"+nonce), newInput))
+	}
 	kb.InlineKeyboard = append(rows, kb.InlineKeyboard...)
 	return kb
 }

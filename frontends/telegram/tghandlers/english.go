@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/status"
 
 	"notes-bot/frontends/telegram/clients"
 	r "notes-bot/frontends/telegram/resources"
@@ -23,7 +24,13 @@ import (
 func englishNonce() string                       { return strings.ReplaceAll(uuid.NewString(), "-", "")[:12] }
 func englishState(state tgstates.UserState) bool { return strings.HasPrefix(string(state), "english_") }
 func (a *App) setEnglish(ctx context.Context, user int64, state tgstates.UserState, e tgstates.EnglishContext) error {
-	return a.State.UpdateContext(ctx, user, func(u *tgstates.UserContext) { u.State = state; u.English = e })
+	if err := a.State.UpdateContext(ctx, user, func(u *tgstates.UserContext) { u.State = state; u.English = e }); err != nil {
+		return err
+	}
+	if previous, ok := a.englishJobs.LoadAndDelete(user); ok {
+		previous.(*englishGeneration).cancel()
+	}
+	return nil
 }
 func englishPrompt(kind string) string {
 	if kind == "word" {
@@ -54,8 +61,27 @@ func (a *App) englishInput(ctx context.Context, b *telego.Bot, chat, user int64,
 		if err != nil {
 			return err
 		}
-		e = tgstates.EnglishContext{Kind: e.Kind, Input: text, Date: date}
-	} else if e.NeedsRussianSource {
+		e = newEnglishInput(e.Kind, date, text)
+		return a.showEnglishInput(ctx, b, chat, user, e)
+	}
+	if source, english, ok := englishtutor.SplitPair(text); ok {
+		e = tgstates.EnglishContext{Kind: e.Kind, Date: e.Date, Input: text}
+		setManualEnglishPair(&e, source, english)
+		return a.showEnglishInput(ctx, b, chat, user, e)
+	}
+	if e.AwaitingTranslation || (uc.State == tgstates.StateEnglishPreview && e.Draft == nil && e.Question == "") {
+		if source, english, ok := englishtutor.OrderPair(e.Input, text); ok {
+			setManualEnglishPair(&e, source, english)
+			return a.showEnglishInput(ctx, b, chat, user, e)
+		}
+	}
+	if e.AwaitingTranslation {
+		return a.replyToStateMessage(ctx, b, chat, user, tgfmt.Join(tgfmt.Escape(r.EnglishPairHelp+"\n\n"), englishPreviewText(e)), englishPreviewKeyboard(e))
+	}
+	if e.Manual {
+		return a.replyToStateMessage(ctx, b, chat, user, tgfmt.Join(englishPreviewText(e), tgfmt.Escape("\n\n"+r.EnglishManualEdit)), englishPreviewKeyboard(e))
+	}
+	if e.NeedsRussianSource {
 		e.Input = text
 		if corrected, ok := englishtutor.CorrectedInput(text); ok {
 			e.Input = corrected
@@ -86,6 +112,38 @@ func (a *App) englishInput(ctx context.Context, b *telego.Bot, chat, user int64,
 	}
 	return a.generateEnglish(ctx, b, chat, user, e)
 }
+
+func newEnglishInput(kind, date, input string) tgstates.EnglishContext {
+	e := tgstates.EnglishContext{Kind: kind, Date: date, Input: input, AwaitingTranslation: true}
+	if source, english, ok := englishtutor.SplitPair(input); ok {
+		setManualEnglishPair(&e, source, english)
+	}
+	return e
+}
+
+func setManualEnglishPair(e *tgstates.EnglishContext, source, english string) {
+	e.AwaitingTranslation = false
+	e.Manual = true
+	e.Instruction = ""
+	e.Draft = &pb.Card{Kind: e.Kind, Date: e.Date, Source: source, English: english}
+}
+
+func (a *App) showEnglishInput(ctx context.Context, b *telego.Bot, chat, user int64, e tgstates.EnglishContext) error {
+	e.Nonce = englishNonce()
+	e.OperationID = uuid.NewString()
+	if err := a.setEnglish(ctx, user, tgstates.StateEnglishPreview, e); err != nil {
+		return err
+	}
+	return a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(e), englishPreviewKeyboard(e))
+}
+
+func englishPreviewKeyboard(e tgstates.EnglishContext) *telego.InlineKeyboardMarkup {
+	if e.AwaitingTranslation {
+		return tgkeyboards.EnglishPending(e.Nonce)
+	}
+	return tgkeyboards.EnglishPreview(e.Nonce, e.Draft != nil && e.Question == "", e.Manual)
+}
+
 func englishLLMDraft(c *pb.Card) *clients.EnglishDraft {
 	if c == nil {
 		return nil
@@ -98,7 +156,11 @@ type englishGeneration struct{ cancel context.CancelFunc }
 // The caller holds LockUser. Only publishing the result needs that lock again;
 // the slow model request must leave navigation and other updates available.
 func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int64, e tgstates.EnglishContext) error {
-	if err := a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishPreparing), tgkeyboards.EnglishBack()); err != nil {
+	keyboard := tgkeyboards.EnglishBack()
+	if e.Manual {
+		keyboard = englishPreviewKeyboard(e)
+	}
+	if err := a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishPreparing), keyboard); err != nil {
 		return err
 	}
 	uc, err := a.State.GetContext(ctx, user)
@@ -108,9 +170,7 @@ func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int
 	messageID := uc.LastMessageID
 	modelCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	job := &englishGeneration{cancel: cancel}
-	if previous, loaded := a.englishJobs.Swap(user, job); loaded {
-		previous.(*englishGeneration).cancel()
-	}
+	a.englishJobs.Store(user, job)
 	a.englishWG.Go(func() {
 		defer cancel()
 		defer a.englishJobs.CompareAndDelete(user, job)
@@ -138,9 +198,16 @@ func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int
 			return
 		}
 		if prepareErr != nil {
-			err = a.replyToStateMessage(ctx, b, chat, user, tgfmt.Escape(r.EnglishFailure), tgkeyboards.EnglishPreview(e.Nonce, false))
+			a.Logger.Warn("english generation failed", zap.String("code", status.Code(prepareErr).String()))
+			message := r.EnglishFailure
+			if e.Manual {
+				message = r.EnglishEnrichmentFailure
+			} else {
+				e.Draft = nil
+			}
+			err = a.replyToStateMessage(ctx, b, chat, user, tgfmt.Join(tgfmt.Escape(message+"\n\n"), englishPreviewText(e)), englishPreviewKeyboard(e))
 		} else if err = a.setEnglish(ctx, user, tgstates.StateEnglishPreview, prepared); err == nil {
-			err = a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(prepared), tgkeyboards.EnglishPreview(prepared.Nonce, prepared.Question == ""))
+			err = a.replyToStateMessage(ctx, b, chat, user, englishPreviewText(prepared), englishPreviewKeyboard(prepared))
 		}
 		if err != nil {
 			a.Logger.Warn("publish english generation failed", zap.Int64("user_id", user))
@@ -149,11 +216,21 @@ func (a *App) generateEnglish(ctx context.Context, b *telego.Bot, chat, user int
 	return nil
 }
 func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext) (tgstates.EnglishContext, error) {
+	input := e.Input
+	if e.Manual && e.Draft != nil {
+		input = e.Draft.English
+		if e.Kind == "phrase" {
+			input = e.Draft.Source
+		}
+	}
 	source := ""
 	if e.Kind == "phrase" {
 		var ok bool
-		source, ok = englishtutor.RussianThought(e.Input)
+		source, ok = englishtutor.RussianThought(input)
 		if !ok {
+			if e.Manual {
+				return e, fmt.Errorf("english enrichment requires a Russian source")
+			}
 			e.Question = r.EnglishPhraseSourcePrompt
 			e.NeedsRussianSource = true
 			e.Draft = nil
@@ -165,9 +242,12 @@ func (a *App) prepareEnglishDraft(ctx context.Context, e tgstates.EnglishContext
 	if generator == nil {
 		return e, fmt.Errorf("english generation unavailable")
 	}
-	draft, err := generator.PrepareEnglish(ctx, e.Kind, e.Input, e.Instruction, englishLLMDraft(e.Draft))
+	draft, err := generator.PrepareEnglish(ctx, e.Kind, input, e.Instruction, englishLLMDraft(e.Draft))
 	if err != nil {
 		return e, err
+	}
+	if e.Manual && draft.Question != "" {
+		return e, fmt.Errorf("english enrichment needs clarification")
 	}
 	if e.Kind == "phrase" {
 		draft.Source = source
@@ -213,6 +293,9 @@ func englishPreviewText(e tgstates.EnglishContext) tgfmt.HTML {
 			transcript = append(transcript[:400], []rune("…")...)
 		}
 		text = tgfmt.Join(text, tgfmt.Escape("\n\n"+r.EnglishTranscriptLabel), tgfmt.Blockquote(tgfmt.Escape(string(transcript))))
+	}
+	if e.AwaitingTranslation {
+		return tgfmt.Join(text, tgfmt.Escape("\n\n"+r.EnglishAwaitTranslation))
 	}
 	if e.Question != "" {
 		return tgfmt.Join(text, tgfmt.Escape("\n\n"+e.Question+"\n\n"+r.EnglishClarifyPrompt))
@@ -294,6 +377,9 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 	}
 	switch parts[1] {
 	case "clarify":
+		if e.AwaitingTranslation || e.Manual {
+			return nil
+		}
 		if err = a.setEnglish(ctx, user, tgstates.StateEnglishClarify, e); err != nil {
 			return err
 		}
@@ -303,7 +389,11 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 			return err
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(englishPrompt(e.Kind)), tgkeyboards.EnglishBack())
-	case "retry", "example", "detail":
+	case "generate", "retry", "example", "detail":
+		if (parts[1] == "generate") != e.AwaitingTranslation {
+			return nil
+		}
+		e.AwaitingTranslation = false
 		if parts[1] == "example" {
 			e.Instruction = r.EnglishExampleInstruction
 		}
@@ -323,7 +413,7 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		_, err = a.English.SaveCard(ctx, &pb.SaveCardRequest{OperationId: e.OperationID, Card: e.Draft})
 		if err != nil {
-			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishSaveFailure+"\n\n"), englishPreviewText(e)), tgkeyboards.EnglishPreview(e.Nonce, true))
+			return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishSaveFailure+"\n\n"), englishPreviewText(e)), englishPreviewKeyboard(e))
 		}
 		if err = a.setEnglish(ctx, user, tgstates.StateEnglishInput, tgstates.EnglishContext{Kind: e.Kind}); err != nil {
 			return err

@@ -418,13 +418,15 @@ func (a *App) prepareVoiceIntent(ctx context.Context, j *voicejobs.Job) (json.Ra
 		if err != nil {
 			return nil, err
 		}
-		prepared, prepareErr := a.prepareEnglishDraft(ctx, e)
-		if prepareErr != nil {
-			// A model outage must not hide a completed transcript or block the chat's
-			// durable delivery queue. Opening it offers correction and an explicit retry.
-			e.Question = resources.EnglishFailure
-		} else {
-			e = prepared
+		if !e.AwaitingTranslation && !e.Manual {
+			prepared, prepareErr := a.prepareEnglishDraft(ctx, e)
+			if prepareErr != nil {
+				// A model outage must not hide a completed transcript or block the chat's
+				// durable delivery queue. Opening it offers correction and an explicit retry.
+				e.Question = resources.EnglishFailure
+			} else {
+				e = prepared
+			}
 		}
 		p.English = &e
 		return json.Marshal(p)
@@ -468,7 +470,7 @@ func (a *App) openDurableVoice(ctx context.Context, b *telego.Bot, q *telego.Cal
 		if err = a.setEnglish(ctx, user, tgstates.StateEnglishPreview, *p.English); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, englishPreviewText(*p.English), tgkeyboards.EnglishPreview(p.English.Nonce, p.English.Question == ""))
+		return replyToCallback(ctx, b, q, englishPreviewText(*p.English), englishPreviewKeyboard(*p.English))
 	}
 	err = a.restoreVoiceDraft(ctx, j, p)
 	if err != nil {
@@ -499,9 +501,19 @@ func englishVoiceInput(j *voicejobs.Job) (tgstates.EnglishContext, error) {
 		return e, errors.New("invalid learning input")
 	}
 	if j.LearningState == string(tgstates.StateEnglishInput) {
-		e = tgstates.EnglishContext{Kind: e.Kind, Input: j.Text, Date: j.ActiveDate}
+		e = newEnglishInput(e.Kind, j.ActiveDate, j.Text)
+		e.AwaitingTranslation = false
 	} else if j.LearningState == string(tgstates.StateEnglishPreview) || j.LearningState == string(tgstates.StateEnglishClarify) {
-		if e.NeedsRussianSource {
+		if e.AwaitingTranslation || e.Manual {
+			previous := e
+			e = newEnglishInput(e.Kind, e.Date, j.Text)
+			if e.AwaitingTranslation && previous.AwaitingTranslation {
+				if source, english, ok := englishtutor.OrderPair(previous.Input, j.Text); ok {
+					e.Input = previous.Input
+					setManualEnglishPair(&e, source, english)
+				}
+			}
+		} else if e.NeedsRussianSource {
 			e.Input = j.Text
 			if corrected, ok := englishtutor.CorrectedInput(j.Text); ok {
 				e.Input = corrected
