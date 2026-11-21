@@ -18,6 +18,7 @@ import (
 	"notes-bot/frontends/telegram/config"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
+	"notes-bot/frontends/telegram/tgstates"
 )
 
 type apiTransportFunc func(*http.Request) (*http.Response, error)
@@ -64,6 +65,45 @@ func TestTelegoSendEditHTMLAndContext(t *testing.T) {
 	query := &telego.CallbackQuery{Message: &telego.Message{MessageID: 7, Chat: telego.Chat{ID: 42}}}
 	require.NoError(t, replyToCallback(ctx, bot, query, text, nil))
 	assert.Equal(t, []string{"sendMessage", "editMessageText"}, methods)
+}
+
+func TestMainMenuKeepsKeyboardOnStartAndBack(t *testing.T) {
+	type menuRequest struct {
+		Text        string                      `json:"text"`
+		ReplyMarkup telego.InlineKeyboardMarkup `json:"reply_markup"`
+	}
+	var requests []menuRequest
+	bot := fakeTelego(t, func(req *http.Request) (*http.Response, error) {
+		var params menuRequest
+		require.NoError(t, json.NewDecoder(req.Body).Decode(&params))
+		requests = append(requests, params)
+		return apiResponse(`{"ok":true,"result":{"message_id":7,"date":1,"chat":{"id":42,"type":"private"}}}`), nil
+	})
+	app := &App{
+		Cfg:    &config.Config{RootID: 42},
+		Logger: zap.NewNop(),
+		State:  &noteFlowState{value: tgstates.UserContext{ActiveDate: "21-Nov-2026"}},
+	}
+	message := &telego.Message{MessageID: 7, Chat: telego.Chat{ID: 42}, From: &telego.User{ID: 42}}
+	query := &telego.CallbackQuery{Message: message}
+	app.HandleStart(t.Context(), bot, &telego.Update{Message: message})
+	require.NoError(t, app.handleMenuAction(t.Context(), bot, query, 42, []string{"menu", "back"}))
+	app.HandleReminderBack(t.Context(), bot, query, 42)
+
+	require.Len(t, requests, 3)
+	prompt := "📅 Активная дата:\n<code>21-Nov-2026</code>\n\nВыберите действие:"
+	assert.Equal(t, "👋 Добро пожаловать!\n\n"+prompt, requests[0].Text)
+	assert.Equal(t, prompt, requests[1].Text)
+	assert.Equal(t, prompt, requests[2].Text)
+
+	keyboard := requests[0].ReplyMarkup
+	var buttonsPerRow []int
+	for _, row := range keyboard.InlineKeyboard {
+		buttonsPerRow = append(buttonsPerRow, len(row))
+	}
+	assert.Equal(t, []int{1, 2, 2, 2, 1, 2, 2}, buttonsPerRow)
+	assert.Equal(t, keyboard, requests[1].ReplyMarkup)
+	assert.Equal(t, keyboard, requests[2].ReplyMarkup)
 }
 
 func TestTelegoMessageErrors(t *testing.T) {

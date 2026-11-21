@@ -6,6 +6,7 @@ import (
 	"github.com/mymmrac/telego"
 	"go.uber.org/zap"
 
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/internal/telemetry"
 )
@@ -32,9 +33,8 @@ func (a *App) HandleStart(ctx context.Context, tgBot *telego.Bot, update *telego
 	}
 
 	text := tgfmt.Join(
-		tgfmt.Escape("👋 Добро пожаловать!\n\n📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
-		tgfmt.Escape("\n\nВыберите действие:"),
+		tgfmt.Escape(resources.MainMenuWelcome+"\n\n"),
+		resources.MainMenuPrompt(uc.ActiveDate),
 	)
 	kb := a.getMainMenuKeyboard(ctx)
 	if err := replyToUpdate(ctx, tgBot, update, text, &kb); err != nil {

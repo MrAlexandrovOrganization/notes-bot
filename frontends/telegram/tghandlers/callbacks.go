@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
@@ -324,11 +325,8 @@ func (a *App) handleCalAction(ctx context.Context, tgBot *telego.Bot, query *tel
 		a.setActiveDate(ctx, userID, date)
 		a.updateState(ctx, userID, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle })
 		text := tgfmt.Join(
-			tgfmt.Escape("✅ Выбрана дата: "),
-			tgfmt.Code(tgfmt.Escape(date)),
-			tgfmt.Escape("\n\n📅 Активная дата: "),
-			tgfmt.Code(tgfmt.Escape(date)),
-			tgfmt.Escape("\n\nВыберите действие:"),
+			tgfmt.Escape(resources.MainMenuDateSelected+"\n\n"),
+			resources.MainMenuPrompt(date),
 		)
 		kb := a.getMainMenuKeyboard(ctx)
 		return replyToCallback(ctx, tgBot, query, text, &kb)
@@ -501,13 +499,8 @@ func (a *App) showMainMenu(ctx context.Context, tgBot *telego.Bot, query *telego
 	if err != nil {
 		return fmt.Errorf("get context: %w", err)
 	}
-	text := tgfmt.Join(
-		tgfmt.Escape("📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
-		tgfmt.Escape("\n\nВыберите действие:"),
-	)
 	kb := a.getMainMenuKeyboard(ctx)
-	return replyToCallback(ctx, tgBot, query, text, &kb)
+	return replyToCallback(ctx, tgBot, query, resources.MainMenuPrompt(uc.ActiveDate), &kb)
 }
 
 func (a *App) showTasks(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) error {

@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"notes-bot/frontends/telegram/clients"
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
@@ -174,13 +175,8 @@ func (a *App) HandleReminderBack(ctx context.Context, tgBot *telego.Bot, query *
 		u.ReminderDraft = tgstates.ReminderDraft{}
 		u.PendingPostponeReminderID = 0
 	})
-	text := tgfmt.Join(
-		tgfmt.Escape("\n\n📅 Активная дата: "),
-		tgfmt.Code(tgfmt.Escape(uc.ActiveDate)),
-		tgfmt.Escape("\n\nВыберите действие:"),
-	)
 	kb := a.getMainMenuKeyboard(ctx)
-	replyToCallback(ctx, tgBot, query, text, &kb)
+	replyToCallback(ctx, tgBot, query, resources.MainMenuPrompt(uc.ActiveDate), &kb)
 }
 
 func (a *App) HandleReminderCancel(ctx context.Context, tgBot *telego.Bot, query *telego.CallbackQuery, userID int64) {
