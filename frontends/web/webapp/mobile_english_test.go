@@ -21,10 +21,15 @@ type mobileEnglishClient struct {
 	current *pb.ReviewPosition
 	next    *pb.ReviewPosition
 	calls   []*pb.AdvanceReviewRequest
+	saved   *pb.SaveCardRequest
 }
 
-func (c *mobileEnglishClient) GetReview(context.Context, *pb.GetReviewRequest, ...grpc.CallOption) (*pb.GetReviewResponse, error) {
-	return &pb.GetReviewResponse{Current: c.current}, nil
+func (c *mobileEnglishClient) GetReview(_ context.Context, req *pb.GetReviewRequest, _ ...grpc.CallOption) (*pb.GetReviewResponse, error) {
+	resp := &pb.GetReviewResponse{Current: c.current}
+	if req.IncludeRemaining {
+		resp.Remaining = []*pb.ReviewPosition{c.current, c.next}
+	}
+	return resp, nil
 }
 
 func (c *mobileEnglishClient) AdvanceReview(_ context.Context, req *pb.AdvanceReviewRequest, _ ...grpc.CallOption) (*pb.AdvanceReviewResponse, error) {
@@ -97,4 +102,26 @@ func TestMobileEnglishUsesSharedReviewAndPreservesRetryToken(t *testing.T) {
 	w = mobileRequest(router, "GET", review, token, "")
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"current":null}`, strings.TrimSpace(w.Body.String()))
+}
+
+func (c *mobileEnglishClient) SaveCard(_ context.Context, req *pb.SaveCardRequest, _ ...grpc.CallOption) (*pb.SaveCardResponse, error) {
+	c.saved = req
+	return &pb.SaveCardResponse{Card: req.Card}, nil
+}
+func TestMobileEnglishOfflineRoundAndWord(t *testing.T) {
+	a := testApp(t)
+	c := &mobileEnglishClient{current: &pb.ReviewPosition{Token: "one", Card: &pb.Card{Id: "id1"}}, next: &pb.ReviewPosition{Token: "two", Card: &pb.Card{Id: "id2"}}}
+	a.English = c
+	router := a.NewMobileRouter()
+	token := a.signSession("android-"+newSessionID(), time.Now().Add(time.Hour))
+	w := mobileRequest(router, "GET", "/mobile/v1/english/round", token, "")
+	require.Equal(t, 200, w.Code)
+	require.Contains(t, w.Body.String(), `"token":"two"`)
+	const words = "/mobile/v1/english/words"
+	const body = `{"id":"12345678-1234-4567-8901-123456789012","english":" cliff ","source":"утёс","date":"23-Nov-2026"}`
+	require.Equal(t, 401, mobileRequest(router, "POST", words, "", body).Code)
+	require.Equal(t, 200, mobileRequest(router, "POST", words, token, body).Code)
+	require.Equal(t, "cliff", c.saved.Card.English)
+	require.Equal(t, "утёс", c.saved.Card.Source)
+	require.Equal(t, "android:12345678-1234-4567-8901-123456789012", c.saved.OperationId)
 }

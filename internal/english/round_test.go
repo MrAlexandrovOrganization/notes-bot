@@ -88,3 +88,19 @@ func TestEnglishRoundsDeterministicallyShuffleAndAdvancePastEmptyRounds(t *testi
 	require.EqualValues(t, 19, first.Round)
 	require.Len(t, first.Queue, len(cards))
 }
+
+func TestOfflineTokensMatchLivePresentations(t *testing.T) {
+	cards := map[string]*pb.Card{"a": {Id: "a", Revision: "1"}, "b": {Id: "b", Revision: "2"}}
+	s := session{Seed: "stable", Round: 7, Queue: []string{"a", "removed", "b"}, Progress: map[string]progress{}}
+	before := s.remaining(cards)
+	if len(before) != 2 || s.Position != 0 {
+		t.Fatal("snapshot moved cursor")
+	}
+	for _, want := range before {
+		got, _ := s.current(cards)
+		if got.Token != want.Token || got.Position != want.Position {
+			t.Fatal("offline token differs")
+		}
+		s.advance(got.Card.Id, "easy")
+	}
+}

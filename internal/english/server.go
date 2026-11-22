@@ -74,12 +74,18 @@ func (s *Server) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (*pb.Sav
 	return &pb.SaveCardResponse{Card: card}, nil
 }
 
-func (s *Server) GetReview(ctx context.Context, _ *pb.GetReviewRequest) (*pb.GetReviewResponse, error) {
-	current, _, err := s.review(ctx, "", "")
+func (s *Server) GetReview(ctx context.Context, req *pb.GetReviewRequest) (*pb.GetReviewResponse, error) {
+	resp := &pb.GetReviewResponse{}
+	var remaining *[]*pb.ReviewPosition
+	if req.GetIncludeRemaining() {
+		remaining = &resp.Remaining
+	}
+	current, _, err := s.review(ctx, "", "", remaining)
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	return &pb.GetReviewResponse{Current: current}, nil
+	resp.Current = current
+	return resp, nil
 }
 
 func (s *Server) AdvanceReview(ctx context.Context, req *pb.AdvanceReviewRequest) (*pb.AdvanceReviewResponse, error) {
@@ -99,14 +105,14 @@ func (s *Server) AdvanceReview(ctx context.Context, req *pb.AdvanceReviewRequest
 	if len(req.GetToken()) != 64 {
 		return nil, status.Error(codes.InvalidArgument, "invalid review token")
 	}
-	current, skipped, err := s.review(ctx, req.GetToken(), action)
+	current, skipped, err := s.review(ctx, req.GetToken(), action, nil)
 	if err != nil {
 		return nil, rpcError(err)
 	}
 	return &pb.AdvanceReviewResponse{Current: current, SkippedRounds: skipped}, nil
 }
 
-func (s *Server) review(ctx context.Context, token, action string) (*pb.ReviewPosition, int32, error) {
+func (s *Server) review(ctx context.Context, token, action string, remaining *[]*pb.ReviewPosition) (*pb.ReviewPosition, int32, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var current *pb.ReviewPosition
@@ -156,6 +162,9 @@ func (s *Server) review(ctx context.Context, token, action string) (*pb.ReviewPo
 				current, _ = state.current(byID)
 				changed = true
 			}
+		}
+		if remaining != nil {
+			*remaining = state.remaining(byID)
 		}
 		if changed {
 			return saveSession(ctx, tx, state, imported)

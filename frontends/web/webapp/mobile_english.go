@@ -2,6 +2,7 @@ package webapp
 
 import (
 	"net/http"
+	"strings"
 
 	pb "notes-bot/proto/english/v1"
 )
@@ -97,4 +98,46 @@ func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request)
 	mobileJSON(w, http.StatusOK, mobileEnglishResponse{
 		Current: mobileReviewPosition(resp.GetCurrent()), SkippedRounds: resp.GetSkippedRounds(),
 	})
+}
+
+func (a *App) mobileEnglishRound(w http.ResponseWriter, r *http.Request) {
+	if a.English == nil {
+		mobileError(w, 503)
+		return
+	}
+	resp, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{IncludeRemaining: true})
+	if err != nil {
+		mobileFailure(w, err)
+		return
+	}
+	positions := make([]*mobileEnglishPosition, 0, len(resp.Remaining))
+	for _, p := range resp.Remaining {
+		positions = append(positions, mobileReviewPosition(p))
+	}
+	if resp.GetCurrent().GetCard() != nil && len(positions) == 0 {
+		mobileError(w, 503)
+		return
+	}
+	mobileJSON(w, 200, map[string]any{"positions": positions})
+}
+
+func (a *App) mobileEnglishWord(w http.ResponseWriter, r *http.Request) {
+	var input struct{ ID, English, Source, Date string }
+	if !mobileDecode(w, r, &input) {
+		return
+	}
+	if !mobileOperationID.MatchString(input.ID) {
+		mobileError(w, 400)
+		return
+	}
+	if a.English == nil {
+		mobileError(w, 503)
+		return
+	}
+	_, err := a.English.SaveCard(r.Context(), &pb.SaveCardRequest{OperationId: "android:" + input.ID, Card: &pb.Card{Kind: "word", English: strings.TrimSpace(input.English), Source: strings.TrimSpace(input.Source), Date: input.Date}})
+	if err != nil {
+		mobileFailure(w, err)
+		return
+	}
+	mobileJSON(w, 200, map[string]any{"id": input.ID, "stored": true})
 }

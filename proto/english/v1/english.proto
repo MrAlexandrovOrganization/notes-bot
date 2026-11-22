@@ -59,9 +59,12 @@ message ReviewPosition {
   int32 easy_level = 6; // 0 through 5 for the current card.
   Card next_preview = 7; // Read-only lookahead within this round, without an action token.
 }
-message GetReviewRequest {}
+message GetReviewRequest {
+  bool include_remaining = 1;
+}
 message GetReviewResponse {
   ReviewPosition current = 1;
+  repeated ReviewPosition remaining = 2; // Includes current through the end of this round.
 }
 enum ReviewAction {
   REVIEW_ACTION_UNSPECIFIED = 0;

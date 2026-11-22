@@ -38,22 +38,32 @@ func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) 
 		s.nextRound(cards)
 		changed = true
 	}
-	card := cards[s.Queue[s.Position]]
-	p := s.Progress[card.Id]
-	card.Lapses = p.Lapses
-	token := englishHash(fmt.Sprintf("%s:%d:%d:%s:%s", s.Seed, s.Round, s.Position, card.Id, card.Revision))
-	var next *pb.Card
+	current := s.positionAt(cards, s.Position)
 	for _, id := range s.Queue[s.Position+1:] {
 		if preview := cards[id]; preview != nil {
-			next = preview
+			current.NextPreview = preview
 			break
 		}
 	}
-	return &pb.ReviewPosition{
-		NextPreview: next,
-		Card:        card, Token: token, Round: s.Round,
-		Position: int32(s.Position + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.Level,
-	}, changed
+	return current, changed
+}
+
+func (s *session) positionAt(cards map[string]*pb.Card, index int) *pb.ReviewPosition {
+	card := cards[s.Queue[index]]
+	p := s.Progress[card.Id]
+	card.Lapses = p.Lapses
+	token := englishHash(fmt.Sprintf("%s:%d:%d:%s:%s", s.Seed, s.Round, index, card.Id, card.Revision))
+	return &pb.ReviewPosition{Card: card, Token: token, Round: s.Round, Position: int32(index + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.Level}
+}
+
+func (s *session) remaining(cards map[string]*pb.Card) []*pb.ReviewPosition {
+	var result []*pb.ReviewPosition
+	for i := s.Position; i < len(s.Queue); i++ {
+		if cards[s.Queue[i]] != nil {
+			result = append(result, s.positionAt(cards, i))
+		}
+	}
+	return result
 }
 
 func (s *session) nextRound(cards map[string]*pb.Card) {
