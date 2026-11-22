@@ -48,11 +48,19 @@ func Parse(text string) []Embed {
 			if strings.ContainsAny(ref, ":\\\x00") || strings.HasPrefix(ref, "/") {
 				continue
 			}
-			switch strings.ToLower(path.Ext(ref)) {
-			case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+			if IsRaster(ref) {
 				result = append(result, Embed{m[0], ref})
 			}
 		}
 	}
 	return result
+}
+
+// IsRaster reports the preview formats supported by both clients.
+func IsRaster(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+		return true
+	}
+	return false
 }

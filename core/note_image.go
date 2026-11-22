@@ -101,29 +101,14 @@ func (s *NotesServer) ReadNoteImage(ctx context.Context, req *pb.ReadNoteImageRe
 
 func readNoteImage(ctx context.Context, root *os.Root, note, ref string) (*pb.ReadNoteImageResponse, error) {
 	missing := status.Error(codes.NotFound, "embedded image unavailable")
-	if path.Ext(note) != ".md" || ref == "" {
-		return nil, missing
+	var f *os.File
+	var err error
+	if ref == "" && noteimage.IsRaster(note) {
+		// An explicit file selection opens only this exact visible vault path.
+		f, err = regularVaultFile(root, note)
+	} else {
+		f, err = linkedImage(ctx, root, note, ref)
 	}
-	n, err := regularVaultFile(root, note)
-	if err != nil {
-		return nil, missing
-	}
-	defer n.Close()
-	body, err := io.ReadAll(io.LimitReader(n, markdownLimit+1))
-	if err != nil || len(body) > markdownLimit {
-		return nil, missing
-	}
-	linked := false
-	for _, e := range noteimage.Parse(string(body)) {
-		if e.Reference == ref {
-			linked = true
-			break
-		}
-	}
-	if !linked {
-		return nil, missing
-	}
-	f, err := findImage(ctx, root, note, ref)
 	if err != nil {
 		return nil, missing
 	}
@@ -154,4 +139,30 @@ func readNoteImage(ctx context.Context, root *os.Root, note, ref string) (*pb.Re
 		return nil, missing
 	}
 	return &pb.ReadNoteImageResponse{Data: buf.Bytes(), MediaType: "image/jpeg"}, nil
+}
+
+func linkedImage(ctx context.Context, root *os.Root, note, ref string) (*os.File, error) {
+	if path.Ext(note) != ".md" || ref == "" {
+		return nil, fs.ErrNotExist
+	}
+	n, err := regularVaultFile(root, note)
+	if err != nil {
+		return nil, fs.ErrNotExist
+	}
+	defer n.Close()
+	body, err := io.ReadAll(io.LimitReader(n, markdownLimit+1))
+	if err != nil || len(body) > markdownLimit {
+		return nil, fs.ErrNotExist
+	}
+	linked := false
+	for _, e := range noteimage.Parse(string(body)) {
+		if e.Reference == ref {
+			linked = true
+			break
+		}
+	}
+	if !linked {
+		return nil, fs.ErrNotExist
+	}
+	return findImage(ctx, root, note, ref)
 }

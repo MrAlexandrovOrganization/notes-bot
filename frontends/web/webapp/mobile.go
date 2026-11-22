@@ -263,6 +263,10 @@ func (a *App) mobileRating(w http.ResponseWriter, r *http.Request) {
 		mobileError(w, 400)
 		return
 	}
+	if _, err := a.Core.EnsureNote(r.Context(), request.Date); err != nil {
+		mobileFailure(w, err)
+		return
+	}
 	stored, err := a.Core.UpdateRating(r.Context(), request.Date, request.Rating)
 	if err != nil {
 		mobileFailure(w, err)

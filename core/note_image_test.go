@@ -42,4 +42,17 @@ func TestOnlyLinkedVaultImages(t *testing.T) {
 			t.Fatalf("unexpected result for %q: %v", ref, err)
 		}
 	}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"Media/a b.png", true}, {"a b.png", false}, {"escape.png", false},
+		{"../Media/a b.png", false}, {".hidden/a.png", false}, {"note.md", false},
+	} {
+		img, err := readNoteImage(t.Context(), root, tc.path, "")
+		if (err == nil) != tc.want || (tc.want && img.MediaType != "image/jpeg") {
+			t.Fatalf("unexpected direct preview for %q: %v", tc.path, err)
+		}
+	}
+
 }
