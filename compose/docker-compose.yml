@@ -98,6 +98,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 120s
     extends:
       file: compose/docker-compose.base.yml
       service: base
