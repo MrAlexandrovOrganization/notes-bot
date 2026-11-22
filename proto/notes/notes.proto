@@ -22,6 +22,9 @@ service NotesService {
   rpc AppendToNoteByPath(AppendByPathRequest) returns (SuccessResponse);
   rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
   rpc GetNoteByPath(GetNoteByPathRequest) returns (NoteResponse);
+  // For trusted services that edit Markdown while preserving its metadata.
+  rpc ReadMarkdown(ReadMarkdownRequest) returns (ReadMarkdownResponse);
+  rpc ReplaceMarkdown(ReplaceMarkdownRequest) returns (ReplaceMarkdownResponse);
 }
 
 message DateRequest {
@@ -138,3 +141,18 @@ message TrackTaskRequest {
 message TaskResponse {
   Task task = 1;
 }
+
+message ReadMarkdownRequest {
+  string relpath = 1;
+}
+message ReadMarkdownResponse {
+  string content = 1;
+  // Opaque revision. Missing files also have a revision, distinct from empty files.
+  string revision = 2;
+}
+message ReplaceMarkdownRequest {
+  string relpath = 1;
+  string content = 2;
+  string expected_revision = 3;
+}
+message ReplaceMarkdownResponse {}

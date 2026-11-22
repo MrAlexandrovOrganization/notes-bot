@@ -40,6 +40,7 @@ import (
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	"notes-bot/internal/voicejobs"
+	englishpb "notes-bot/proto/english/v1"
 )
 
 // maxConcurrentUpdates limits how many updates are processed in parallel.
@@ -163,6 +164,12 @@ func main() {
 	}
 	defer coreClient.Close()
 
+	englishConn, err := grpcutil.Dial(cfg.EnglishGRPCHost, cfg.EnglishGRPCPort)
+	if err != nil {
+		logger.Fatal("failed to create English client")
+	}
+	defer englishConn.Close()
+
 	notifClient, err := clients.NewNotificationsClient(cfg.NotificationsGRPCHost, cfg.NotificationsGRPCPort)
 	if err != nil {
 		logger.Fatal("failed to create notifications client", zap.Error(err))
@@ -198,7 +205,7 @@ func main() {
 
 	app := &tghandlers.App{
 		Geo:           notifClient.Geo(),
-		English:       coreClient.English(),
+		English:       englishpb.NewEnglishServiceClient(englishConn),
 		Tutor:         searchClient,
 		Cfg:           cfg,
 		Core:          coreClient,

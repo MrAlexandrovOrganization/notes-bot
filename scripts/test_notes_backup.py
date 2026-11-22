@@ -1,6 +1,7 @@
 """Synthetic backup integrity and failure tests; never access production hosts."""
 
 import datetime as dt
+import hashlib
 import io
 import fcntl
 import os
@@ -144,6 +145,23 @@ class NotesBackupTests(unittest.TestCase):
                     archive.addfile(entry, io.BytesIO(data))
             with self.assertRaisesRegex(backup.BackupError, "checksum mismatch"):
                 backup.validate(path)
+
+    def test_archive_accepts_english_progress_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar"
+            members = (backup.MEMBERS - {"search.dump", "manifest.json"}) | {"english.dump"}
+            payload = b"synthetic backup"
+            manifest = {"format": 2, "search_location": "external",
+                        "databases": {k: {"image": "postgres@sha256:" + "a" * 64}
+                                      for k in ("notifications", "english")},
+                        "sha256": {k: hashlib.sha256(payload).hexdigest() for k in members}}
+            with tarfile.open(path, "w:") as archive:
+                for name in members | {"manifest.json"}:
+                    data = json.dumps(manifest).encode() if name == "manifest.json" else payload
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(data)
+                    archive.addfile(entry, io.BytesIO(data))
+            self.assertIn("english", backup.validate(path)["databases"])
 
     def test_failed_pull_preserves_old_backups_and_latest(self):
         with tempfile.TemporaryDirectory() as directory:

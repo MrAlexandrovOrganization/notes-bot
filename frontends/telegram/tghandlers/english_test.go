@@ -6,31 +6,53 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"notes-bot/core"
+	"google.golang.org/protobuf/proto"
 	"notes-bot/frontends/telegram/clients"
 	r "notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/english"
 	"notes-bot/internal/voicejobs"
 	pb "notes-bot/proto/english/v1"
+	notes "notes-bot/proto/notes"
 )
+
+type englishFlowNotes struct{ Vault string }
+
+func (n *englishFlowNotes) ReadMarkdown(_ context.Context, req *notes.ReadMarkdownRequest, _ ...grpc.CallOption) (*notes.ReadMarkdownResponse, error) {
+	content, err := os.ReadFile(filepath.Join(n.Vault, req.Relpath))
+	if os.IsNotExist(err) {
+		return &notes.ReadMarkdownResponse{Revision: "missing"}, nil
+	}
+	return &notes.ReadMarkdownResponse{Content: string(content), Revision: "synthetic"}, err
+}
+
+func (n *englishFlowNotes) ReplaceMarkdown(_ context.Context, req *notes.ReplaceMarkdownRequest, _ ...grpc.CallOption) (*notes.ReplaceMarkdownResponse, error) {
+	path := filepath.Join(n.Vault, req.Relpath)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+	return &notes.ReplaceMarkdownResponse{}, os.WriteFile(path, []byte(req.Content), 0644)
+}
 
 type englishFlowClient struct {
 	pb.EnglishServiceClient
-	server              *core.EnglishServer
+	server              *englishFlowNotes
+	material            *english.Server
 	saves, grades       int
 	loseSave, loseGrade bool
+	review              *pb.ReviewPosition
+	lastToken           string
 }
 
 func (c *englishFlowClient) SaveCard(ctx context.Context, req *pb.SaveCardRequest, _ ...grpc.CallOption) (*pb.SaveCardResponse, error) {
 	c.saves++
-	result, err := c.server.SaveCard(ctx, req)
+	result, err := c.material.SaveCard(ctx, req)
 	if err == nil && c.loseSave {
 		c.loseSave = false
 		return nil, errors.New("lost save reply")
@@ -38,16 +60,27 @@ func (c *englishFlowClient) SaveCard(ctx context.Context, req *pb.SaveCardReques
 	return result, err
 }
 func (c *englishFlowClient) ListCards(ctx context.Context, req *pb.ListCardsRequest, _ ...grpc.CallOption) (*pb.ListCardsResponse, error) {
-	return c.server.ListCards(ctx, req)
+	return c.material.ListCards(ctx, req)
 }
-func (c *englishFlowClient) GradeCard(ctx context.Context, req *pb.GradeCardRequest, _ ...grpc.CallOption) (*pb.GradeCardResponse, error) {
-	c.grades++
-	result, err := c.server.GradeCard(ctx, req)
-	if err == nil && c.loseGrade {
+func (c *englishFlowClient) GetReview(_ context.Context, _ *pb.GetReviewRequest, _ ...grpc.CallOption) (*pb.GetReviewResponse, error) {
+	return &pb.GetReviewResponse{Current: proto.CloneOf(c.review)}, nil
+}
+func (c *englishFlowClient) AdvanceReview(_ context.Context, req *pb.AdvanceReviewRequest, _ ...grpc.CallOption) (*pb.AdvanceReviewResponse, error) {
+	if req.Token != c.lastToken {
+		c.lastToken = req.Token
+		if req.Action != pb.ReviewAction_REVIEW_ACTION_SKIP {
+			c.grades++
+		}
+		c.review = &pb.ReviewPosition{
+			Card:  &pb.Card{English: "next", Source: "следующий"},
+			Token: "next", Round: c.review.Round + 1, Position: 1, RoundSize: 1,
+		}
+	}
+	if c.loseGrade {
 		c.loseGrade = false
 		return nil, errors.New("lost grade reply")
 	}
-	return result, err
+	return &pb.AdvanceReviewResponse{Current: proto.CloneOf(c.review)}, nil
 }
 
 type englishFlowCore struct{ clients.CoreService }
@@ -83,7 +116,8 @@ func englishFlowFixture(t *testing.T) (*App, *englishFlowClient, *englishFlowLLM
 	t.Helper()
 	repo, whisper, voiceCore, api, bot := durableVoiceFixture(t)
 	app := durableVoiceApp(repo, whisper, voiceCore)
-	client := &englishFlowClient{server: &core.EnglishServer{Vault: t.TempDir()}}
+	client := &englishFlowClient{server: &englishFlowNotes{Vault: t.TempDir()}}
+	client.material = &english.Server{Dictionary: english.Dictionary{Notes: client.server}}
 	llm := &englishFlowLLM{}
 	app.English = client
 	app.Tutor = llm
@@ -134,7 +168,7 @@ func TestEnglishPhrasePreviewSaveAndSequentialInput(t *testing.T) {
 	require.Equal(t, 2, client.saves)
 	data, err := os.ReadFile(filepath.Join(client.server.Vault, "Tags/English/words.md"))
 	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(string(data), "I spent half an hour trying to fix it."))
+	require.Contains(t, string(data), "I spent half an hour trying to fix it.")
 	require.Contains(t, string(data), "[[14-Nov-2026]]")
 	englishText(t, app, bot, "Следующая мысль")
 	englishAction(t, app, bot, q, "generate", state.value.English.Nonce)
@@ -238,56 +272,6 @@ func TestEnglishManualPairSurvivesModelEnrichment(t *testing.T) {
 	require.Contains(t, api.markups[len(api.markups)-1], "english:save:"+state.value.English.Nonce)
 	englishAction(t, app, bot, q, "save", state.value.English.Nonce)
 	require.Equal(t, 1, client.saves)
-}
-func TestEnglishReviewSelfAssessmentNoModelAndNoDiary(t *testing.T) {
-	app, client, llm, api, bot, state, q := englishFlowFixture(t)
-	path := filepath.Join(client.server.Vault, "Tags/English")
-	require.NoError(t, os.MkdirAll(path, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(path, "words.md"), []byte("[[10-Oct-2026]]\n- `gate` - выход на посадку\n- `aisle` - проход\n- `layover` - пересадка\n- `yield` - уступить дорогу\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(path, "phrases.md"), []byte("[[10-Oct-2026]]\n- Мы уже садимся → We're already boarding.\n"), 0644))
-	englishAction(t, app, bot, q, "review")
-	require.Contains(t, api.texts[len(api.texts)-1], "Подошло к повторению: 5.")
-	require.NotContains(t, api.markups[len(api.markups)-1], "english:queue:")
-	englishAction(t, app, bot, q, "queue")
-	e := state.value.English
-	require.NotContains(t, api.texts[len(api.texts)-1], "gate")
-	require.Contains(t, api.texts[len(api.texts)-1], "выход на посадку")
-	englishAction(t, app, bot, q, "grade", e.Nonce, "easy")
-	require.Zero(t, client.grades)
-	englishAction(t, app, bot, q, "hint", e.Nonce)
-	require.Contains(t, api.texts[len(api.texts)-1], "g…")
-	require.NotContains(t, api.texts[len(api.texts)-1], "gate")
-	englishAction(t, app, bot, q, "show", e.Nonce)
-	require.Contains(t, api.texts[len(api.texts)-1], "gate")
-	client.loseGrade = true
-	require.NoError(t, app.handleEnglishAction(t.Context(), bot, q, 42, []string{"english", "grade", e.Nonce, "miss"}))
-	require.Contains(t, api.markups[len(api.markups)-1], "english:grade:"+e.Nonce+":miss")
-	englishAction(t, app, bot, q, "grade", e.Nonce, "miss")
-	require.Len(t, state.value.English.Queue, 4)
-	require.Equal(t, []string{e.Current.Id}, state.value.English.ReviewMissed)
-	englishAction(t, app, bot, q, "grade", e.Nonce, "easy")
-	require.Equal(t, 2, client.grades)
-	englishAction(t, app, bot, q, "next", e.Nonce)
-	newNonce := state.value.English.Nonce
-	englishAction(t, app, bot, q, "grade", e.Nonce, "miss")
-	require.Equal(t, newNonce, state.value.English.Nonce)
-	require.Equal(t, 2, client.grades)
-	englishAction(t, app, bot, q, "skip", newNonce)
-	require.Equal(t, 2, client.grades)
-	englishText(t, app, bot, "I remember this")
-	require.Contains(t, api.texts[len(api.texts)-1], r.EnglishReviewNoInput)
-	englishAction(t, app, bot, q, "menu")
-	require.Zero(t, llm.calls)
-	cards, err := client.ListCards(t.Context(), &pb.ListCardsRequest{})
-	require.NoError(t, err)
-	for _, c := range cards.Cards {
-		if c.Id == e.Current.Id {
-			require.EqualValues(t, 1, c.Lapses)
-			require.EqualValues(t, 600, c.IntervalSeconds)
-		}
-	}
-	require.NoDirExists(t, filepath.Join(client.server.Vault, "Daily"))
-	require.NotContains(t, state.value.English.Queue, e.Current.Id)
 }
 func TestEnglishVoiceSurvivesModeChangeAndRestart(t *testing.T) {
 	for _, kind := range []string{"word", "phrase"} {

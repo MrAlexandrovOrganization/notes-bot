@@ -82,6 +82,52 @@ services:
       file: compose/docker-compose.base.yml
       service: base
 
+  postgres-english:
+    image: postgres:${POSTGRES_VERSION:?Run via make}
+    container_name: notes-bot-english-postgres
+    restart: unless-stopped
+    command: [postgres, -c, shared_buffers=16MB, -c, max_connections=16]
+    environment:
+      POSTGRES_DB: english
+      POSTGRES_USER: english
+      POSTGRES_PASSWORD: ${ENGLISH_DB_PASSWORD:-${DB_PASSWORD}}
+    volumes:
+      - postgres_english_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "english", "-d", "english"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extends:
+      file: compose/docker-compose.base.yml
+      service: base
+
+  english:
+    container_name: notes-bot-english
+    build:
+      context: .
+      dockerfile: cmd/english/Dockerfile
+      args: *build-args
+    restart: unless-stopped
+    environment:
+      CORE_GRPC_HOST: core
+      CORE_GRPC_PORT: "50051"
+      ENGLISH_DB_HOST: postgres-english
+      ENGLISH_DB_PASSWORD: ${ENGLISH_DB_PASSWORD:-${DB_PASSWORD}}
+    depends_on:
+      core:
+        condition: service_healthy
+      postgres-english:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/grpc_health_probe", "-addr=:50057", "-service=english.v1.EnglishService"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extends:
+      file: compose/docker-compose.base.yml
+      service: base
+
   notifications:
     container_name: notes-bot-notifications
     build:
@@ -247,6 +293,8 @@ services:
       - TELEGRAM_LOCAL_API_URL=http://telegram-bot-api:8081
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
+      - ENGLISH_GRPC_HOST=${ENGLISH_GRPC_HOST:-english}
+      - ENGLISH_GRPC_PORT=${ENGLISH_GRPC_PORT:-50057}
       - NOTIFICATIONS_GRPC_HOST=notifications
       - NOTIFICATIONS_GRPC_PORT=50052
       - WHISPER_GRPC_HOST=${WHISPER_GRPC_HOST:-whisper-ingress}
@@ -268,7 +316,7 @@ services:
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
       # Route Telegram API traffic through Xray SOCKS5 proxy on host
       - HTTPS_PROXY=socks5://host.docker.internal:10808
-      - NO_PROXY=core,notifications,${WHISPER_GRPC_HOST:-whisper-ingress},search,location,kafka,redis,ollama,jaeger,localhost,127.0.0.1
+      - NO_PROXY=core,${ENGLISH_GRPC_HOST:-english},notifications,${WHISPER_GRPC_HOST:-whisper-ingress},search,location,kafka,redis,ollama,jaeger,localhost,127.0.0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     dns:
@@ -288,6 +336,8 @@ services:
       - location-api-net  # location microservice (backends/location)
       - telegram-net      # shared local Telegram Bot API (infra/telegram-bot-api)
     depends_on:
+      english:
+        condition: service_healthy
       core:
         condition: service_healthy
       notifications:
@@ -357,6 +407,7 @@ services:
 volumes:
   postgres_data:
   postgres_search_data:
+  postgres_english_data:
   telegram-bot-api-data:
     external: true
     name: telegram-bot-api-data

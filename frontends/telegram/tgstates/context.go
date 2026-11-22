@@ -131,26 +131,21 @@ type AutomationDraft struct {
 	Repeat       bool               `json:"repeat"`
 }
 
-// EnglishContext is a resumable UI snapshot; Core rereads canonical Markdown
-// and checks revisions before any rating. No learning progress lives in Redis.
+// EnglishContext retains input drafts and the current Telegram view.
+// The English service owns the review cursor.
 type EnglishContext struct {
-	AwaitingTranslation bool     `json:"awaiting_translation,omitempty"`
-	Manual              bool     `json:"manual,omitempty"`
-	NeedsRussianSource  bool     `json:"needs_russian_source,omitempty"`
-	Transcript          string   `json:"transcript,omitempty"`
-	Kind                string   `json:"kind"`
-	Input               string   `json:"input"`
-	Date                string   `json:"date"`
-	OperationID         string   `json:"operation_id"`
-	Nonce               string   `json:"nonce"`
-	Draft               *pb.Card `json:"draft,omitempty"`
-	Question            string   `json:"question"`
-	Queue               []string `json:"queue,omitempty"`
-	ReviewSeen          []string `json:"review_seen,omitempty"`
-	ReviewMissed        []string `json:"review_missed,omitempty"`
-	ReviewTotal         int      `json:"review_total,omitempty"`
-	Current             *pb.Card `json:"current,omitempty"`
-	Revealed            bool     `json:"revealed"`
-	Graded              bool     `json:"graded"`
-	Instruction         string   `json:"instruction"`
+	AwaitingTranslation bool               `json:"awaiting_translation,omitempty"`
+	Manual              bool               `json:"manual,omitempty"`
+	NeedsRussianSource  bool               `json:"needs_russian_source,omitempty"`
+	Transcript          string             `json:"transcript,omitempty"`
+	Kind                string             `json:"kind"`
+	Input               string             `json:"input"`
+	Date                string             `json:"date"`
+	OperationID         string             `json:"operation_id"`
+	Nonce               string             `json:"nonce"`
+	Draft               *pb.Card           `json:"draft,omitempty"`
+	Question            string             `json:"question"`
+	Review              *pb.ReviewPosition `json:"review,omitempty"`
+	Revealed            bool               `json:"revealed"`
+	Instruction         string             `json:"instruction"`
 }

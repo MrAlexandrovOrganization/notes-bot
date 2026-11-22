@@ -4,10 +4,9 @@ import "fmt"
 
 const (
 	EnglishMenu             = "🇬🇧 Английский"
-	EnglishIntro            = "🇬🇧 Английский\n\nВыбери действие. Можно закончить в любой момент. Сохраняется только выбранный тобой вариант."
+	EnglishIntro            = "🇬🇧 Английский\n\nВыбери действие. После выхода повторение продолжится с той же карточки."
 	EnglishAdd              = "Добавить в словарь"
 	EnglishReview           = "Повторение"
-	EnglishStartReview      = "Начать повторение"
 	EnglishBack             = "◀ Назад"
 	EnglishSave             = "✅ Сохранить"
 	EnglishClarify          = "Уточнить с ИИ"
@@ -30,28 +29,21 @@ const (
 	EnglishExplanationLabel = "Оборот: "
 	EnglishExampleLabel     = "Пример: "
 	EnglishContextLabel     = "Контекст: "
-	EnglishReviewHelp       = "Вспомни про себя или произнеси вслух, затем покажи ответ и оцени себя. Вводить ответ не нужно. За один проход каждая карточка показывается один раз. В конце можно отдельно повторить забытые. Другие правильные формулировки допустимы; оценивай вспоминание выбранного материала."
 	EnglishReviewNoInput    = "Для текста или голоса выбери «Добавить в словарь»."
 	EnglishShow             = "Показать ответ"
 	EnglishHint             = "Подсказка"
 	EnglishMiss             = "Не вспомнил"
 	EnglishHard             = "С трудом"
 	EnglishEasy             = "Легко"
-	EnglishNext             = "Следующая"
-	EnglishFinish           = "Закончить"
-	EnglishEmpty            = "Сейчас нет подошедших карточек. Можно добавить материал или вернуться позже."
+	EnglishFinish           = "В меню"
+	EnglishEmpty            = "Словарь пока пуст. Добавь карточку, чтобы начать повторение."
 	EnglishReviewFront      = "Вспомни по-английски:\n\n"
 	EnglishHintLabel        = "Подсказка: начало — "
-	EnglishReviewSaved      = "✅ Оценка сохранена. Следующий повтор: %s.\nСерия успехов: %d; интервал: %s; забываний: %d."
 	EnglishVoiceReady       = "🎙 Учебная расшифровка готова. Открой её для просмотра и исправления. В дневник она не записана."
 	EnglishVoiceOpen        = "Открыть учебный ввод"
 	EnglishVoiceAccepted    = "Голосовой ввод принят для раздела «Английский». Можно продолжать пользоваться ботом; назначение задания сохранено."
 	EnglishVoiceTooLong     = "Расшифровка длиннее 1000 символов. Выбери нужный фрагмент и пришли его текстом в раздел «Английский»."
 )
-
-func EnglishCounts(due, total, forgotten int) string {
-	return fmt.Sprintf("Подошло к повторению: %d.\nВсего карточек: %d, с повторными забываниями: %d.\n\n%s", due, total, forgotten, EnglishReviewHelp)
-}
 
 const (
 	EnglishSkip               = "Пропустить"
@@ -61,38 +53,31 @@ const (
 	EnglishDetailInstruction  = "Подробнее поясни выбранный оборот, до трёх коротких предложений, сохрани смысл и английскую формулировку."
 )
 
-func EnglishInterval(seconds int64) string {
-	if seconds < 3600 {
-		return fmt.Sprintf("%d мин.", seconds/60)
-	}
-	if seconds < 86400 {
-		return fmt.Sprintf("%d ч.", seconds/3600)
-	}
-	return fmt.Sprintf("%d дн.", seconds/86400)
-}
-
 const EnglishTranscriptLabel = "Распознано: "
 
 const EnglishUndated = "Без даты"
 
 const EnglishSaveFailure = "⏳ Не удалось подтвердить сохранение. Нажми «Сохранить» ещё раз: повтор не создаст дубль."
-const EnglishGradeFailure = "⏳ Не удалось подтвердить оценку. Нажми ту же оценку ещё раз: повтор не изменит прогресс дважды."
+const EnglishGradeFailure = "⏳ Не удалось подтвердить действие. Нажми ту же кнопку ещё раз."
 
 const EnglishPreparing = "⏳ Жду ответ от модели. Можно сразу прислать готовую пару через тире или с новой строки."
 const EnglishEnrichmentFailure = "ИИ не смог дополнить карточку. Её по-прежнему можно сохранить."
 
 const EnglishPhraseSourcePrompt = "Пришли саму русскую мысль отдельно, до 600 символов. Английскую попытку можно добавить с новой строки после «Мой вариант:». Этот ввод заменит предыдущий черновик."
 
-func EnglishPassPosition(current, total int) string {
-	return fmt.Sprintf("Карточка %d из %d", current, total)
+func EnglishRoundPosition(round int64, position, total int32) string {
+	return fmt.Sprintf("Круг %d · Карточка %d из %d", round, position, total)
 }
-func EnglishRepeatMissed(count int) string {
-	return fmt.Sprintf("Повторить забытые (%d)", count)
-}
-func EnglishPassFinished(seen, missed int) string {
-	text := fmt.Sprintf("✅ Проход завершён.\n\nПросмотрено разных карточек: %d.\nНе вспомнили: %d.", seen, missed)
-	if missed > 0 {
-		text += "\n\nЗабытые карточки можно повторить отдельным проходом."
+
+func EnglishReviewSaved(skipped int32) string {
+	switch skipped {
+	case 0:
+		return "✅ Оценка сохранена. Карточка вернётся в следующем круге."
+	case 1:
+		return "✅ Карточка пропустит следующий круг."
+	case 2, 4:
+		return fmt.Sprintf("✅ Карточка пропустит %d круга.", skipped)
+	default:
+		return fmt.Sprintf("✅ Карточка пропустит %d кругов.", skipped)
 	}
-	return text
 }

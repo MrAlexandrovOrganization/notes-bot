@@ -43,32 +43,23 @@ func EnglishPreview(nonce string, ready, manual bool) *telego.InlineKeyboardMark
 	kb.InlineKeyboard = append(rows, kb.InlineKeyboard...)
 	return kb
 }
-func EnglishReviewStart() *telego.InlineKeyboardMarkup {
-	kb := EnglishBack()
-	kb.InlineKeyboard = append([][]telego.InlineKeyboardButton{tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishStartReview).WithCallbackData("english:queue"))}, kb.InlineKeyboard...)
-	return kb
-}
-func EnglishCard(nonce string, revealed, graded bool) *telego.InlineKeyboardMarkup {
-	rows := [][]telego.InlineKeyboardButton{}
-	if graded {
-		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishNext).WithCallbackData("english:next:"+nonce)))
-	} else if revealed {
-		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishMiss).WithCallbackData("english:grade:"+nonce+":miss"), tu.InlineKeyboardButton(r.EnglishHard).WithCallbackData("english:grade:"+nonce+":hard"), tu.InlineKeyboardButton(r.EnglishEasy).WithCallbackData("english:grade:"+nonce+":easy")))
+func EnglishCard(nonce string, revealed bool) *telego.InlineKeyboardMarkup {
+	var actions []telego.InlineKeyboardButton
+	if revealed {
+		actions = tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(r.EnglishMiss).WithCallbackData("english:grade:"+nonce+":miss"),
+			tu.InlineKeyboardButton(r.EnglishHard).WithCallbackData("english:grade:"+nonce+":hard"),
+			tu.InlineKeyboardButton(r.EnglishEasy).WithCallbackData("english:grade:"+nonce+":easy"),
+		)
 	} else {
-		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishShow).WithCallbackData("english:show:"+nonce), tu.InlineKeyboardButton(r.EnglishHint).WithCallbackData("english:hint:"+nonce)))
+		actions = tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(r.EnglishShow).WithCallbackData("english:show:"+nonce),
+			tu.InlineKeyboardButton(r.EnglishHint).WithCallbackData("english:hint:"+nonce),
+		)
 	}
-	if !graded {
-		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishSkip).WithCallbackData("english:skip:"+nonce)))
-	}
-	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishFinish).WithCallbackData("english:menu")))
-	return tu.InlineKeyboard(rows...)
-}
-
-func EnglishReviewComplete(nonce string, missed int) *telego.InlineKeyboardMarkup {
-	rows := [][]telego.InlineKeyboardButton{}
-	if missed > 0 {
-		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishRepeatMissed(missed)).WithCallbackData("english:missed:"+nonce)))
-	}
-	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishFinish).WithCallbackData("english:menu")))
-	return tu.InlineKeyboard(rows...)
+	return tu.InlineKeyboard(
+		actions,
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishSkip).WithCallbackData("english:skip:"+nonce)),
+		tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishFinish).WithCallbackData("english:menu")),
+	)
 }

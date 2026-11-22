@@ -15,7 +15,6 @@ import (
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
 	apb "notes-bot/proto/automation/v1"
-	englishpb "notes-bot/proto/english/v1"
 	pb "notes-bot/proto/notes"
 )
 
@@ -23,18 +22,6 @@ func main() {
 	logger := core.Logger
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) == 2 && os.Args[1] == "migrate-english" {
-		vault := os.Getenv("NOTES_DIR")
-		if vault == "" {
-			logger.Fatal("NOTES_DIR is required for English migration")
-		}
-		count, err := (&core.EnglishServer{Vault: vault}).MigrateEnglish(ctx)
-		if err != nil {
-			logger.Fatal("English dictionary migration failed", zap.Error(err))
-		}
-		logger.Info("English dictionary migration complete", zap.Int("imported", count))
-		return
-	}
 	automationsEnabled, err := automationevents.Enabled()
 	if err != nil {
 		logger.Fatal("invalid automations configuration")
@@ -45,7 +32,8 @@ func main() {
 		port = "50051"
 	}
 
-	cfg := core.GetConfig(context.Background())
+	core.GetConfig(ctx)
+
 	if automationsEnabled {
 		if err := core.PrepareTaskEvents(context.Background()); err != nil {
 			logger.Fatal("automation outbox unavailable")
@@ -84,7 +72,6 @@ func main() {
 
 	notesServer := core.NewDefaultNotesServer()
 	pb.RegisterNotesServiceServer(grpcServer, notesServer)
-	englishpb.RegisterEnglishServiceServer(grpcServer, &core.EnglishServer{Vault: cfg.NotesDir})
 	apb.RegisterCoreEventsServiceServer(grpcServer, &core.TaskEventsServer{Enabled: automationsEnabled})
 	grpcutil.RegisterHealth(grpcServer)
 

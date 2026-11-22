@@ -22,6 +22,7 @@ NAME = re.compile(r"notes-bot-(\d{8}T\d{6}Z)-[0-9a-f]{32}\.tar")
 MEMBERS = {"vault.tgz", "yandex-config.tgz", "application.env", "notifications.dump", "search.dump", "manifest.json"}
 REQUIRED_TABLES = {
     "notifications": {"reminders", "voice_jobs", "voice_schema_migrations", "location_history", "location_tracking"},
+    "english": {"english_review_session", "english_review_history", "english_schema_migrations"},
     "search": {"notes", "note_chunks", "chunk_embeddings", "note_profiles", "profile_embeddings"},
 }
 
@@ -222,6 +223,16 @@ def source_export(root, home):
             services = [("postgres", "notifications")]
             if not remote_search:
                 services.append(("postgres-search", "search"))
+            # Preserve the original archive layout before English is deployed.
+            english_db = run(["docker", "ps", "-aq",
+                              "--filter", "label=com.docker.compose.project=notes-bot",
+                              "--filter", "label=com.docker.compose.service=postgres-english"])
+            current_release = project / ".images/current.json"
+            english_deployed = current_release.is_file() and (
+                "english" in json.loads(current_release.read_text()).get("images", {})
+            )
+            if english_db.strip() or english_deployed:
+                services.append(("postgres-english", "english"))
             for service, name in services:
                 container, image = database(service)
                 check_tables(container, name)
@@ -264,6 +275,9 @@ def validate(path):
             databases = {"notifications"}
         else:
             raise BackupError("Unsupported backup manifest")
+        if "english" in manifest["databases"]:
+            expected = expected | {"english.dump"}
+            databases = databases | {"english"}
         if names != expected or set(manifest["sha256"]) != expected - {"manifest.json"}:
             raise BackupError("Unsupported backup manifest")
         if set(manifest["databases"]) != databases:

@@ -1,0 +1,13 @@
+# Loaded only for the one-shot legacy journal import.
+services:
+  english:
+    user: "0:0"
+    environment:
+      ENGLISH_LEGACY_JOURNAL: /legacy/.notes-bot/english-progress.json
+    volumes:
+      - type: bind
+        source: ${NOTES_DIR:?Set the primary vault path}
+        target: /legacy
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,7 +1,6 @@
-package core
+package english
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -19,26 +18,14 @@ func englishMigrationDone(words string) bool {
 	return false
 }
 
-// MigrateEnglish imports the old phrase list under the same locks as SaveCard.
-// The import and its completion marker commit in the same atomic replacement.
-// The original file remains available as an archive.
-func (s *EnglishServer) MigrateEnglish(ctx context.Context) (int, error) {
-	path, unlock, err := s.lockEnglishDictionary(ctx)
-	if err != nil {
-		return 0, err
+// Merge the legacy phrase list while retaining all card and operation IDs.
+func mergeLegacyPhrases(words, phrases string) (string, int, error) {
+	if englishMigrationDone(words) {
+		return words, 0, nil
 	}
-	defer unlock()
-	files, err := s.englishFiles()
-	if err != nil {
-		return 0, err
-	}
-	if len(files) == 1 {
-		return 0, s.syncEnglishFile(englishWords)
-	}
-	words, phrases := files[0].text, files[1].text
 	cards, err := parseEnglish(phrases, "phrase")
 	if err != nil || len(cards) == 0 {
-		return 0, err
+		return words, 0, err
 	}
 
 	payloadHashes := map[string]string{}
@@ -61,13 +48,10 @@ func (s *EnglishServer) MigrateEnglish(ctx context.Context) (int, error) {
 		sections[card.Date].WriteString(renderEnglish(card, hash))
 	}
 	merged := mergeEnglishSections(words, dates, sections)
-	if err = verifyEnglishImport(merged, cards); err != nil {
-		return 0, err
+	if err := verifyEnglishImport(merged, cards); err != nil {
+		return "", 0, err
 	}
-	if err = writeEnglishDictionary(path, merged); err != nil {
-		return 0, err
-	}
-	return len(cards), nil
+	return merged, len(cards), nil
 }
 
 func mergeEnglishSections(words string, dates []string, sections map[string]*strings.Builder) string {

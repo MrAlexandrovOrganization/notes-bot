@@ -359,24 +359,12 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishPrompt), tgkeyboards.EnglishBack())
 	case "review":
-		return a.englishReviewMenu(ctx, b, q, user)
+		return a.resumeEnglishReview(ctx, b, q, user)
 	case "queue":
-		if uc.State != tgstates.StateEnglishMenu || (len(parts) != 2 && (len(parts) != 3 || (parts[2] != "word" && parts[2] != "phrase" && parts[2] != "all"))) {
-			return nil
+		if uc.State == tgstates.StateEnglishMenu {
+			return a.resumeEnglishReview(ctx, b, q, user)
 		}
-		cards, err := a.English.ListCards(ctx, &pb.ListCardsRequest{})
-		if err != nil {
-			return err
-		}
-		e = tgstates.EnglishContext{}
-		now := time.Now().Unix()
-		for _, c := range cards.Cards {
-			if c.NextAt <= now {
-				e.Queue = append(e.Queue, c.Id)
-			}
-		}
-		e.ReviewTotal = len(e.Queue)
-		return a.nextEnglishCard(ctx, b, q, user, e)
+		return nil
 	}
 	if len(parts) < 3 || parts[2] != e.Nonce || e.Nonce == "" || !englishState(uc.State) {
 		if uc.State == tgstates.StateEnglishReview {

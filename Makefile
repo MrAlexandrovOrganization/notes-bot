@@ -167,7 +167,7 @@ clean:
 assert-active:
 	@test ! -e .retired || { echo 'This checkout is retired; use the active host.' >&2; exit 1; }
 
-up: assert-active monitoring-register migrate-voice migrate-geo migrate-automations
+up: assert-active monitoring-register migrate-voice migrate-geo migrate-automations migrate-english
 	$(DOCKER_COMPOSE) up --build -d
 
 # Explicit deployment migration; normal telegram startup only checks the schema.
@@ -178,7 +178,14 @@ migrate-voice: assert-active
 
 .PHONY: migrate-english
 migrate-english: assert-active
-	$(DOCKER_COMPOSE) exec -T core /core migrate-english
+	$(DOCKER_COMPOSE) up -d --build --wait core postgres-english
+	$(DOCKER_COMPOSE) build english
+	$(DOCKER_COMPOSE) -f compose/compose.english-migration.yml run --rm --no-deps english /english migrate
+
+.PHONY: test-english-db
+test-english-db:
+	@test -n "$(TEST_ENGLISH_DATABASE_URL)" || { echo 'Set TEST_ENGLISH_DATABASE_URL to an isolated PostgreSQL database'; exit 1; }
+	go test -race ./internal/english -v
 
 check: proto-generate templ proto-check
 	@files=$$(gofmt -l $(GO_DIRS)); test -z "$$files" || { echo "$$files"; exit 1; }
@@ -287,7 +294,8 @@ ifeq ($(strip $(NOTES_ROLE)),search-worker)
 	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180
 else
 	$(MAKE) monitoring-register
-	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres
+	$(IMAGE_COMPOSE) up -d --no-build --pull never --wait --wait-timeout 180 postgres postgres-english core
+	$(IMAGE_COMPOSE) -f compose/compose.english-migration.yml run --rm --no-deps --pull never english /english migrate
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-geo
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never notifications /notifications migrate-automations
 	$(IMAGE_COMPOSE) run --rm --no-deps --pull never telegram /telegram migrate-voice
@@ -314,6 +322,7 @@ compose:
 compose-layout-check:
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
+	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.english-migration.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.mobile.yml --profile '*' config --no-interpolate --no-env-resolution --quiet
 	$(DOCKER_COMPOSE_BASE) --env-file /dev/null -f compose/docker-compose.yml -f compose/compose.russia.yml -f compose/compose.remote-search.yml --profile '*' config --no-interpolate --no-env-resolution --quiet

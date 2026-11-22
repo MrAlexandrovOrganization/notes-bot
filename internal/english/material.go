@@ -1,4 +1,4 @@
-package core
+package english
 
 import (
 	"crypto/sha256"
@@ -149,4 +149,61 @@ func renderEnglish(c *pb.Card, payloadHash string) string {
 		}
 	}
 	return line + "\n"
+}
+
+// Place the new entry inside its date section, preserving every existing byte.
+func insertEnglish(text, date, entry string) string {
+	start := -1
+	offset := 0
+	insert := len(text)
+	for line := range strings.SplitAfterSeq(text, "\n") {
+		if m := englishDate.FindStringSubmatch(strings.TrimSuffix(line, "\n")); m != nil {
+			if start >= 0 {
+				insert = offset
+				break
+			}
+			if m[1] == date {
+				start = offset
+			}
+		}
+		offset += len(line)
+	}
+	prefix := ""
+	if start < 0 {
+		prefix = "\n[[" + date + "]]\n"
+	}
+	if insert > 0 && text[insert-1] != '\n' {
+		prefix = "\n" + prefix
+	}
+	return text[:insert] + prefix + entry + text[insert:]
+}
+
+// Preserve the existing content-derived identity when a handwritten entry first
+// gets persistent progress. The visible text and its line endings are retained.
+func markHandwritten(text, kind, onlyID string) string {
+	lines := strings.Split(text, "\n")
+	header := ""
+	seen := make(map[string]bool)
+	for i, line := range lines {
+		if englishDate.MatchString(line) {
+			header = line + "\n"
+			continue
+		}
+		if strings.HasPrefix(line, "  ") {
+			continue
+		}
+		cards, _ := parseEnglish(header+line, kind)
+		if len(cards) != 1 {
+			continue
+		}
+		card := cards[0]
+		alreadySeen := seen[card.Id]
+		seen[card.Id] = true
+		if alreadySeen || englishMarker.MatchString(strings.TrimSpace(line)) || (onlyID != "" && card.Id != onlyID) {
+			continue
+		}
+		trimmed := strings.TrimRight(line, " \t\r")
+		lines[i] = trimmed + fmt.Sprintf(" <!-- notes-bot:english:%s:%s -->", card.Id, englishHash(englishPayload(card))) + line[len(trimmed):]
+	}
+	return strings.Join(lines, "\n")
 }

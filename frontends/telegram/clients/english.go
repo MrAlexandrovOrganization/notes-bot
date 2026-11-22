@@ -6,8 +6,6 @@ import (
 	pb "notes-bot/proto/english/v1"
 )
 
-func (c *CoreClient) English() pb.EnglishServiceClient { return pb.NewEnglishServiceClient(c.conn) }
-
 type EnglishDraft = englishtutor.Draft
 type EnglishGenerator = englishtutor.Generator
 

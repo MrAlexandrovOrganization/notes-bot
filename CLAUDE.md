@@ -407,12 +407,11 @@ $NOTES_DIR/
 
 ### English learning
 
-Telegram's main menu has words, thoughts-to-English and self-assessed review;
-see `docs/english.md` for editable dated Markdown formats and scheduling policy.
-`core/english*.go` implements `english.v1.EnglishService`: canonical material is
-parsed from `Tags/English/{words,phrases}.md`; only review history/schedules live
-in the separate atomic `.notes-bot/english-progress.json` journal. Reading does
-not import or rewrite notes. Never introduce another editable material store.
+See `docs/english.md` for editable dated Markdown and the round policy.
+`cmd/english` serves `english.v1.EnglishService`. The vault is authoritative
+for material. The English service reads and conditionally updates Markdown via
+Core's generic file API. PostgreSQL stores review history and the shared cursor.
+The explicit deployment migration imports the previous JSON journal once.
 `search/english.go` implements the separate `TutorService` on the existing remote
 model worker, with no retrieval/vault/DB dependency. Prompts and validation are
 in `internal/englishtutor`; Telegram uses the guarded search gRPC connection,

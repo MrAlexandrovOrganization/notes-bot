@@ -17,6 +17,8 @@ type Config struct {
 	DayStartHour          int
 	CoreGRPCHost          string
 	CoreGRPCPort          string
+	EnglishGRPCHost       string
+	EnglishGRPCPort       string
 	NotificationsGRPCHost string
 	NotificationsGRPCPort string
 	WhisperGRPCHost       string
@@ -71,6 +73,8 @@ func Load() (*Config, error) {
 		DayStartHour:          env.Int("DAY_START_HOUR", 7),
 		CoreGRPCHost:          env.Str("CORE_GRPC_HOST", "localhost"),
 		CoreGRPCPort:          env.Str("CORE_GRPC_PORT", "50051"),
+		EnglishGRPCHost:       env.Str("ENGLISH_GRPC_HOST", "localhost"),
+		EnglishGRPCPort:       env.Str("ENGLISH_GRPC_PORT", "50057"),
 		NotificationsGRPCHost: env.Str("NOTIFICATIONS_GRPC_HOST", "localhost"),
 		NotificationsGRPCPort: env.Str("NOTIFICATIONS_GRPC_PORT", "50052"),
 		WhisperGRPCHost:       env.Str("WHISPER_GRPC_HOST", "localhost"),

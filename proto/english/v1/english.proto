@@ -3,11 +3,15 @@ package english.v1;
 
 option go_package = "notes-bot/proto/english/v1;englishv1";
 
-// Core owns both the editable Markdown material and its separate review journal.
+// The English service reads material from Notes and owns review state.
 service EnglishService {
   rpc SaveCard(SaveCardRequest) returns (SaveCardResponse);
   rpc ListCards(ListCardsRequest) returns (ListCardsResponse);
-  rpc GradeCard(GradeCardRequest) returns (GradeCardResponse);
+  rpc GradeCard(GradeCardRequest) returns (GradeCardResponse) {
+    option deprecated = true;
+  }
+  rpc GetReview(GetReviewRequest) returns (GetReviewResponse);
+  rpc AdvanceReview(AdvanceReviewRequest) returns (AdvanceReviewResponse);
 }
 message Card {
   string id = 1;
@@ -18,10 +22,10 @@ message Card {
   string example = 6;
   string context = 7;
   string date = 8; // Notes logical date, DD-Mmm-YYYY
-  string revision = 9; // material + review version; compare-and-set token
-  int64 next_at = 10;
-  int64 interval_seconds = 11;
-  int32 streak = 12;
+  string revision = 9; // Version of the material. Review actions use ReviewPosition.token.
+  int64 next_at = 10 [deprecated = true];
+  int64 interval_seconds = 11 [deprecated = true];
+  int32 streak = 12 [deprecated = true];
   int32 lapses = 13;
 }
 message SaveCardRequest {
@@ -44,6 +48,34 @@ message GradeCardRequest {
 }
 message GradeCardResponse {
   Card card = 1;
+}
+
+message ReviewPosition {
+  Card card = 1; // Absent when the dictionary is empty.
+  string token = 2; // Version of this specific presentation, including material.
+  int64 round = 3;
+  int32 position = 4; // One-based position in the current round.
+  int32 round_size = 5;
+  int32 easy_level = 6; // 0 through 5 for the current card.
+}
+message GetReviewRequest {}
+message GetReviewResponse {
+  ReviewPosition current = 1;
+}
+enum ReviewAction {
+  REVIEW_ACTION_UNSPECIFIED = 0;
+  REVIEW_ACTION_MISS = 1;
+  REVIEW_ACTION_HARD = 2;
+  REVIEW_ACTION_EASY = 3;
+  REVIEW_ACTION_SKIP = 4;
+}
+message AdvanceReviewRequest {
+  string token = 1;
+  ReviewAction action = 2;
+}
+message AdvanceReviewResponse {
+  ReviewPosition current = 1;
+  int32 skipped_rounds = 2; // Number of full rounds skipped by this grade.
 }
 
 // Hosted by the existing remote search/model worker; no retrieval or vault input.

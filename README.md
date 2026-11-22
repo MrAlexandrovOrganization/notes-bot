@@ -10,7 +10,7 @@
 
 Автоматизации после изменения статуса задач: [интерфейс, гарантии и включение](docs/automations.md).
 
-Раздел [«Английский»](docs/english.md) объединяет слова, выражения и фразы в один Markdown-словарь с повторением и самооценкой. Словарь можно пополнять вручную, текстом или голосом.
+Раздел [«Английский»](docs/english.md) объединяет слова, выражения и фразы в один Markdown-словарь с бесконечными кругами и самооценкой. Словарь можно пополнять вручную, текстом или голосом. Сервис английского хранит прогресс в отдельном PostgreSQL.
 
 ## Возможности
 
@@ -30,16 +30,20 @@
 
 ## Архитектура
 
-7 основных сервисов + 8 сервисов инструментирования в Docker, взаимодействие через gRPC, Kafka и HTTP:
+Сервисы в Docker взаимодействуют через gRPC, Kafka и HTTP.
 
 ```
 [Telegram Bot] ──gRPC──► [Core Service]          :50051
                ──gRPC──► [Notifications Service]  :50052
                ──gRPC──► [Whisper Service]         :50053
+               ──gRPC──► [English Service]         :50057
                ──HTTP──► [Ollama LLM]              :11434
                ──────────[Redis]                   :6379  (состояние пользователей)
                                   │
                           [PostgreSQL]              :5432
+
+[English Service] ──gRPC──► [Core Service] ──► [Obsidian vault]
+                  ────────► [English PostgreSQL]
 
 [Notifications Service] ──Kafka──► topic: reminders_due ──► [Telegram Bot]
 ```
@@ -53,6 +57,8 @@
 | `whisper` | Python | Голос → текст (faster-whisper) |
 | `telegram` | Go | Telegram-бот, все обработчики, UI, consumer Kafka |
 | `postgres` | — | База данных напоминаний |
+| `english` | Go | Словарь и общая очередь повторения через gRPC |
+| `postgres-english` | — | Прогресс и история оценок |
 | `kafka` | — | Очередь событий напоминаний (Kafka 4.0, KRaft) |
 | `redis` | — | Состояние пользователей (TTL 7 дней) |
 | `ollama` | — | Локальная LLM для разбора напоминаний на естественном языке |
