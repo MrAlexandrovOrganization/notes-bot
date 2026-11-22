@@ -100,6 +100,20 @@ func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 	rated, err := first.AdvanceReview(ctx, easy)
 	require.NoError(t, err)
 	require.Contains(t, []int32{2, 3}, rated.SkippedRounds)
+	list, err := first.ListCards(ctx, &pb.ListCardsRequest{Kind: "word", IncludeProgress: true})
+	require.NoError(t, err)
+	for _, c := range list.Cards {
+		if c.Id != updated.Card.Id {
+			continue
+		}
+		seenSide, otherSide := c.RuToEn, c.EnToRu
+		if updated.PromptLanguage == "en" {
+			seenSide, otherSide = otherSide, seenSide
+		}
+		require.Equal(t, "easy", seenSide.LastGrade)
+		require.Equal(t, updated.Round+1+int64(rated.SkippedRounds), seenSide.DueRound)
+		require.Empty(t, otherSide.LastGrade)
+	}
 	replayed, err := second.AdvanceReview(ctx, easy)
 	require.NoError(t, err)
 	require.True(t, proto.Equal(rated, replayed))

@@ -11,10 +11,47 @@ import (
 	pb "notes-bot/proto/english/v1"
 )
 
+type directionProgress struct {
+	Due    int64  `json:"due"`
+	Level  int32  `json:"level"`
+	Lapses int32  `json:"lapses"`
+	Grade  string `json:"grade,omitempty"`
+}
+
+func (p directionProgress) summary() *pb.DirectionProgress {
+	return &pb.DirectionProgress{LastGrade: p.Grade, DueRound: p.Due}
+}
+
 type progress struct {
+	English *directionProgress `json:"en,omitempty"`
+	Russian *directionProgress `json:"ru,omitempty"`
+	// Unattributed progress from versions with a shared schedule.
 	Due    int64 `json:"due"`
 	Level  int32 `json:"level"`
 	Lapses int32 `json:"lapses"`
+}
+
+func (p progress) side(language string) directionProgress {
+	side := p.Russian
+	if language == "en" {
+		side = p.English
+	}
+	if side != nil {
+		return *side
+	}
+	// Keep the old eligibility round without assigning a historical grade to either side.
+	return directionProgress{Due: p.Due}
+}
+func (p progress) due() int64 { return min(p.side("en").Due, p.side("ru").Due) }
+
+// Android 1.6.1 and 1.6.2 use Java String.hashCode parity. For ASCII tokens
+// its low bit equals the XOR of each byte's low bit (31 is odd).
+func englishToken(token string) bool {
+	var parity byte
+	for i := 0; i < len(token); i++ {
+		parity ^= token[i]
+	}
+	return parity&1 != 0
 }
 
 type session struct {
@@ -51,9 +88,26 @@ func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) 
 func (s *session) positionAt(cards map[string]*pb.Card, index int) *pb.ReviewPosition {
 	card := cards[s.Queue[index]]
 	p := s.Progress[card.Id]
-	card.Lapses = p.Lapses
+	en, ru := p.side("en"), p.side("ru")
+	card.Lapses = p.Lapses + en.Lapses + ru.Lapses
 	token := englishHash(fmt.Sprintf("%s:%d:%d:%s:%s", s.Seed, s.Round, index, card.Id, card.Revision))
-	return &pb.ReviewPosition{Card: card, Token: token, Round: s.Round, Position: int32(index + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.Level}
+	// Equal due rounds keep the original presentation token, including packs
+	// downloaded before the server upgrade.
+	english := englishToken(token)
+	if en.Due != ru.Due && english != (en.Due < ru.Due) {
+		english = !english
+		// Preserve the legacy client's choice while keeping the token hexadecimal.
+		if englishToken(token[:63]) == english {
+			token = token[:63] + "0"
+		} else {
+			token = token[:63] + "1"
+		}
+	}
+	language := "ru"
+	if english {
+		language = "en"
+	}
+	return &pb.ReviewPosition{Card: card, PromptLanguage: language, Token: token, Round: s.Round, Position: int32(index + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.side(language).Level}
 }
 
 func (s *session) remaining(cards map[string]*pb.Card) []*pb.ReviewPosition {
@@ -73,7 +127,7 @@ func (s *session) nextRound(cards map[string]*pb.Card) {
 	s.Round++
 	earliest := int64(0)
 	for id := range cards {
-		due := max(s.Round, s.Progress[id].Due)
+		due := max(s.Round, s.Progress[id].due())
 		if earliest == 0 || due < earliest {
 			earliest = due
 		}
@@ -84,7 +138,7 @@ func (s *session) nextRound(cards map[string]*pb.Card) {
 	s.Position = 0
 	ranks := make(map[string]string, len(cards))
 	for id := range cards {
-		if s.Progress[id].Due <= s.Round {
+		if s.Progress[id].due() <= s.Round {
 			s.Queue = append(s.Queue, id)
 			ranks[id] = englishHash(fmt.Sprintf("%s:%d:%s", s.Seed, s.Round, id))
 		}
@@ -97,12 +151,14 @@ func (s *session) nextRound(cards map[string]*pb.Card) {
 	})
 }
 
-func (s *session) advance(id, action string) int32 {
+func (s *session) advance(id, language, action string) int32 {
 	s.Position++
 	if action == "skip" {
 		return 0
 	}
-	p := s.Progress[id]
+	card := s.Progress[id]
+	p := card.side(language)
+	p.Grade = action
 	var skipped int32
 	switch action {
 	case "miss":
@@ -118,7 +174,12 @@ func (s *session) advance(id, action string) int32 {
 		skipped = s.chooseSkippedRounds(id, action, interval.min, interval.max)
 	}
 	p.Due = s.Round + 1 + int64(skipped)
-	s.Progress[id] = p
+	if language == "en" {
+		card.English = &p
+	} else {
+		card.Russian = &p
+	}
+	s.Progress[id] = card
 	return skipped
 }
 

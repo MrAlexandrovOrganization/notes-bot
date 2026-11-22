@@ -72,12 +72,12 @@ func EnglishRoundPosition(round int64, position, total int32) string {
 func EnglishReviewSaved(skipped int32) string {
 	switch skipped {
 	case 0:
-		return "✅ Оценка сохранена. Карточка вернётся в следующем круге."
+		return "✅ Оценка сохранена. Это направление снова доступно со следующего круга."
 	case 1:
-		return "✅ Карточка пропустит следующий круг."
+		return "✅ Это направление пропустит следующий круг."
 	case 2, 3, 4:
-		return fmt.Sprintf("✅ Карточка пропустит %d круга.", skipped)
+		return fmt.Sprintf("✅ Это направление пропустит %d круга.", skipped)
 	default:
-		return fmt.Sprintf("✅ Карточка пропустит %d кругов.", skipped)
+		return fmt.Sprintf("✅ Это направление пропустит %d кругов.", skipped)
 	}
 }

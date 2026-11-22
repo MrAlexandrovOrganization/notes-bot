@@ -40,12 +40,17 @@ func (a *App) renderEnglishReview(ctx context.Context, b *telego.Bot, q *telego.
 	return replyToCallback(ctx, b, q, text, tgkeyboards.EnglishCard(e.Nonce, false))
 }
 
-func englishFront(c *pb.Card) tgfmt.HTML {
+func englishFront(position *pb.ReviewPosition) tgfmt.HTML {
+	c := position.Card
+	cue, label := c.Source, r.EnglishReviewFront
+	if position.PromptLanguage == "en" {
+		cue, label = c.English, "Вспомни по-русски:\n\n"
+	}
 	date := r.EnglishUndated
 	if c.Date != "" {
 		date = "[[" + c.Date + "]]"
 	}
-	return tgfmt.Join(tgfmt.Escape(r.EnglishReviewFront), tgfmt.Blockquote(tgfmt.Escape(c.Source)), tgfmt.Escape("\n\n"+date))
+	return tgfmt.Join(tgfmt.Escape(label), tgfmt.Blockquote(tgfmt.Escape(cue)), tgfmt.Escape("\n\n"+date))
 }
 
 func englishReviewPosition(e tgstates.EnglishContext) tgfmt.HTML {
@@ -53,7 +58,7 @@ func englishReviewPosition(e tgstates.EnglishContext) tgfmt.HTML {
 }
 
 func englishReviewFront(e tgstates.EnglishContext) tgfmt.HTML {
-	return tgfmt.Join(englishReviewPosition(e), englishFront(e.Review.Card))
+	return tgfmt.Join(englishReviewPosition(e), englishFront(e.Review))
 }
 
 func englishReviewAnswer(e tgstates.EnglishContext) tgfmt.HTML {
@@ -61,7 +66,7 @@ func englishReviewAnswer(e tgstates.EnglishContext) tgfmt.HTML {
 }
 
 func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext, parts []string) error {
-	if e.Review.GetCard() == nil {
+	if e.Review.GetCard() == nil || e.Review.PromptLanguage == "" {
 		// The previous release stored review queues entirely in Telegram.
 		return a.resumeEnglishReview(ctx, b, q, user)
 	}
@@ -70,7 +75,11 @@ func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.
 		if e.Revealed {
 			return nil
 		}
-		first := []rune(e.Review.Card.English)
+		answer := e.Review.Card.English
+		if e.Review.PromptLanguage == "en" {
+			answer = e.Review.Card.Source
+		}
+		first := []rune(answer)
 		if len(first) == 0 {
 			return nil
 		}

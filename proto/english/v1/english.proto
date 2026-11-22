@@ -27,6 +27,12 @@ message Card {
   int64 interval_seconds = 11 [deprecated = true];
   int32 streak = 12 [deprecated = true];
   int32 lapses = 13;
+  DirectionProgress en_to_ru = 14;
+  DirectionProgress ru_to_en = 15;
+}
+message DirectionProgress {
+  string last_grade = 1;
+  int64 due_round = 2;
 }
 message SaveCardRequest {
   string operation_id = 1;
@@ -37,6 +43,7 @@ message SaveCardResponse {
 }
 message ListCardsRequest {
   string kind = 1;
+  bool include_progress = 2;
 }
 message ListCardsResponse {
   repeated Card cards = 1;
@@ -57,6 +64,7 @@ message ReviewPosition {
   int32 position = 4; // One-based position in the current round.
   int32 round_size = 5;
   int32 easy_level = 6; // 0 through 5 for the current card.
+  string prompt_language = 8; // en or ru, fixed for this presentation.
   Card next_preview = 7; // Read-only lookahead within this round, without an action token.
 }
 message GetReviewRequest {

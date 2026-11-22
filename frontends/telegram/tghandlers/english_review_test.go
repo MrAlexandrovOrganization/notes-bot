@@ -13,8 +13,8 @@ import (
 func TestEnglishReviewResumesBackendPositionAndRetriesLostRating(t *testing.T) {
 	app, client, llm, api, bot, state, q := englishFlowFixture(t)
 	client.review = &pb.ReviewPosition{
-		Card:  &pb.Card{English: "yield", Source: "уступать дорогу"},
-		Token: "backend", Round: 3, Position: 4, RoundSize: 7,
+		Card:           &pb.Card{English: "yield", Source: "уступать дорогу"},
+		PromptLanguage: "ru", Token: "backend", Round: 3, Position: 4, RoundSize: 7,
 	}
 	englishAction(t, app, bot, q, "review")
 	require.Contains(t, api.texts[len(api.texts)-1], "Круг 3 · Карточка 4 из 7")
@@ -44,8 +44,8 @@ func TestEnglishReviewResumesBackendPositionAndRetriesLostRating(t *testing.T) {
 func TestEnglishReviewLegacyScreenCanResumeAndSkip(t *testing.T) {
 	app, client, _, api, bot, state, q := englishFlowFixture(t)
 	client.review = &pb.ReviewPosition{
-		Card:  &pb.Card{English: "yield", Source: "уступать дорогу"},
-		Token: "backend", Round: 1, Position: 1, RoundSize: 1,
+		Card:           &pb.Card{English: "yield", Source: "уступать дорогу"},
+		PromptLanguage: "ru", Token: "backend", Round: 1, Position: 1, RoundSize: 1,
 	}
 	state.value = tgstates.UserContext{State: tgstates.StateEnglishReview, English: tgstates.EnglishContext{Nonce: "old"}}
 	englishAction(t, app, bot, q, "next", "old")
@@ -56,4 +56,18 @@ func TestEnglishReviewLegacyScreenCanResumeAndSkip(t *testing.T) {
 	client.review = nil
 	englishAction(t, app, bot, q, "review")
 	require.Contains(t, api.texts[len(api.texts)-1], r.EnglishEmpty)
+}
+
+func TestEnglishPromptHidesRussianUntilRevealed(t *testing.T) {
+	app, client, _, api, bot, state, q := englishFlowFixture(t)
+	client.review = &pb.ReviewPosition{Card: &pb.Card{English: "apple", Source: "яблоко"}, Token: "server", PromptLanguage: "en", Round: 1, Position: 1, RoundSize: 1}
+	englishAction(t, app, bot, q, "review")
+	front := api.texts[len(api.texts)-1]
+	require.Contains(t, front, "apple")
+	require.NotContains(t, front, "яблоко")
+	nonce := state.value.English.Nonce
+	englishAction(t, app, bot, q, "hint", nonce)
+	require.Contains(t, api.texts[len(api.texts)-1], "я…")
+	englishAction(t, app, bot, q, "show", nonce)
+	require.Contains(t, api.texts[len(api.texts)-1], "яблоко")
 }

@@ -2,6 +2,7 @@ package english
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -56,9 +57,24 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 	if err != nil {
 		return nil, rpcError(err)
 	}
+	var state session
+	if req.IncludeProgress {
+		var data []byte
+		if err := s.Store.Pool.QueryRow(ctx, query("read_progress")).Scan(&data); err != nil {
+			return nil, rpcError(err)
+		}
+		if err := json.Unmarshal(data, &state); err != nil {
+			return nil, rpcError(err)
+		}
+	}
 	resp := &pb.ListCardsResponse{}
 	for _, card := range cards {
 		if kind == "" || card.Kind == kind {
+			if req.IncludeProgress {
+				progress := state.Progress[card.Id]
+				card.EnToRu = progress.side("en").summary()
+				card.RuToEn = progress.side("ru").summary()
+			}
 			resp.Cards = append(resp.Cards, card)
 		}
 	}
@@ -155,7 +171,7 @@ func (s *Server) review(ctx context.Context, token, action string, remaining *[]
 						return err
 					}
 				}
-				skipped = state.advance(id, action)
+				skipped = state.advance(id, current.PromptLanguage, action)
 				if _, err := tx.Exec(ctx, query("record"), id, token, action, time.Now(), skipped, current.Round); err != nil {
 					return err
 				}

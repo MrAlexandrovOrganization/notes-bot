@@ -17,12 +17,13 @@ type mobileEnglishCard struct {
 }
 
 type mobileEnglishPosition struct {
-	NextPreview *mobileEnglishCard `json:"next_preview,omitempty"`
-	Card        mobileEnglishCard  `json:"card"`
-	Token       string             `json:"token"`
-	Round       int64              `json:"round"`
-	Position    int32              `json:"position"`
-	RoundSize   int32              `json:"round_size"`
+	PromptLanguage string             `json:"prompt_language,omitempty"`
+	NextPreview    *mobileEnglishCard `json:"next_preview,omitempty"`
+	Card           mobileEnglishCard  `json:"card"`
+	Token          string             `json:"token"`
+	Round          int64              `json:"round"`
+	Position       int32              `json:"position"`
+	RoundSize      int32              `json:"round_size"`
 }
 
 type mobileEnglishResponse struct {
@@ -45,7 +46,7 @@ func mobileReviewPosition(position *pb.ReviewPosition) *mobileEnglishPosition {
 		v := asCard(preview)
 		next = &v
 	}
-	return &mobileEnglishPosition{Card: asCard(card), NextPreview: next,
+	return &mobileEnglishPosition{Card: asCard(card), PromptLanguage: position.PromptLanguage, NextPreview: next,
 		Token: position.Token, Round: position.Round, Position: position.Position, RoundSize: position.RoundSize,
 	}
 }
@@ -140,4 +141,29 @@ func (a *App) mobileEnglishWord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mobileJSON(w, 200, map[string]any{"id": input.ID, "stored": true})
+}
+
+func (a *App) mobileEnglishDictionary(w http.ResponseWriter, r *http.Request) {
+	if a.English == nil {
+		mobileError(w, 503)
+		return
+	}
+	resp, err := a.English.ListCards(r.Context(), &pb.ListCardsRequest{Kind: "word", IncludeProgress: true})
+	if err != nil {
+		mobileFailure(w, err)
+		return
+	}
+	type word struct {
+		ID      string                `json:"id"`
+		English string                `json:"english"`
+		Source  string                `json:"source"`
+		Example string                `json:"example,omitempty"`
+		EnToRu  *pb.DirectionProgress `json:"en_to_ru,omitempty"`
+		RuToEn  *pb.DirectionProgress `json:"ru_to_en,omitempty"`
+	}
+	words := make([]word, 0, len(resp.Cards))
+	for _, c := range resp.Cards {
+		words = append(words, word{c.Id, c.English, c.Source, c.Example, c.EnToRu, c.RuToEn})
+	}
+	mobileJSON(w, 200, map[string]any{"words": words})
 }
