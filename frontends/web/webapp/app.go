@@ -11,11 +11,13 @@ import (
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/web/config"
 	apb "notes-bot/proto/automation/v1"
+	englishpb "notes-bot/proto/english/v1"
 )
 
 // App holds shared dependencies for all HTTP handlers.
 type App struct {
 	Automations   apb.AutomationsServiceClient
+	English       englishpb.EnglishServiceClient
 	Cfg           *config.Config
 	Core          clients.CoreService
 	Notifications clients.NotificationsService

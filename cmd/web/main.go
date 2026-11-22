@@ -18,6 +18,7 @@ import (
 	"notes-bot/internal/applog"
 	"notes-bot/internal/grpcutil"
 	"notes-bot/internal/telemetry"
+	englishpb "notes-bot/proto/english/v1"
 )
 
 func main() {
@@ -87,9 +88,17 @@ func main() {
 	if os.Getenv("AUTOMATIONS_ENABLED") == "true" {
 		app.Automations = notifClient.Automations()
 	}
-	router := app.NewRouter()
+	var router http.Handler
 	if cfg.MobileOnly {
+		englishConn, err := grpcutil.Dial(cfg.EnglishGRPCHost, cfg.EnglishGRPCPort)
+		if err != nil {
+			logger.Fatal("failed to create English client", zap.Error(err))
+		}
+		defer englishConn.Close()
+		app.English = englishpb.NewEnglishServiceClient(englishConn)
 		router = app.NewMobileRouter()
+	} else {
+		router = app.NewRouter()
 	}
 	srv := &http.Server{
 		Addr:         cfg.WebListenAddr,
