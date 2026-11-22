@@ -99,3 +99,21 @@ health сама по себе не доказывает доступ к Core/Not
 журнала/файлов. Его перенос требует отдельного контракта загрузки и retention,
 а локальная модель — NDK/JNI и замеров на realme 11 Pro. Новых ML workers
 на Russia не запускается.
+
+## Релизы Android Notes
+
+Mobile API обслуживает авторизованные `GET /mobile/v1/app-update` (204, если
+релиза ещё нет) и `GET /mobile/v1/app-update/{sha256}.apk`. Публичный Web этих
+маршрутов не имеет. Каталог `NOTES_MOBILE_RELEASE_DIR` по умолчанию `/mobile-releases`;
+mobile overlay монтирует `${NOTES_MOBILE_RELEASE_HOST_DIR:-./.mobile-releases}`
+только для чтения. Нужна доставка нового web image и явный `make mobile-up`
+с его digest в `NOTES_MOBILE_IMAGE`.
+
+`android/notes-app` выпускает подписанный APK и `release.json`. Receiver
+`scripts/receive-mobile-release.py` принимает одну JSON-строку манифеста и затем
+ровно указанное число байт APK, проверяет SHA-256, монотонность версии и прежний
+сертификат. Публикует неизменяемый APK и атомарный `current.json`, сохраняя
+`previous.json`. Протокол такой же, как у Locations; для ограниченного SSH-ключа
+используйте forced command с этим receiver и отдельным каталогом Notes.
+Значение `SSH_ORIGINAL_COMMAND` должно быть `publish-mobile-release`.
+Не копируйте приватный signing key на API-сервер.

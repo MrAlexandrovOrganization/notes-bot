@@ -79,3 +79,5 @@ coverage.out
 /.retired
 
 .observability/
+
+.mobile-releases/

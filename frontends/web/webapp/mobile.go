@@ -25,6 +25,7 @@ import (
 // edge: Android uses the platform TLS client, while internal calls remain gRPC.
 func (a *App) NewMobileRouter() http.Handler {
 	protected := http.NewServeMux()
+	a.registerAppUpdates(protected)
 	protected.HandleFunc("GET /mobile/v1/bootstrap", a.mobileBootstrap)
 	protected.HandleFunc("GET /mobile/v1/day", a.mobileDay)
 	protected.HandleFunc("GET /mobile/v1/directory", a.mobileDirectory)

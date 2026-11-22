@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	MobileOnly       bool
+	MobileReleaseDir string
 	WebListenAddr    string
 	WebPassword      string
 	WebSessionSecret string
@@ -56,6 +57,7 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
+		MobileReleaseDir:      env.Str("NOTES_MOBILE_RELEASE_DIR", "/mobile-releases"),
 		MobileOnly:            env.Str("WEB_MOBILE_ONLY", "false") == "true",
 		WebListenAddr:         env.Str("WEB_LISTEN_ADDR", ":8090"),
 		WebPassword:           password,
