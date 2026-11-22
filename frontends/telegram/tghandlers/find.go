@@ -269,7 +269,7 @@ func (a *App) openFoundNote(ctx context.Context, tgBot *telego.Bot, query *teleg
 		tgfmt.Raw("\n\n"),
 		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
-	return replyToCallback(ctx, tgBot, query, text, kb)
+	return a.replyNotePage(ctx, tgBot, query, text, kb, note.Relpath, pageContent)
 }
 
 // handleNoteAppendAction handles the "note:append" callback shown on an opened note.

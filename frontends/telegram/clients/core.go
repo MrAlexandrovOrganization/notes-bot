@@ -222,3 +222,11 @@ func (c *CoreClient) TrackTask(ctx context.Context, date string, index int, expe
 	t := out.Task
 	return &Task{ID: t.Id, Text: t.Text, State: t.State, Completed: t.State == pb.TaskState_TASK_STATE_COMPLETED, Index: int(t.Index), LineNumber: int(t.LineNumber)}, nil
 }
+
+type NoteImageReader interface {
+	ReadNoteImage(context.Context, string, string) (*pb.ReadNoteImageResponse, error)
+}
+
+func (c *CoreClient) ReadNoteImage(ctx context.Context, note, ref string) (*pb.ReadNoteImageResponse, error) {
+	return c.stub.ReadNoteImage(ctx, &pb.ReadNoteImageRequest{Note: note, Reference: ref})
+}

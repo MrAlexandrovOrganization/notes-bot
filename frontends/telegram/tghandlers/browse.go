@@ -241,5 +241,5 @@ func (a *App) showBrowseFile(ctx context.Context, tgBot *telego.Bot, query *tele
 		u.ActiveNoteID = 0
 	})
 
-	return replyToCallback(ctx, tgBot, query, text, kb)
+	return a.replyNotePage(ctx, tgBot, query, text, kb, relpath, pageContent)
 }

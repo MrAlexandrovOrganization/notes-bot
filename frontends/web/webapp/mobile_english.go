@@ -16,11 +16,12 @@ type mobileEnglishCard struct {
 }
 
 type mobileEnglishPosition struct {
-	Card      mobileEnglishCard `json:"card"`
-	Token     string            `json:"token"`
-	Round     int64             `json:"round"`
-	Position  int32             `json:"position"`
-	RoundSize int32             `json:"round_size"`
+	NextPreview *mobileEnglishCard `json:"next_preview,omitempty"`
+	Card        mobileEnglishCard  `json:"card"`
+	Token       string             `json:"token"`
+	Round       int64              `json:"round"`
+	Position    int32              `json:"position"`
+	RoundSize   int32              `json:"round_size"`
 }
 
 type mobileEnglishResponse struct {
@@ -33,11 +34,17 @@ func mobileReviewPosition(position *pb.ReviewPosition) *mobileEnglishPosition {
 	if card == nil {
 		return nil
 	}
-	return &mobileEnglishPosition{
-		Card: mobileEnglishCard{
-			ID: card.Id, Source: card.Source, English: card.English,
-			Explanation: card.Explanation, Example: card.Example, Context: card.Context,
-		},
+	asCard := func(card *pb.Card) mobileEnglishCard {
+		return mobileEnglishCard{
+			ID: card.Id, Source: card.Source, English: card.English, Explanation: card.Explanation, Example: card.Example, Context: card.Context,
+		}
+	}
+	var next *mobileEnglishCard
+	if preview := position.GetNextPreview(); preview != nil {
+		v := asCard(preview)
+		next = &v
+	}
+	return &mobileEnglishPosition{Card: asCard(card), NextPreview: next,
 		Token: position.Token, Round: position.Round, Position: position.Position, RoundSize: position.RoundSize,
 	}
 }

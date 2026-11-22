@@ -40,8 +40,16 @@ func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) 
 	p := s.Progress[card.Id]
 	card.Lapses = p.Lapses
 	token := englishHash(fmt.Sprintf("%s:%d:%d:%s:%s", s.Seed, s.Round, s.Position, card.Id, card.Revision))
+	var next *pb.Card
+	for _, id := range s.Queue[s.Position+1:] {
+		if preview := cards[id]; preview != nil {
+			next = preview
+			break
+		}
+	}
 	return &pb.ReviewPosition{
-		Card: card, Token: token, Round: s.Round,
+		NextPreview: next,
+		Card:        card, Token: token, Round: s.Round,
 		Position: int32(s.Position + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.Level,
 	}, changed
 }

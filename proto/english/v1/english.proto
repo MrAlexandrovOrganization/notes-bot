@@ -57,6 +57,7 @@ message ReviewPosition {
   int32 position = 4; // One-based position in the current round.
   int32 round_size = 5;
   int32 easy_level = 6; // 0 through 5 for the current card.
+  Card next_preview = 7; // Read-only lookahead within this round, without an action token.
 }
 message GetReviewRequest {}
 message GetReviewResponse {

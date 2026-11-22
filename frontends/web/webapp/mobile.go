@@ -16,6 +16,7 @@ import (
 
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/web/views"
+	"notes-bot/internal/noteimage"
 	"notes-bot/internal/timeutil"
 	notespb "notes-bot/proto/notes"
 )
@@ -31,6 +32,7 @@ func (a *App) NewMobileRouter() http.Handler {
 	protected.HandleFunc("GET /mobile/v1/bootstrap", a.mobileBootstrap)
 	protected.HandleFunc("GET /mobile/v1/day", a.mobileDay)
 	protected.HandleFunc("GET /mobile/v1/directory", a.mobileDirectory)
+	protected.HandleFunc("GET /mobile/v1/image", a.mobileImage)
 	protected.HandleFunc("GET /mobile/v1/note", a.mobileNote)
 	protected.HandleFunc("POST /mobile/v1/append", a.mobileAppend)
 	protected.HandleFunc("POST /mobile/v1/rating", a.mobileRating)
@@ -181,7 +183,7 @@ func (a *App) mobileDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mobileJSON(w, http.StatusOK, map[string]any{"date": date, "content": content,
-		"tasks": tasks, "rating": rating, "has_rating": hasRating})
+		"images": noteimage.Parse(content), "tasks": tasks, "rating": rating, "has_rating": hasRating})
 }
 
 func (a *App) mobileDirectory(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +201,7 @@ func (a *App) mobileNote(w http.ResponseWriter, r *http.Request) {
 		mobileFailure(w, err)
 		return
 	}
-	mobileJSON(w, http.StatusOK, map[string]string{"content": content})
+	mobileJSON(w, http.StatusOK, map[string]any{"content": content, "images": noteimage.Parse(content)})
 }
 
 var mobileOperationID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)

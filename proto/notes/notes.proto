@@ -23,6 +23,7 @@ service NotesService {
   rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
   rpc GetNoteByPath(GetNoteByPathRequest) returns (NoteResponse);
   // For trusted services that edit Markdown while preserving its metadata.
+  rpc ReadNoteImage(ReadNoteImageRequest) returns (ReadNoteImageResponse);
   rpc ReadMarkdown(ReadMarkdownRequest) returns (ReadMarkdownResponse);
   rpc ReplaceMarkdown(ReplaceMarkdownRequest) returns (ReplaceMarkdownResponse);
 }
@@ -156,3 +157,12 @@ message ReplaceMarkdownRequest {
   string expected_revision = 3;
 }
 message ReplaceMarkdownResponse {}
+
+message ReadNoteImageRequest {
+  string note = 1;
+  string reference = 2;
+}
+message ReadNoteImageResponse {
+  bytes data = 1;
+  string media_type = 2;
+}

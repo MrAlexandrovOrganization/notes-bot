@@ -633,7 +633,7 @@ func (a *App) showNote(ctx context.Context, tgBot *telego.Bot, query *telego.Cal
 		tgfmt.Raw("\n\n"),
 		tgfmt.Blockquote(tgfmt.Escape(pageContent)),
 	)
-	return replyToCallback(ctx, tgBot, query, text, kb)
+	return a.replyNotePage(ctx, tgBot, query, text, kb, "Daily/"+activeDate+".md", pageContent)
 }
 
 func stepMonth(month, year, delta int) (int, int) {
