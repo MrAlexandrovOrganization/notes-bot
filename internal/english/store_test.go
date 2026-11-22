@@ -96,8 +96,15 @@ func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 	updated := get(second)
 	require.Equal(t, "новое значение", updated.Card.Source)
 	require.NotEqual(t, next.Token, updated.Token)
-	seen := map[string]bool{start.Card.English: true}
-	current := updated
+	easy := &pb.AdvanceReviewRequest{Token: updated.Token, Action: pb.ReviewAction_REVIEW_ACTION_EASY}
+	rated, err := first.AdvanceReview(ctx, easy)
+	require.NoError(t, err)
+	require.Contains(t, []int32{2, 3}, rated.SkippedRounds)
+	replayed, err := second.AdvanceReview(ctx, easy)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(rated, replayed))
+	seen := map[string]bool{start.Card.English: true, updated.Card.English: true}
+	current := rated.Current
 	for current.Round == start.Round {
 		require.False(t, seen[current.Card.English])
 		seen[current.Card.English] = true

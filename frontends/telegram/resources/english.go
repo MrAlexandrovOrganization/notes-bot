@@ -75,7 +75,7 @@ func EnglishReviewSaved(skipped int32) string {
 		return "✅ Оценка сохранена. Карточка вернётся в следующем круге."
 	case 1:
 		return "✅ Карточка пропустит следующий круг."
-	case 2, 4:
+	case 2, 3, 4:
 		return fmt.Sprintf("✅ Карточка пропустит %d круга.", skipped)
 	default:
 		return fmt.Sprintf("✅ Карточка пропустит %d кругов.", skipped)

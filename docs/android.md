@@ -48,8 +48,9 @@ Hour, Minute, Days, DayOfMonth, Month, Day, Date, IntervalDays, CreateTask).
 `id`, `source`, `english` и необязательные пояснение, пример и контекст.
 Позиция включает `round`, `position`, `round_size` и непрозрачный `token`.
 `POST /mobile/v1/english/review/advance` принимает `{token, action}` с действием
-`miss`, `hard`, `easy` или `skip` и возвращает новую текущую позицию. При оценке
-«Легко» ответ также содержит `skipped_rounds`. Повтор с тем же токеном и
+`miss`, `hard`, `easy` или `skip` и возвращает новую текущую позицию. Если
+карточка пропускает один или несколько кругов, ответ содержит `skipped_rounds`.
+При отсутствии поля пропуск равен нулю. Повтор с тем же токеном и
 действием безопасен. При 409 нужно перечитать текущую карточку. Веб-шлюз
 вызывает существующий сервис по `ENGLISH_GRPC_HOST:ENGLISH_GRPC_PORT`, по умолчанию
 `english:50057` в mobile overlay. Для активации нужен новый digest мобильного

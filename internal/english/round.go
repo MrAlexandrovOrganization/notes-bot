@@ -3,6 +3,8 @@ package english
 import (
 	"cmp"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"slices"
 
@@ -97,12 +99,23 @@ func (s *session) advance(id, action string) int32 {
 		p.Level = 0
 		p.Lapses++
 	case "hard":
-		p.Level = max(0, p.Level-1)
+		p.Level = 0
+		skipped = s.chooseSkippedRounds(id, action, 0, 1)
 	case "easy":
-		p.Level = min(5, p.Level+1)
-		skipped = 1 << (p.Level - 1)
+		intervals := [...]struct{ min, max int32 }{{2, 3}, {4, 5}, {7, 9}, {14, 16}}
+		p.Level = min(int32(len(intervals)), p.Level+1)
+		interval := intervals[p.Level-1]
+		skipped = s.chooseSkippedRounds(id, action, interval.min, interval.max)
 	}
 	p.Due = s.Round + 1 + int64(skipped)
 	s.Progress[id] = p
 	return skipped
+}
+
+func (s *session) chooseSkippedRounds(id, action string, min, max int32) int32 {
+	// Use the persisted seed and the review's identity so the choice is stable
+	// across retries and independent of the card's position in the shuffle.
+	input := fmt.Sprintf("review:%s:%d:%s:%s", s.Seed, s.Round, id, action)
+	digest := sha256.Sum256([]byte(input))
+	return min + int32(binary.BigEndian.Uint64(digest[:8])%uint64(max-min+1))
 }
