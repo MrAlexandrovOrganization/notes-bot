@@ -21,7 +21,10 @@ services:
       METRICS_PORT: "9105"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set existing trace collector}
     volumes:
-      - ${NOTES_MOBILE_RELEASE_HOST_DIR:-./.mobile-releases}:/mobile-releases:ro
+      - type: bind
+        source: ${NOTES_MOBILE_RELEASE_HOST_DIR:-./.mobile-releases}
+        target: /mobile-releases
+        read_only: true
     ports:
       - "${NOTES_MOBILE_BIND_IP:?Set this host's tailnet IP}:18090:8090"
     networks: [default, prometheus-net, jaeger-net]
