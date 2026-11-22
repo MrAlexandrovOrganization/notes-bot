@@ -9,3 +9,8 @@ mobile-status:
 	$(MOBILE_COMPOSE) ps mobile
 mobile-stop: assert-active
 	$(MOBILE_COMPOSE) stop mobile
+
+.PHONY: mobile-release-check
+mobile-release-check:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_mobile_release.py
+check: mobile-release-check
