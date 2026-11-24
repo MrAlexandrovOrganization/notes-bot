@@ -829,9 +829,10 @@
         "view": {
           "id": "fit",
           "allLayers": true,
-          "lat": 0,
-          "lon": 0,
-          "zoom": 9
+          "padding": 10,
+          "zoom": 18,
+          "maxZoom": 18,
+          "shared": false
         }
       },
       "pluginVersion": "12.0.0",
