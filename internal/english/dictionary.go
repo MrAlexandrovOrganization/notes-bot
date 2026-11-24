@@ -143,19 +143,35 @@ func (snapshot dictionarySnapshot) dictionaries(cards []*pb.Card) []*pb.Dictiona
 	return result
 }
 
-func (snapshot dictionarySnapshot) selectDictionary(id string) (string, error) {
-	switch id {
-	case "", allDictionaries:
-		return allDictionaries, nil
-	case generalDictionary:
-		return generalDictionary, nil
+type dictionarySelection struct {
+	key string
+	ids []string
+}
+
+func (s dictionarySelection) includes(id string) bool {
+	if s.key == allDictionaries {
+		return true
 	}
-	for _, file := range snapshot.themed {
-		if file.id == id {
-			return id, nil
+	_, found := slices.BinarySearch(s.ids, id)
+	return found
+}
+
+func (snapshot dictionarySnapshot) selectDictionary(key string) (dictionarySelection, error) {
+	if key == "" || key == allDictionaries {
+		return dictionarySelection{key: allDictionaries}, nil
+	}
+	ids := strings.Split(key, "+")
+	for _, id := range ids {
+		if !dictionaryID.MatchString(id) || id == allDictionaries {
+			return dictionarySelection{}, status.Error(codes.InvalidArgument, "invalid English dictionary selection")
+		}
+		if id != generalDictionary && !slices.ContainsFunc(snapshot.themed, func(file dictionaryFile) bool { return file.id == id }) {
+			return dictionarySelection{}, status.Error(codes.NotFound, "English dictionary not found")
 		}
 	}
-	return "", status.Error(codes.NotFound, "English dictionary not found")
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	return dictionarySelection{key: strings.Join(ids, "+"), ids: ids}, nil
 }
 
 func (d Dictionary) replace(ctx context.Context, path string, previous *notes.ReadMarkdownResponse, text string) error {

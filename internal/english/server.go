@@ -2,7 +2,6 @@ package english
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -49,7 +48,7 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	id, err := snapshot.selectDictionary(req.GetDictionaryId())
+	selection, err := snapshot.selectDictionary(req.GetDictionaryId())
 	if err != nil {
 		return nil, err
 	}
@@ -58,27 +57,28 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 		return nil, rpcError(err)
 	}
 	var state session
-	if req.IncludeProgress {
-		var data []byte
-		if err := s.Store.Pool.QueryRow(ctx, query("read_progress")).Scan(&data); err != nil {
-			return nil, rpcError(err)
-		}
-		if err := json.Unmarshal(data, &state); err != nil {
+	if req.IncludeProgress || req.HiddenOnly {
+		state, err = s.Store.readSession(ctx)
+		if err != nil {
 			return nil, rpcError(err)
 		}
 	}
 	resp := &pb.ListCardsResponse{Dictionaries: snapshot.dictionaries(cards)}
+	if req.IncludeProgress || req.HiddenOnly {
+		resp.Visibility = state.cardVisibility.response()
+	}
 	for _, card := range cards {
-		if id != allDictionaries && card.DictionaryId != id {
+		card.Hidden = state.cardVisibility.Hidden[card.Id]
+		if !selection.includes(card.DictionaryId) || (req.HiddenOnly && !card.Hidden) {
 			continue
 		}
 		if kind == "" || card.Kind == kind {
 			if req.IncludeProgress {
 				progress := state.Progress[card.Id]
 				en, ru := progress.side("en"), progress.side("ru")
-				if id != allDictionaries {
-					due := state.Dictionaries[id].Due[card.Id]
-					if _, started := state.Dictionaries[id]; !started {
+				if selection.key != allDictionaries {
+					due := state.Dictionaries[selection.key].Due[card.Id]
+					if _, started := state.Dictionaries[selection.key]; !started {
 						due = directionDue{max(0, en.Due-state.Round), max(0, ru.Due-state.Round)}
 					}
 					en.Due, ru.Due = due.English, due.Russian
@@ -118,11 +118,11 @@ func (s *Server) GetReview(ctx context.Context, req *pb.GetReviewRequest) (*pb.G
 	if req.GetIncludeRemaining() {
 		pack = resp
 	}
-	current, _, err := s.review(ctx, req.GetDictionaryId(), "", "", pack)
+	result, err := s.review(ctx, req.GetDictionaryId(), "", "", pack)
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	resp.Current = current
+	resp.Current = result.current
 	return resp, nil
 }
 
@@ -143,18 +143,23 @@ func (s *Server) AdvanceReview(ctx context.Context, req *pb.AdvanceReviewRequest
 	if len(req.GetToken()) != 64 {
 		return nil, status.Error(codes.InvalidArgument, "invalid review token")
 	}
-	current, skipped, err := s.review(ctx, req.GetDictionaryId(), req.GetToken(), action, nil)
+	result, err := s.review(ctx, req.GetDictionaryId(), req.GetToken(), action, nil)
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	return &pb.AdvanceReviewResponse{Current: current, SkippedRounds: skipped}, nil
+	return &pb.AdvanceReviewResponse{Current: result.current, SkippedRounds: result.skipped, Visibility: result.visibility}, nil
 }
 
-func (s *Server) review(ctx context.Context, dictionary, token, action string, pack *pb.GetReviewResponse) (*pb.ReviewPosition, int32, error) {
+type reviewResult struct {
+	current    *pb.ReviewPosition
+	skipped    int32
+	visibility *pb.CardVisibility
+}
+
+func (s *Server) review(ctx context.Context, dictionary, token, action string, pack *pb.GetReviewResponse) (reviewResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	var current *pb.ReviewPosition
-	var skipped int32
+	var result reviewResult
 	err := pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
 		state, imported, err := loadSession(ctx, tx)
 		if err != nil {
@@ -164,7 +169,7 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 		if err != nil {
 			return err
 		}
-		dictionary, err := snapshot.selectDictionary(dictionary)
+		selection, err := snapshot.selectDictionary(dictionary)
 		if err != nil {
 			return err
 		}
@@ -174,21 +179,20 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 		}
 		byID := make(map[string]*pb.Card, len(cards))
 		for _, card := range cards {
-			if dictionary == allDictionaries || card.DictionaryId == dictionary {
+			if selection.includes(card.DictionaryId) && !state.cardVisibility.Hidden[card.Id] {
 				byID[card.Id] = card
 			}
 		}
 		view := &state
 		var stored dictionaryRound
-		scoped := dictionary != allDictionaries
+		scoped := selection.key != allDictionaries
 		if scoped {
-			view, stored = state.dictionaryView(dictionary, byID)
+			view, stored = state.dictionaryView(selection.key, byID)
 		}
-		var changed bool
-		current, changed = view.current(byID)
+		current, changed := view.current(byID)
 		if action != "" {
 			var previous string
-			err = tx.QueryRow(ctx, query("receipt"), token).Scan(&previous, &skipped)
+			err = tx.QueryRow(ctx, query("receipt"), token).Scan(&previous, &result.skipped)
 			switch {
 			case err == nil && previous != action:
 				return status.Error(codes.FailedPrecondition, "review already advanced")
@@ -205,20 +209,25 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 						return err
 					}
 				}
-				skipped = view.advance(id, current.PromptLanguage, action)
+				result.skipped = view.advance(id, current.PromptLanguage, action)
 				if scoped && action != "skip" {
 					state.saveDictionaryGrade(stored, id, current.PromptLanguage, view.Progress[id].side(current.PromptLanguage))
 				}
-				if _, err := tx.Exec(ctx, query("record"), id, token, action, time.Now(), skipped, current.Round); err != nil {
+				if _, err := tx.Exec(ctx, query("record"), id, token, action, time.Now(), result.skipped, current.Round); err != nil {
 					return err
 				}
 				current, _ = view.current(byID)
 				changed = true
 			}
 		}
+		result.current = current
+		if action != "" || pack != nil {
+			result.visibility = state.cardVisibility.response()
+		}
 		if pack != nil {
 			pack.Remaining = view.remaining(byID)
 			pack.Dictionaries = snapshot.dictionaries(cards)
+			pack.Visibility = result.visibility
 		}
 		if changed {
 			if scoped {
@@ -228,5 +237,5 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 		}
 		return nil
 	})
-	return current, skipped, err
+	return result, err
 }

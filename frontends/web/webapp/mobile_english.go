@@ -29,6 +29,7 @@ type mobileEnglishPosition struct {
 type mobileEnglishResponse struct {
 	Current       *mobileEnglishPosition `json:"current"`
 	SkippedRounds int32                  `json:"skipped_rounds,omitempty"`
+	Visibility    *pb.CardVisibility     `json:"visibility,omitempty"`
 }
 
 func mobileReviewPosition(position *pb.ReviewPosition) *mobileEnglishPosition {
@@ -100,7 +101,7 @@ func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	mobileJSON(w, http.StatusOK, mobileEnglishResponse{
-		Current: mobileReviewPosition(resp.GetCurrent()), SkippedRounds: resp.GetSkippedRounds(),
+		Current: mobileReviewPosition(resp.GetCurrent()), SkippedRounds: resp.GetSkippedRounds(), Visibility: resp.Visibility,
 	})
 }
 
@@ -135,13 +136,45 @@ func (a *App) mobileEnglishRound(w http.ResponseWriter, r *http.Request) {
 	if scope == "all" {
 		scope = ""
 	}
-	if id != "" && id != "all" && scope != id {
+	if id != "" && id != "all" && scope == "" {
 		mobileError(w, http.StatusServiceUnavailable)
 		return
 	}
 	mobileJSON(w, 200, map[string]any{
-		"positions": positions, "dictionaries": resp.Dictionaries, "dictionary_id": scope,
+		"positions": positions, "dictionaries": resp.Dictionaries, "dictionary_id": scope, "visibility": resp.Visibility,
 	})
+}
+
+func (a *App) mobileEnglishVisibility(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		OperationID string `json:"operation_id"`
+		CardID      string `json:"card_id"`
+		Hidden      *bool  `json:"hidden"`
+	}
+	if !mobileDecode(w, r, &request) {
+		return
+	}
+	if !mobileOperationID.MatchString(request.OperationID) || request.CardID == "" || request.Hidden == nil {
+		mobileError(w, http.StatusBadRequest)
+		return
+	}
+	if a.English == nil {
+		mobileError(w, http.StatusServiceUnavailable)
+		return
+	}
+	operation := "android-visibility:" + request.OperationID
+	response, err := a.English.SetCardHidden(r.Context(), &pb.SetCardHiddenRequest{
+		CardId: request.CardID, Hidden: *request.Hidden, OperationId: operation,
+	})
+	if err != nil {
+		mobileFailure(w, err)
+		return
+	}
+	if response.GetOperationId() != operation || response.GetVisibility() == nil {
+		mobileError(w, http.StatusServiceUnavailable)
+		return
+	}
+	mobileJSON(w, http.StatusOK, map[string]any{"operation_id": request.OperationID, "visibility": response.Visibility})
 }
 
 func (a *App) mobileEnglishWord(w http.ResponseWriter, r *http.Request) {
@@ -190,5 +223,5 @@ func (a *App) mobileEnglishDictionary(w http.ResponseWriter, r *http.Request) {
 	for _, c := range resp.Cards {
 		words = append(words, word{c.Id, c.English, c.Source, c.Example, c.DictionaryId, c.EnToRu, c.RuToEn})
 	}
-	mobileJSON(w, 200, map[string]any{"words": words, "dictionaries": resp.Dictionaries})
+	mobileJSON(w, 200, map[string]any{"words": words, "dictionaries": resp.Dictionaries, "visibility": resp.Visibility})
 }

@@ -196,3 +196,79 @@ func TestEnglishPostgresDictionaryQueuesShareGradesAndKeepTheirPositions(t *test
 		require.Equal(t, movie.Current.Round+1+int64(scored.SkippedRounds), graded.DueRound)
 	}
 }
+
+func TestEnglishPostgresCombinedRoundsAndVisibility(t *testing.T) {
+	ctx := t.Context()
+	store := testEnglishStore(t)
+	require.NoError(t, store.ImportLegacy(ctx, filepath.Join(t.TempDir(), "missing.json")))
+	root := &testMarkdown{files: map[string]string{
+		englishWords:                   "- `usual` - обычный\n",
+		dictionariesPath + "/movie.md": "- `one` - один\n- `two` - два\n",
+		dictionariesPath + "/extra.md": "- `three` - три\n",
+	}}
+	service := &Server{Dictionary: Dictionary{Notes: root}, Store: store}
+	read := func(key string) *pb.GetReviewResponse {
+		t.Helper()
+		pack, err := service.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: key, IncludeRemaining: true})
+		require.NoError(t, err)
+		return pack
+	}
+	all := read("")
+	single := read("movie")
+	pack := read("movie+extra+movie")
+	require.Len(t, pack.Remaining, 3)
+	for _, p := range pack.Remaining {
+		require.Equal(t, "extra+movie", p.DictionaryId)
+		require.NotEqual(t, "usual", p.Card.English)
+	}
+	require.Equal(t, pack.Current.Token, read("extra+movie").Current.Token)
+	require.Equal(t, single.Current.Token, read("movie").Current.Token)
+	require.Equal(t, all.Current.Token, read("").Current.Token)
+
+	graded := pack.Current
+	next, err := service.AdvanceReview(ctx, &pb.AdvanceReviewRequest{
+		DictionaryId: "movie+extra", Token: graded.Token, Action: pb.ReviewAction_REVIEW_ACTION_EASY,
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, graded.Card.Id, next.Current.Card.Id)
+	hide := &pb.SetCardHiddenRequest{CardId: graded.Card.Id, Hidden: true, OperationId: "hide-first"}
+	_, err = service.SetCardHidden(ctx, hide)
+	require.NoError(t, err)
+	second := &pb.SetCardHiddenRequest{CardId: next.Current.Card.Id, Hidden: true, OperationId: "hide-current"}
+	_, err = service.SetCardHidden(ctx, second)
+	require.NoError(t, err)
+
+	reopened := read("extra+movie")
+	require.Len(t, reopened.Remaining, 1)
+	require.NotContains(t, reopened.Visibility.HiddenCardIds, reopened.Current.Card.Id)
+	require.Len(t, reopened.Visibility.HiddenCardIds, 2)
+	require.Len(t, read("general").Remaining, 1)
+	_, err = service.AdvanceReview(ctx, &pb.AdvanceReviewRequest{
+		DictionaryId: "extra+movie", Token: next.Current.Token, Action: pb.ReviewAction_REVIEW_ACTION_EASY,
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	hidden, err := service.ListCards(ctx, &pb.ListCardsRequest{HiddenOnly: true, IncludeProgress: true})
+	require.NoError(t, err)
+	require.Len(t, hidden.Cards, 2)
+	for _, card := range hidden.Cards {
+		require.True(t, card.Hidden)
+		if card.Id == graded.Card.Id {
+			side := card.RuToEn
+			if graded.PromptLanguage == "en" {
+				side = card.EnToRu
+			}
+			require.Equal(t, "easy", side.LastGrade)
+		}
+	}
+
+	restored, err := service.SetCardHidden(ctx, &pb.SetCardHiddenRequest{CardId: graded.Card.Id, OperationId: "restore-first"})
+	require.NoError(t, err)
+	require.EqualValues(t, 3, restored.Visibility.Version)
+	retry, err := service.SetCardHidden(ctx, hide)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(restored.Visibility, retry.Visibility))
+	require.Equal(t, []string{second.CardId}, retry.Visibility.HiddenCardIds)
+	hide.Hidden = false
+	_, err = service.SetCardHidden(ctx, hide)
+	require.Equal(t, codes.AlreadyExists, status.Code(err))
+}

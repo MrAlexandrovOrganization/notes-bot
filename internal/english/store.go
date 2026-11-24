@@ -71,19 +71,35 @@ func (s Store) Check(ctx context.Context) error {
 }
 
 func loadSession(ctx context.Context, tx pgx.Tx) (session, bool, error) {
-	var data []byte
+	var data, visibility []byte
 	var imported bool
-	if err := tx.QueryRow(ctx, query("load")).Scan(&data, &imported); err != nil {
+	if err := tx.QueryRow(ctx, query("load")).Scan(&data, &imported, &visibility); err != nil {
 		return session{}, false, err
 	}
+	state, err := decodeSession(data, visibility)
+	return state, imported, err
+}
+
+func (s Store) readSession(ctx context.Context) (session, error) {
+	var data, visibility []byte
+	if err := s.Pool.QueryRow(ctx, query("read_progress")).Scan(&data, &visibility); err != nil {
+		return session{}, err
+	}
+	return decodeSession(data, visibility)
+}
+
+func decodeSession(data, visibility []byte) (session, error) {
 	var state session
 	if err := json.Unmarshal(data, &state); err != nil {
-		return session{}, false, err
+		return session{}, err
+	}
+	if err := json.Unmarshal(visibility, &state.cardVisibility); err != nil {
+		return session{}, err
 	}
 	if state.Progress == nil {
 		state.Progress = make(map[string]progress)
 	}
-	return state, imported, nil
+	return state, nil
 }
 
 func saveSession(ctx context.Context, tx pgx.Tx, state session, imported bool) error {

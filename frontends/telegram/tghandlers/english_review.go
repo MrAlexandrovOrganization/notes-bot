@@ -44,7 +44,11 @@ func (a *App) renderEnglishReview(ctx context.Context, b *telego.Bot, q *telego.
 		if err := a.setEnglish(ctx, user, tgstates.StateEnglishMenu, tgstates.EnglishContext{}); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishEmpty), tgkeyboards.EnglishBack())
+		text := r.EnglishEmpty
+		if notice != "" {
+			text = notice + "\n\n" + text
+		}
+		return replyToCallback(ctx, b, q, tgfmt.Escape(text), tgkeyboards.EnglishBack())
 	}
 	e := tgstates.EnglishContext{Review: current, Nonce: englishNonce()}
 	if err := a.setEnglish(ctx, user, tgstates.StateEnglishReview, e); err != nil {
@@ -109,6 +113,8 @@ func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.
 		return replyToCallback(ctx, b, q, englishReviewAnswer(e), tgkeyboards.EnglishCard(e.Nonce, true))
 	case "skip":
 		return a.advanceEnglishReview(ctx, b, q, user, e, pb.ReviewAction_REVIEW_ACTION_SKIP)
+	case "hide":
+		return a.hideEnglishReviewCard(ctx, b, q, user, e)
 	case "grade":
 		if !e.Revealed || len(parts) != 4 {
 			return nil
@@ -123,6 +129,27 @@ func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 	}
 	return nil
+}
+
+func (a *App) hideEnglishReviewCard(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext) error {
+	_, err := a.English.SetCardHidden(ctx, &pb.SetCardHiddenRequest{
+		CardId: e.Review.GetCard().GetId(), Hidden: true, OperationId: "telegram-visibility:" + e.Nonce,
+	})
+	if status.Code(err) == codes.NotFound {
+		return a.resumeEnglishReview(ctx, b, q, user, e.Review.GetDictionaryId())
+	}
+	if err != nil {
+		card := englishReviewFront(e)
+		if e.Revealed {
+			card = englishReviewAnswer(e)
+		}
+		return replyToCallback(ctx, b, q, tgfmt.Join(tgfmt.Escape(r.EnglishVisibilityFailure+"\n\n"), card), tgkeyboards.EnglishCard(e.Nonce, e.Revealed))
+	}
+	result, err := a.English.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: e.Review.GetDictionaryId()})
+	if err != nil {
+		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishUnavailable), tgkeyboards.EnglishBack())
+	}
+	return a.renderEnglishReview(ctx, b, q, user, result.GetCurrent(), r.EnglishCardHidden)
 }
 
 func (a *App) advanceEnglishReview(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext, action pb.ReviewAction) error {

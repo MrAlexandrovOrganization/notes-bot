@@ -30,6 +30,7 @@ func (a *App) NewMobileRouter() http.Handler {
 	protected.HandleFunc("GET /mobile/v1/english/dictionary", a.mobileEnglishDictionary)
 	protected.HandleFunc("GET /mobile/v1/english/round", a.mobileEnglishRound)
 	protected.HandleFunc("POST /mobile/v1/english/words", a.mobileEnglishWord)
+	protected.HandleFunc("POST /mobile/v1/english/visibility", a.mobileEnglishVisibility)
 	protected.HandleFunc("GET /mobile/v1/english/review", a.mobileEnglishReview)
 	protected.HandleFunc("POST /mobile/v1/english/review/advance", a.mobileAdvanceEnglishReview)
 	protected.HandleFunc("GET /mobile/v1/bootstrap", a.mobileBootstrap)

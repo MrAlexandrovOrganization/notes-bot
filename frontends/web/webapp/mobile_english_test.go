@@ -23,6 +23,7 @@ type mobileEnglishClient struct {
 	calls   []*pb.AdvanceReviewRequest
 	review  *pb.GetReviewRequest
 	saved   *pb.SaveCardRequest
+	hidden  *pb.SetCardHiddenRequest
 }
 
 func (c *mobileEnglishClient) GetReview(_ context.Context, req *pb.GetReviewRequest, _ ...grpc.CallOption) (*pb.GetReviewResponse, error) {
@@ -136,4 +137,33 @@ func TestMobileEnglishOfflineRoundAndWord(t *testing.T) {
 	require.Equal(t, "cliff", c.saved.Card.English)
 	require.Equal(t, "утёс", c.saved.Card.Source)
 	require.Equal(t, "android:12345678-1234-4567-8901-123456789012", c.saved.OperationId)
+}
+
+func (c *mobileEnglishClient) SetCardHidden(_ context.Context, req *pb.SetCardHiddenRequest, _ ...grpc.CallOption) (*pb.SetCardHiddenResponse, error) {
+	c.hidden = req
+	return &pb.SetCardHiddenResponse{OperationId: req.OperationId, Visibility: &pb.CardVisibility{
+		Version: 3, HiddenCardIds: []string{req.CardId},
+	}}, nil
+}
+
+func TestMobileEnglishVisibilityAndCanonicalCombinedRound(t *testing.T) {
+	a := testApp(t)
+	current := &pb.ReviewPosition{Token: "one", DictionaryId: "extra+movie", Card: &pb.Card{Id: "id1"}}
+	c := &mobileEnglishClient{current: current, next: current}
+	a.English = c
+	router := a.NewMobileRouter()
+	token := a.signSession("android-"+newSessionID(), time.Now().Add(time.Hour))
+	pack := mobileRequest(router, "GET", "/mobile/v1/english/round?dictionary_id=movie%2Bextra", token, "")
+	require.Equal(t, 200, pack.Code)
+	require.Equal(t, "movie+extra", c.review.DictionaryId)
+	require.Contains(t, pack.Body.String(), `"dictionary_id":"extra+movie"`)
+	const endpoint = "/mobile/v1/english/visibility"
+	const body = `{"operation_id":"12345678-1234-4567-8901-123456789012","card_id":"id1","hidden":true}`
+	require.Equal(t, 401, mobileRequest(router, "POST", endpoint, "", body).Code)
+	require.Equal(t, 400, mobileRequest(router, "POST", endpoint, token, `{"operation_id":"12345678-1234-4567-8901-123456789012","card_id":"id1"}`).Code)
+	response := mobileRequest(router, "POST", endpoint, token, body)
+	require.Equal(t, 200, response.Code)
+	require.True(t, c.hidden.Hidden)
+	require.Equal(t, "android-visibility:12345678-1234-4567-8901-123456789012", c.hidden.OperationId)
+	require.JSONEq(t, `{"operation_id":"12345678-1234-4567-8901-123456789012","visibility":{"version":3,"hidden_card_ids":["id1"]}}`, response.Body.String())
 }

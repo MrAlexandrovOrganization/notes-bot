@@ -13,6 +13,7 @@ service EnglishService {
   }
   rpc GetReview(GetReviewRequest) returns (GetReviewResponse);
   rpc AdvanceReview(AdvanceReviewRequest) returns (AdvanceReviewResponse);
+  rpc SetCardHidden(SetCardHiddenRequest) returns (SetCardHiddenResponse);
 }
 message Card {
   string id = 1;
@@ -31,6 +32,7 @@ message Card {
   DirectionProgress en_to_ru = 14;
   DirectionProgress ru_to_en = 15;
   string dictionary_id = 16; // Source dictionary, independent of card identity.
+  bool hidden = 17;
 }
 message DictionaryInfo {
   string id = 1;
@@ -55,11 +57,13 @@ message SaveCardResponse {
 message ListCardsRequest {
   string kind = 1;
   bool include_progress = 2;
-  string dictionary_id = 3; // Empty and "all" both select all cards.
+  string dictionary_id = 3; // Empty or "all"; otherwise one or more IDs joined with "+".
+  bool hidden_only = 4;
 }
 message ListCardsResponse {
   repeated Card cards = 1;
   repeated DictionaryInfo dictionaries = 2;
+  CardVisibility visibility = 3; // Populated when progress or hidden cards are requested.
 }
 message GradeCardRequest {
   string id = 1;
@@ -89,6 +93,7 @@ message GetReviewResponse {
   ReviewPosition current = 1;
   repeated ReviewPosition remaining = 2; // Includes current through the end of this round.
   repeated DictionaryInfo dictionaries = 3; // Populated with the round pack.
+  CardVisibility visibility = 4; // Populated with the round pack.
 }
 enum ReviewAction {
   REVIEW_ACTION_UNSPECIFIED = 0;
@@ -105,6 +110,20 @@ message AdvanceReviewRequest {
 message AdvanceReviewResponse {
   ReviewPosition current = 1;
   int32 skipped_rounds = 2; // Number of full rounds skipped by this grade.
+  CardVisibility visibility = 3;
+}
+message CardVisibility {
+  int64 version = 1;
+  repeated string hidden_card_ids = 2;
+}
+message SetCardHiddenRequest {
+  string card_id = 1;
+  bool hidden = 2;
+  string operation_id = 3;
+}
+message SetCardHiddenResponse {
+  string operation_id = 1;
+  CardVisibility visibility = 2;
 }
 
 // Hosted by the existing remote search/model worker; no retrieval or vault input.

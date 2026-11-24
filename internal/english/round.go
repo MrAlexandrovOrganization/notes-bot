@@ -61,7 +61,9 @@ type session struct {
 	Position     int                        `json:"position"`
 	Progress     map[string]progress        `json:"progress"`
 	Dictionaries map[string]dictionaryRound `json:"dictionaries,omitempty"`
-	dictionaryID string
+
+	cardVisibility cardVisibility
+	dictionaryID   string
 }
 
 type dictionaryRound struct {
@@ -136,7 +138,7 @@ func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) 
 		changed = true
 	}
 	if len(cards) == 0 {
-		return &pb.ReviewPosition{}, changed
+		return &pb.ReviewPosition{DictionaryId: s.dictionaryID}, changed
 	}
 	if s.Position == len(s.Queue) {
 		s.nextRound(cards)

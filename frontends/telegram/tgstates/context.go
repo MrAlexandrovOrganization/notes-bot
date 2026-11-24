@@ -148,4 +148,9 @@ type EnglishContext struct {
 	Review              *pb.ReviewPosition `json:"review,omitempty"`
 	Revealed            bool               `json:"revealed"`
 	Instruction         string             `json:"instruction"`
+
+	ScopeChoices   []*pb.DictionaryInfo `json:"scope_choices,omitempty"`
+	SelectedScopes []string             `json:"selected_scopes,omitempty"`
+	HiddenCardIDs  []string             `json:"hidden_card_ids,omitempty"`
+	HiddenPage     int                  `json:"hidden_page,omitempty"`
 }

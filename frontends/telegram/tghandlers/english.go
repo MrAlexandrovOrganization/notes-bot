@@ -360,6 +360,10 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishPrompt), tgkeyboards.EnglishBack())
 	case "review":
 		return a.chooseEnglishDictionary(ctx, b, q, user)
+	case "multi":
+		return a.chooseMultipleEnglishDictionaries(ctx, b, q, user)
+	case "hidden":
+		return a.showHiddenEnglishCards(ctx, b, q, user, 0)
 	case "dict":
 		if len(parts) == 3 && uc.State == tgstates.StateEnglishMenu {
 			return a.resumeEnglishReview(ctx, b, q, user, parts[2])
@@ -379,6 +383,9 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 	}
 	if uc.State == tgstates.StateEnglishReview {
 		return a.englishReviewAction(ctx, b, q, user, e, parts)
+	}
+	if uc.State == tgstates.StateEnglishMenu {
+		return a.englishDictionaryMenuAction(ctx, b, q, user, e, parts)
 	}
 	if uc.State != tgstates.StateEnglishPreview && uc.State != tgstates.StateEnglishClarify {
 		return nil

@@ -37,13 +37,27 @@ const (
 	EnglishHard             = "С трудом"
 	EnglishEasy             = "Легко"
 	EnglishFinish           = "В меню"
-	EnglishEmpty            = "Словарь пока пуст. Добавь карточку, чтобы начать повторение."
+	EnglishEmpty            = "В этом наборе пока нечего повторять."
 	EnglishReviewFront      = "Вспомни по-английски:\n\n"
 	EnglishHintLabel        = "Подсказка: начало — "
 	EnglishVoiceReady       = "🎙 Учебная расшифровка готова. Открой её для просмотра и исправления. В дневник она не записана."
 	EnglishVoiceOpen        = "Открыть учебный ввод"
 	EnglishVoiceAccepted    = "Голосовой ввод принят для раздела «Английский». Можно продолжать пользоваться ботом; назначение задания сохранено."
 	EnglishVoiceTooLong     = "Расшифровка длиннее 1000 символов. Выбери нужный фрагмент и пришли его текстом в раздел «Английский»."
+)
+
+const (
+	EnglishChooseSeveral      = "Выбрать несколько"
+	EnglishSelectDictionaries = "Отметь словари и нажми «Начать повторение»."
+	EnglishStartSelection     = "Начать повторение"
+	EnglishHiddenCards        = "Скрытые карточки"
+	EnglishHiddenList         = "Скрытые карточки. Нажми на слово, чтобы вернуть его в повторение."
+	EnglishNoHiddenCards      = "Скрытых карточек пока нет."
+	EnglishHideCard           = "Скрыть карточку"
+	EnglishCardHidden         = "Карточка скрыта во всех словарях."
+	EnglishVisibilityFailure  = "Не удалось сохранить видимость карточки. Попробуй ещё раз."
+	EnglishPreviousPage       = "◀ Предыдущие"
+	EnglishNextPage           = "Следующие ▶"
 )
 
 const (
