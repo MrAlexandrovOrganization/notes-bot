@@ -7,6 +7,7 @@ const (
 	EnglishIntro            = "🇬🇧 Английский\n\nВыбери действие. После выхода повторение продолжится с той же карточки."
 	EnglishAdd              = "Добавить в словарь"
 	EnglishReview           = "Повторение"
+	EnglishChooseDictionary = "Какой словарь повторять?"
 	EnglishBack             = "◀ Назад"
 	EnglishSave             = "✅ Сохранить"
 	EnglishClarify          = "Уточнить с ИИ"
@@ -67,6 +68,10 @@ const EnglishPhraseSourcePrompt = "Пришли саму русскую мысл
 
 func EnglishRoundPosition(round int64, position, total int32) string {
 	return fmt.Sprintf("Круг %d · Карточка %d из %d", round, position, total)
+}
+
+func EnglishDictionaryChoice(title string, count int32) string {
+	return fmt.Sprintf("%s · %d", title, count)
 }
 
 func EnglishReviewSaved(skipped int32) string {

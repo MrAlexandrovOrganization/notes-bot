@@ -17,6 +17,8 @@ func TestEnglishReviewResumesBackendPositionAndRetriesLostRating(t *testing.T) {
 		PromptLanguage: "ru", Token: "backend", Round: 3, Position: 4, RoundSize: 7,
 	}
 	englishAction(t, app, bot, q, "review")
+	require.Contains(t, api.markups[len(api.markups)-1], "english:dict:all")
+	englishAction(t, app, bot, q, "dict", "all")
 	require.Contains(t, api.texts[len(api.texts)-1], "Круг 3 · Карточка 4 из 7")
 	require.NotContains(t, api.texts[len(api.texts)-1], "yield")
 	nonce := state.value.English.Nonce
@@ -36,6 +38,7 @@ func TestEnglishReviewResumesBackendPositionAndRetriesLostRating(t *testing.T) {
 	englishAction(t, app, bot, q, "menu")
 	state.value = tgstates.UserContext{}
 	englishAction(t, app, bot, q, "review")
+	englishAction(t, app, bot, q, "dict", "all")
 	require.Equal(t, "next", state.value.English.Review.Token)
 	require.False(t, state.value.English.Revealed)
 	require.Zero(t, llm.calls)
@@ -55,6 +58,7 @@ func TestEnglishReviewLegacyScreenCanResumeAndSkip(t *testing.T) {
 	require.Zero(t, client.grades)
 	client.review = nil
 	englishAction(t, app, bot, q, "review")
+	englishAction(t, app, bot, q, "dict", "all")
 	require.Contains(t, api.texts[len(api.texts)-1], r.EnglishEmpty)
 }
 
@@ -62,6 +66,7 @@ func TestEnglishPromptHidesRussianUntilRevealed(t *testing.T) {
 	app, client, _, api, bot, state, q := englishFlowFixture(t)
 	client.review = &pb.ReviewPosition{Card: &pb.Card{English: "apple", Source: "яблоко"}, Token: "server", PromptLanguage: "en", Round: 1, Position: 1, RoundSize: 1}
 	englishAction(t, app, bot, q, "review")
+	englishAction(t, app, bot, q, "dict", "all")
 	front := api.texts[len(api.texts)-1]
 	require.Contains(t, front, "apple")
 	require.NotContains(t, front, "яблоко")

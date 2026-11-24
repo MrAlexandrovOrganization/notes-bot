@@ -359,10 +359,15 @@ func (a *App) handleEnglishAction(ctx context.Context, b *telego.Bot, q *telego.
 		}
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishPrompt), tgkeyboards.EnglishBack())
 	case "review":
-		return a.resumeEnglishReview(ctx, b, q, user)
+		return a.chooseEnglishDictionary(ctx, b, q, user)
+	case "dict":
+		if len(parts) == 3 && uc.State == tgstates.StateEnglishMenu {
+			return a.resumeEnglishReview(ctx, b, q, user, parts[2])
+		}
+		return nil
 	case "queue":
 		if uc.State == tgstates.StateEnglishMenu {
-			return a.resumeEnglishReview(ctx, b, q, user)
+			return a.chooseEnglishDictionary(ctx, b, q, user)
 		}
 		return nil
 	}

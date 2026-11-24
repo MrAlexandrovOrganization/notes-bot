@@ -130,3 +130,69 @@ func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 	require.EqualValues(t, 2, current.Round)
 	require.True(t, proto.Equal(current, get(second)))
 }
+
+func TestEnglishPostgresDictionaryQueuesShareGradesAndKeepTheirPositions(t *testing.T) {
+	ctx := t.Context()
+	store := testEnglishStore(t)
+	require.NoError(t, store.ImportLegacy(ctx, filepath.Join(t.TempDir(), "missing.json")))
+	files := &testMarkdown{files: map[string]string{englishWords: "- `one` - один\n- `two` - два\n- `three` - три\n- `four` - четыре\n"}}
+	bot := &Server{Dictionary: Dictionary{Notes: files}, Store: store}
+	android := &Server{Dictionary: bot.Dictionary, Store: store}
+	list, err := bot.ListCards(ctx, &pb.ListCardsRequest{})
+	require.NoError(t, err)
+	initial, err := bot.GetReview(ctx, &pb.GetReviewRequest{IncludeRemaining: true})
+	require.NoError(t, err)
+	require.Len(t, initial.Remaining, 4)
+
+	move := DictionaryMove{ID: "movie", Title: "Фильм", CardIDs: []string{list.Cards[0].Id, list.Cards[1].Id}}
+	require.NoError(t, bot.MoveDictionary(ctx, move))
+	movie, err := bot.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: move.ID, IncludeRemaining: true})
+	require.NoError(t, err)
+	require.Len(t, movie.Remaining, 2)
+	for _, p := range movie.Remaining {
+		require.Equal(t, move.ID, p.DictionaryId)
+		require.Contains(t, move.CardIDs, p.Card.Id)
+	}
+	main, err := android.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: generalDictionary, IncludeRemaining: true})
+	require.NoError(t, err)
+	require.Len(t, main.Remaining, 2)
+	require.NotContains(t, move.CardIDs, main.Current.Card.Id)
+	req := &pb.AdvanceReviewRequest{Token: movie.Current.Token, DictionaryId: move.ID, Action: pb.ReviewAction_REVIEW_ACTION_EASY}
+	scored, err := android.AdvanceReview(ctx, req)
+	require.NoError(t, err)
+	require.Contains(t, []int32{2, 3}, scored.SkippedRounds)
+	resumed, err := bot.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: move.ID})
+	require.NoError(t, err)
+	require.True(t, proto.Equal(scored.Current, resumed.Current))
+	retry, err := bot.AdvanceReview(ctx, req)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(scored, retry))
+	all, err := android.GetReview(ctx, &pb.GetReviewRequest{})
+	require.NoError(t, err)
+	require.Equal(t, initial.Current.Token, all.Current.Token)
+	global, err := android.ListCards(ctx, &pb.ListCardsRequest{IncludeProgress: true})
+	require.NoError(t, err)
+	for _, card := range global.Cards {
+		if movie.Current.Card.Id != card.Id {
+			continue
+		}
+		graded := card.RuToEn
+		if movie.Current.PromptLanguage == "en" {
+			graded = card.EnToRu
+		}
+		require.Equal(t, "easy", graded.LastGrade)
+		require.Zero(t, graded.DueRound)
+	}
+	movieCards, err := bot.ListCards(ctx, &pb.ListCardsRequest{DictionaryId: move.ID, IncludeProgress: true})
+	require.NoError(t, err)
+	for _, card := range movieCards.Cards {
+		if movie.Current.Card.Id != card.Id {
+			continue
+		}
+		graded := card.RuToEn
+		if movie.Current.PromptLanguage == "en" {
+			graded = card.EnToRu
+		}
+		require.Equal(t, movie.Current.Round+1+int64(scored.SkippedRounds), graded.DueRound)
+	}
+}

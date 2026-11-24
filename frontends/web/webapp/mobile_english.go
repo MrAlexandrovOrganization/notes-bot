@@ -56,7 +56,7 @@ func (a *App) mobileEnglishReview(w http.ResponseWriter, r *http.Request) {
 		mobileError(w, http.StatusServiceUnavailable)
 		return
 	}
-	resp, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{})
+	resp, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{DictionaryId: r.URL.Query().Get("dictionary_id")})
 	if err != nil {
 		mobileFailure(w, err)
 		return
@@ -66,8 +66,9 @@ func (a *App) mobileEnglishReview(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Token  string `json:"token"`
-		Action string `json:"action"`
+		Token        string `json:"token"`
+		Action       string `json:"action"`
+		DictionaryID string `json:"dictionary_id"`
 	}
 	if !mobileDecode(w, r, &request) {
 		return
@@ -91,7 +92,9 @@ func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request)
 		mobileError(w, http.StatusServiceUnavailable)
 		return
 	}
-	resp, err := a.English.AdvanceReview(r.Context(), &pb.AdvanceReviewRequest{Token: request.Token, Action: action})
+	resp, err := a.English.AdvanceReview(r.Context(), &pb.AdvanceReviewRequest{
+		Token: request.Token, Action: action, DictionaryId: request.DictionaryID,
+	})
 	if err != nil {
 		mobileFailure(w, err)
 		return
@@ -106,7 +109,8 @@ func (a *App) mobileEnglishRound(w http.ResponseWriter, r *http.Request) {
 		mobileError(w, 503)
 		return
 	}
-	resp, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{IncludeRemaining: true})
+	id := r.URL.Query().Get("dictionary_id")
+	resp, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{IncludeRemaining: true, DictionaryId: id})
 	if err != nil {
 		mobileFailure(w, err)
 		return
@@ -119,7 +123,25 @@ func (a *App) mobileEnglishRound(w http.ResponseWriter, r *http.Request) {
 		mobileError(w, 503)
 		return
 	}
-	mobileJSON(w, 200, map[string]any{"positions": positions})
+	scope := resp.GetCurrent().GetDictionaryId()
+	if scope == "" && len(positions) == 0 {
+		for _, dictionary := range resp.Dictionaries {
+			if dictionary.Id == id {
+				scope = id
+				break
+			}
+		}
+	}
+	if scope == "all" {
+		scope = ""
+	}
+	if id != "" && id != "all" && scope != id {
+		mobileError(w, http.StatusServiceUnavailable)
+		return
+	}
+	mobileJSON(w, 200, map[string]any{
+		"positions": positions, "dictionaries": resp.Dictionaries, "dictionary_id": scope,
+	})
 }
 
 func (a *App) mobileEnglishWord(w http.ResponseWriter, r *http.Request) {
@@ -148,22 +170,25 @@ func (a *App) mobileEnglishDictionary(w http.ResponseWriter, r *http.Request) {
 		mobileError(w, 503)
 		return
 	}
-	resp, err := a.English.ListCards(r.Context(), &pb.ListCardsRequest{Kind: "word", IncludeProgress: true})
+	resp, err := a.English.ListCards(r.Context(), &pb.ListCardsRequest{
+		IncludeProgress: true, DictionaryId: r.URL.Query().Get("dictionary_id"),
+	})
 	if err != nil {
 		mobileFailure(w, err)
 		return
 	}
 	type word struct {
-		ID      string                `json:"id"`
-		English string                `json:"english"`
-		Source  string                `json:"source"`
-		Example string                `json:"example,omitempty"`
-		EnToRu  *pb.DirectionProgress `json:"en_to_ru,omitempty"`
-		RuToEn  *pb.DirectionProgress `json:"ru_to_en,omitempty"`
+		ID           string                `json:"id"`
+		English      string                `json:"english"`
+		Source       string                `json:"source"`
+		Example      string                `json:"example,omitempty"`
+		DictionaryID string                `json:"dictionary_id,omitempty"`
+		EnToRu       *pb.DirectionProgress `json:"en_to_ru,omitempty"`
+		RuToEn       *pb.DirectionProgress `json:"ru_to_en,omitempty"`
 	}
 	words := make([]word, 0, len(resp.Cards))
 	for _, c := range resp.Cards {
-		words = append(words, word{c.Id, c.English, c.Source, c.Example, c.EnToRu, c.RuToEn})
+		words = append(words, word{c.Id, c.English, c.Source, c.Example, c.DictionaryId, c.EnToRu, c.RuToEn})
 	}
-	mobileJSON(w, 200, map[string]any{"words": words})
+	mobileJSON(w, 200, map[string]any{"words": words, "dictionaries": resp.Dictionaries})
 }

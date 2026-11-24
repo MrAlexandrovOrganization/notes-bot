@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -70,6 +73,20 @@ func main() {
 
 	startup, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
+	service := &english.Server{Dictionary: dictionary, Store: store}
+	if len(os.Args) == 2 && os.Args[1] == "move-dictionary" {
+		var request english.DictionaryMove
+		input := json.NewDecoder(io.LimitReader(os.Stdin, 1<<20))
+		input.DisallowUnknownFields()
+		if input.Decode(&request) != nil || input.Decode(new(any)) != io.EOF {
+			logger.Fatal("expected one English dictionary move manifest on standard input")
+		}
+		if err := service.MoveDictionary(startup, request); err != nil {
+			logger.Fatal("English dictionary move failed", zap.Error(err))
+		}
+		logger.Info("English dictionary move complete", zap.Int("cards", len(request.CardIDs)))
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "migrate" {
 		if err = store.Migrate(startup); err != nil {
 			logger.Fatal("English schema migration failed")
@@ -100,7 +117,7 @@ func main() {
 		logger.Fatal("cannot listen for English gRPC")
 	}
 	server := grpcutil.NewServer(logger)
-	pb.RegisterEnglishServiceServer(server, &english.Server{Dictionary: dictionary, Store: store})
+	pb.RegisterEnglishServiceServer(server, service)
 	probe := health.NewServer()
 	serviceName := pb.EnglishService_ServiceDesc.ServiceName
 	probe.SetServingStatus(serviceName, healthpb.HealthCheckResponse_NOT_SERVING)

@@ -55,11 +55,78 @@ func englishToken(token string) bool {
 }
 
 type session struct {
-	Seed     string              `json:"seed"`
-	Round    int64               `json:"round"`
-	Queue    []string            `json:"queue"`
-	Position int                 `json:"position"`
-	Progress map[string]progress `json:"progress"`
+	Seed         string                     `json:"seed"`
+	Round        int64                      `json:"round"`
+	Queue        []string                   `json:"queue"`
+	Position     int                        `json:"position"`
+	Progress     map[string]progress        `json:"progress"`
+	Dictionaries map[string]dictionaryRound `json:"dictionaries,omitempty"`
+	dictionaryID string
+}
+
+type dictionaryRound struct {
+	Seed     string                  `json:"seed"`
+	Round    int64                   `json:"round"`
+	Queue    []string                `json:"queue"`
+	Position int                     `json:"position"`
+	Due      map[string]directionDue `json:"due"`
+}
+
+type directionDue struct {
+	English int64 `json:"en,omitempty"`
+	Russian int64 `json:"ru,omitempty"`
+}
+
+// Grades and easy levels belong to the card. Each queue has its own round
+// numbers, so a new queue starts with the remaining waits from All.
+func (s *session) dictionaryView(id string, cards map[string]*pb.Card) (*session, dictionaryRound) {
+	stored, initialized := s.Dictionaries[id]
+	if !initialized {
+		stored.Due = make(map[string]directionDue)
+		for cardID := range cards {
+			p := s.Progress[cardID]
+			en, ru := p.side("en").Due, p.side("ru").Due
+			if en > s.Round || ru > s.Round {
+				stored.Due[cardID] = directionDue{max(0, en-s.Round), max(0, ru-s.Round)}
+			}
+		}
+	}
+	view := &session{
+		Seed: stored.Seed, Round: stored.Round, Queue: stored.Queue, Position: stored.Position,
+		Progress: make(map[string]progress, len(cards)), dictionaryID: id,
+	}
+	for cardID := range cards {
+		p := s.Progress[cardID]
+		en, ru := p.side("en"), p.side("ru")
+		due := stored.Due[cardID]
+		en.Due, ru.Due = due.English, due.Russian
+		p.English, p.Russian = &en, &ru
+		view.Progress[cardID] = p
+	}
+	return view, stored
+}
+
+func (s *session) saveDictionaryView(view *session, stored dictionaryRound) {
+	stored.Seed, stored.Round, stored.Queue, stored.Position = view.Seed, view.Round, view.Queue, view.Position
+	if s.Dictionaries == nil {
+		s.Dictionaries = make(map[string]dictionaryRound)
+	}
+	s.Dictionaries[view.dictionaryID] = stored
+}
+
+func (s *session) saveDictionaryGrade(stored dictionaryRound, id, language string, graded directionProgress) {
+	p := s.Progress[id]
+	due := stored.Due[id]
+	queueDue := graded.Due
+	// Preserve the other queue's due rounds and presentation tokens.
+	graded.Due = p.side(language).Due
+	if language == "en" {
+		due.English, p.English = queueDue, &graded
+	} else {
+		due.Russian, p.Russian = queueDue, &graded
+	}
+	stored.Due[id] = due
+	s.Progress[id] = p
 }
 
 func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) {
@@ -107,7 +174,7 @@ func (s *session) positionAt(cards map[string]*pb.Card, index int) *pb.ReviewPos
 	if english {
 		language = "en"
 	}
-	return &pb.ReviewPosition{Card: card, PromptLanguage: language, Token: token, Round: s.Round, Position: int32(index + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.side(language).Level}
+	return &pb.ReviewPosition{Card: card, PromptLanguage: language, Token: token, Round: s.Round, Position: int32(index + 1), RoundSize: int32(len(s.Queue)), EasyLevel: p.side(language).Level, DictionaryId: s.dictionaryID}
 }
 
 func (s *session) remaining(cards map[string]*pb.Card) []*pb.ReviewPosition {

@@ -12,6 +12,8 @@ import (
 	"github.com/mymmrac/telego"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"notes-bot/frontends/telegram/clients"
 	r "notes-bot/frontends/telegram/resources"
@@ -23,6 +25,21 @@ import (
 )
 
 type englishFlowNotes struct{ Vault string }
+
+func (n *englishFlowNotes) ListDirectory(_ context.Context, req *notes.ListDirectoryRequest, _ ...grpc.CallOption) (*notes.ListDirectoryResponse, error) {
+	entries, err := os.ReadDir(filepath.Join(n.Vault, req.Relpath))
+	if os.IsNotExist(err) {
+		return nil, status.Error(codes.NotFound, "directory missing")
+	}
+	if err != nil {
+		return nil, err
+	}
+	list := &notes.ListDirectoryResponse{}
+	for _, entry := range entries {
+		list.Entries = append(list.Entries, &notes.DirEntry{Name: entry.Name(), IsDir: entry.IsDir()})
+	}
+	return list, nil
+}
 
 func (n *englishFlowNotes) ReadMarkdown(_ context.Context, req *notes.ReadMarkdownRequest, _ ...grpc.CallOption) (*notes.ReadMarkdownResponse, error) {
 	content, err := os.ReadFile(filepath.Join(n.Vault, req.Relpath))
@@ -64,6 +81,9 @@ func (c *englishFlowClient) ListCards(ctx context.Context, req *pb.ListCardsRequ
 }
 func (c *englishFlowClient) GetReview(_ context.Context, _ *pb.GetReviewRequest, _ ...grpc.CallOption) (*pb.GetReviewResponse, error) {
 	return &pb.GetReviewResponse{Current: proto.CloneOf(c.review)}, nil
+}
+func (c *englishFlowClient) ListDictionaries(ctx context.Context, req *pb.ListDictionariesRequest, _ ...grpc.CallOption) (*pb.ListDictionariesResponse, error) {
+	return c.material.ListDictionaries(ctx, req)
 }
 func (c *englishFlowClient) AdvanceReview(_ context.Context, req *pb.AdvanceReviewRequest, _ ...grpc.CallOption) (*pb.AdvanceReviewResponse, error) {
 	if req.Token != c.lastToken {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -429,6 +430,9 @@ func (s *NotesServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryRe
 	defer span.End()
 
 	entries, err := s.notes.ListDirectory(ctx, req.Relpath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, status.Error(codes.NotFound, "directory not found")
+	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list directory: %v", err)
 	}

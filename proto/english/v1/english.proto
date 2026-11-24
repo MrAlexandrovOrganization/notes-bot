@@ -7,6 +7,7 @@ option go_package = "notes-bot/proto/english/v1;englishv1";
 service EnglishService {
   rpc SaveCard(SaveCardRequest) returns (SaveCardResponse);
   rpc ListCards(ListCardsRequest) returns (ListCardsResponse);
+  rpc ListDictionaries(ListDictionariesRequest) returns (ListDictionariesResponse);
   rpc GradeCard(GradeCardRequest) returns (GradeCardResponse) {
     option deprecated = true;
   }
@@ -29,6 +30,16 @@ message Card {
   int32 lapses = 13;
   DirectionProgress en_to_ru = 14;
   DirectionProgress ru_to_en = 15;
+  string dictionary_id = 16; // Source dictionary, independent of card identity.
+}
+message DictionaryInfo {
+  string id = 1;
+  string title = 2;
+  int32 card_count = 3;
+}
+message ListDictionariesRequest {}
+message ListDictionariesResponse {
+  repeated DictionaryInfo dictionaries = 1;
 }
 message DirectionProgress {
   string last_grade = 1;
@@ -44,9 +55,11 @@ message SaveCardResponse {
 message ListCardsRequest {
   string kind = 1;
   bool include_progress = 2;
+  string dictionary_id = 3; // Empty and "all" both select all cards.
 }
 message ListCardsResponse {
   repeated Card cards = 1;
+  repeated DictionaryInfo dictionaries = 2;
 }
 message GradeCardRequest {
   string id = 1;
@@ -65,14 +78,17 @@ message ReviewPosition {
   int32 round_size = 5;
   int32 easy_level = 6; // 0 through 5 for the current card.
   string prompt_language = 8; // en or ru, fixed for this presentation.
+  string dictionary_id = 9; // Review queue, which can differ from the card's source.
   Card next_preview = 7; // Read-only lookahead within this round, without an action token.
 }
 message GetReviewRequest {
   bool include_remaining = 1;
+  string dictionary_id = 2;
 }
 message GetReviewResponse {
   ReviewPosition current = 1;
   repeated ReviewPosition remaining = 2; // Includes current through the end of this round.
+  repeated DictionaryInfo dictionaries = 3; // Populated with the round pack.
 }
 enum ReviewAction {
   REVIEW_ACTION_UNSPECIFIED = 0;
@@ -84,6 +100,7 @@ enum ReviewAction {
 message AdvanceReviewRequest {
   string token = 1;
   ReviewAction action = 2;
+  string dictionary_id = 3;
 }
 message AdvanceReviewResponse {
   ReviewPosition current = 1;

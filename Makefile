@@ -182,6 +182,10 @@ migrate-english: assert-active
 	$(DOCKER_COMPOSE) build english
 	$(DOCKER_COMPOSE) -f compose/compose.english-migration.yml run --rm --no-deps english /english migrate
 
+.PHONY: move-english-dictionary
+move-english-dictionary: assert-active
+	$(DOCKER_COMPOSE) exec -T english /english move-dictionary
+
 .PHONY: test-english-db
 test-english-db:
 	@test -n "$(TEST_ENGLISH_DATABASE_URL)" || { echo 'Set TEST_ENGLISH_DATABASE_URL to an isolated PostgreSQL database'; exit 1; }

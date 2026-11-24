@@ -2,6 +2,7 @@ package english
 
 import (
 	"context"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -20,21 +21,72 @@ type testMarkdown struct {
 	files map[string]string
 }
 
+func (m *testMarkdown) ListDirectory(_ context.Context, req *notes.ListDirectoryRequest, _ ...grpc.CallOption) (*notes.ListDirectoryResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := &notes.ListDirectoryResponse{}
+	for file := range m.files {
+		if path.Dir(file) == req.GetRelpath() {
+			list.Entries = append(list.Entries, &notes.DirEntry{Name: path.Base(file), Relpath: file})
+		}
+	}
+	if len(list.Entries) == 0 {
+		return nil, status.Error(codes.NotFound, "directory missing")
+	}
+	return list, nil
+}
+
 func (m *testMarkdown) ReadMarkdown(_ context.Context, req *notes.ReadMarkdownRequest, _ ...grpc.CallOption) (*notes.ReadMarkdownResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	text := m.files[req.Relpath]
-	return &notes.ReadMarkdownResponse{Content: text, Revision: englishHash(text)}, nil
+	return &notes.ReadMarkdownResponse{Content: m.files[req.Relpath], Revision: m.revision(req.Relpath)}, nil
+}
+
+func (m *testMarkdown) revision(file string) string {
+	if text, ok := m.files[file]; ok {
+		return englishHash(text)
+	}
+	return "missing"
 }
 
 func (m *testMarkdown) ReplaceMarkdown(_ context.Context, req *notes.ReplaceMarkdownRequest, _ ...grpc.CallOption) (*notes.ReplaceMarkdownResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if englishHash(m.files[req.Relpath]) != req.ExpectedRevision {
+	if m.revision(req.Relpath) != req.ExpectedRevision {
 		return nil, status.Error(codes.Aborted, "stale")
 	}
 	m.files[req.Relpath] = req.Content
 	return &notes.ReplaceMarkdownResponse{}, nil
+}
+
+func TestMoveDictionaryKeepsCardIDsDatesAndTitles(t *testing.T) {
+	source := "---\ndate:\n---\n- `undated` - без даты\n\n[[22-Nov-2026]]\n" +
+		"- `one` - один\n  Пояснение: первое\n  Пример: One more.\n- `two` - два\n"
+	files := &testMarkdown{files: map[string]string{englishWords: source}}
+	service := &Server{Dictionary: Dictionary{Notes: files}}
+	ctx := t.Context()
+	before, err := service.ListCards(ctx, &pb.ListCardsRequest{})
+	require.NoError(t, err)
+	require.Len(t, before.Cards, 3)
+	move := DictionaryMove{ID: "movie", Title: "Название фильма", CardIDs: []string{before.Cards[1].Id}}
+	require.NoError(t, service.Dictionary.Move(ctx, move))
+	move.CardIDs = append(move.CardIDs, before.Cards[0].Id)
+	require.NoError(t, service.Dictionary.Move(ctx, move))
+	require.NoError(t, service.Dictionary.Move(ctx, move))
+	cards, err := service.ListCards(ctx, &pb.ListCardsRequest{DictionaryId: move.ID})
+	require.NoError(t, err)
+	require.Len(t, cards.Cards, 2)
+	require.Equal(t, before.Cards[0].Id, cards.Cards[0].Id)
+	require.Equal(t, before.Cards[0].Revision, cards.Cards[0].Revision)
+	require.Equal(t, before.Cards[1].Id, cards.Cards[1].Id)
+	require.Equal(t, before.Cards[1].Revision, cards.Cards[1].Revision)
+	require.Equal(t, source[:strings.Index(source, "- `undated`")]+"[[22-Nov-2026]]\n- `two` - два\n", files.files[englishWords])
+	require.Equal(t, move.Title, cards.Dictionaries[2].Title)
+	require.EqualValues(t, 3, cards.Dictionaries[0].CardCount)
+	require.EqualValues(t, 1, cards.Dictionaries[1].CardCount)
+	require.EqualValues(t, 2, cards.Dictionaries[2].CardCount)
+	move.ID = "other"
+	require.Equal(t, codes.FailedPrecondition, status.Code(service.Dictionary.Move(ctx, move)))
 }
 
 func TestEnglishDictionaryMigratesPhrasesAndKeepsManualIdentity(t *testing.T) {

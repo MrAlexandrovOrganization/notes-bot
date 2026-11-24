@@ -3,7 +3,9 @@ package english
 import (
 	"context"
 	"errors"
+	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 )
 
 type Markdown interface {
+	ListDirectory(context.Context, *notes.ListDirectoryRequest, ...grpc.CallOption) (*notes.ListDirectoryResponse, error)
 	ReadMarkdown(context.Context, *notes.ReadMarkdownRequest, ...grpc.CallOption) (*notes.ReadMarkdownResponse, error)
 	ReplaceMarkdown(context.Context, *notes.ReplaceMarkdownRequest, ...grpc.CallOption) (*notes.ReplaceMarkdownResponse, error)
 }
@@ -28,16 +31,29 @@ type Dictionary struct {
 type dictionarySnapshot struct {
 	words   *notes.ReadMarkdownResponse
 	phrases *notes.ReadMarkdownResponse
+	themed  []dictionaryFile
 }
 
 type dictionaryFile struct {
 	path string
 	kind string
 	note *notes.ReadMarkdownResponse
+	id   string
 }
 
-func (s dictionarySnapshot) files() [2]dictionaryFile {
-	return [2]dictionaryFile{{englishWords, "word", s.words}, {englishPhrases, "phrase", s.phrases}}
+const (
+	allDictionaries   = "all"
+	generalDictionary = "general"
+	dictionariesPath  = "Tags/English/Dictionaries"
+)
+
+var dictionaryID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+func (s dictionarySnapshot) files() []dictionaryFile {
+	return append([]dictionaryFile{
+		{englishWords, "word", s.words, generalDictionary},
+		{englishPhrases, "phrase", s.phrases, generalDictionary},
+	}, s.themed...)
 }
 
 func (d Dictionary) read(ctx context.Context) (dictionarySnapshot, error) {
@@ -48,28 +64,98 @@ func (d Dictionary) read(ctx context.Context) (dictionarySnapshot, error) {
 	snapshot := dictionarySnapshot{words: words}
 	if !englishMigrationDone(words.Content) {
 		snapshot.phrases, err = d.Notes.ReadMarkdown(ctx, &notes.ReadMarkdownRequest{Relpath: englishPhrases})
+		if err != nil {
+			return dictionarySnapshot{}, err
+		}
 	}
-	return snapshot, err
+	directory, err := d.Notes.ListDirectory(ctx, &notes.ListDirectoryRequest{Relpath: dictionariesPath})
+	if status.Code(err) == codes.NotFound {
+		return snapshot, nil
+	}
+	if err != nil {
+		return dictionarySnapshot{}, err
+	}
+	for _, entry := range directory.GetEntries() {
+		id, markdown := strings.CutSuffix(entry.GetName(), ".md")
+		if entry.GetIsDir() || !markdown || !dictionaryID.MatchString(id) || id == allDictionaries || id == generalDictionary {
+			continue
+		}
+		file := path.Join(dictionariesPath, entry.Name)
+		note, err := d.Notes.ReadMarkdown(ctx, &notes.ReadMarkdownRequest{Relpath: file})
+		if err != nil {
+			return dictionarySnapshot{}, err
+		}
+		if note.GetRevision() != "missing" {
+			snapshot.themed = append(snapshot.themed, dictionaryFile{file, "word", note, id})
+		}
+	}
+	slices.SortFunc(snapshot.themed, func(a, b dictionaryFile) int { return strings.Compare(a.id, b.id) })
+	return snapshot, nil
 }
 
 func (snapshot dictionarySnapshot) cards() ([]*pb.Card, error) {
-	words, err := parseEnglish(snapshot.words.GetContent(), "word")
-	if err != nil {
-		return nil, err
-	}
-	phrases, err := parseEnglish(snapshot.phrases.GetContent(), "phrase")
-	if err != nil {
-		return nil, err
-	}
-	cards := append(words, phrases...)
-	seen := make(map[string]bool, len(cards))
-	for _, c := range cards {
-		if seen[c.Id] {
-			return nil, errors.New("duplicate English identity across files")
+	var cards []*pb.Card
+	seen := make(map[string]int)
+	for _, file := range snapshot.files() {
+		entries, err := parseEnglish(file.note.GetContent(), file.kind)
+		if err != nil {
+			return nil, err
 		}
-		seen[c.Id] = true
+		for _, c := range entries {
+			c.DictionaryId = file.id
+			if i, ok := seen[c.Id]; ok {
+				// A move can safely copy a card before removing it from words.md.
+				if file.id == generalDictionary || cards[i].DictionaryId != generalDictionary ||
+					englishPayload(cards[i]) != englishPayload(c) {
+					return nil, errors.New("duplicate English identity across dictionary files")
+				}
+				cards[i] = c
+				continue
+			}
+			seen[c.Id] = len(cards)
+			cards = append(cards, c)
+		}
 	}
 	return cards, nil
+}
+
+func dictionaryTitle(file dictionaryFile) string {
+	for line := range strings.SplitSeq(file.note.GetContent(), "\n") {
+		if title, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok && strings.TrimSpace(title) != "" {
+			return strings.TrimSpace(title)
+		}
+	}
+	return file.id
+}
+
+func (snapshot dictionarySnapshot) dictionaries(cards []*pb.Card) []*pb.DictionaryInfo {
+	counts := make(map[string]int32)
+	for _, c := range cards {
+		counts[c.DictionaryId]++
+	}
+	result := []*pb.DictionaryInfo{
+		{Id: allDictionaries, Title: "Все слова", CardCount: int32(len(cards))},
+		{Id: generalDictionary, Title: "Основной", CardCount: counts[generalDictionary]},
+	}
+	for _, file := range snapshot.themed {
+		result = append(result, &pb.DictionaryInfo{Id: file.id, Title: dictionaryTitle(file), CardCount: counts[file.id]})
+	}
+	return result
+}
+
+func (snapshot dictionarySnapshot) selectDictionary(id string) (string, error) {
+	switch id {
+	case "", allDictionaries:
+		return allDictionaries, nil
+	case generalDictionary:
+		return generalDictionary, nil
+	}
+	for _, file := range snapshot.themed {
+		if file.id == id {
+			return id, nil
+		}
+	}
+	return "", status.Error(codes.NotFound, "English dictionary not found")
 }
 
 func (d Dictionary) replace(ctx context.Context, path string, previous *notes.ReadMarkdownResponse, text string) error {
@@ -116,6 +202,7 @@ func (d Dictionary) save(ctx context.Context, req *pb.SaveCardRequest) (*pb.Card
 		return nil, status.Error(codes.InvalidArgument, "invalid date")
 	}
 	card.Id = englishHash("english:" + req.OperationId)
+	card.DictionaryId = generalDictionary
 	hash := englishHash(englishPayload(card))
 attempt:
 	for range 5 {
@@ -162,8 +249,10 @@ attempt:
 // pin retains the identity across future edits in Obsidian.
 func (d Dictionary) pin(ctx context.Context, snapshot dictionarySnapshot, id string) error {
 	marker := "<!-- notes-bot:english:" + id + ":"
-	if strings.Contains(snapshot.words.GetContent(), marker) || strings.Contains(snapshot.phrases.GetContent(), marker) {
-		return nil
+	for _, file := range snapshot.files() {
+		if strings.Contains(file.note.GetContent(), marker) {
+			return nil
+		}
 	}
 	for _, file := range snapshot.files() {
 		text := markHandwritten(file.note.GetContent(), file.kind, id)

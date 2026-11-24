@@ -4,6 +4,7 @@ import (
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
 	r "notes-bot/frontends/telegram/resources"
+	pb "notes-bot/proto/english/v1"
 )
 
 func EnglishMenu() *telego.InlineKeyboardMarkup {
@@ -15,6 +16,16 @@ func EnglishMenu() *telego.InlineKeyboardMarkup {
 }
 func EnglishBack() *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishBack).WithCallbackData("english:menu")))
+}
+
+func EnglishDictionaries(dictionaries []*pb.DictionaryInfo) *telego.InlineKeyboardMarkup {
+	rows := make([][]telego.InlineKeyboardButton, 0, len(dictionaries)+1)
+	for _, dictionary := range dictionaries {
+		label := r.EnglishDictionaryChoice(dictionary.Title, dictionary.CardCount)
+		rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(label).WithCallbackData("english:dict:"+dictionary.Id)))
+	}
+	rows = append(rows, tu.InlineKeyboardRow(tu.InlineKeyboardButton(r.EnglishBack).WithCallbackData("english:menu")))
+	return tu.InlineKeyboard(rows...)
 }
 func EnglishPending(nonce string) *telego.InlineKeyboardMarkup {
 	kb := EnglishBack()

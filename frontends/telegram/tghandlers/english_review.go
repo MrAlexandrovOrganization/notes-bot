@@ -14,8 +14,25 @@ import (
 	pb "notes-bot/proto/english/v1"
 )
 
-func (a *App) resumeEnglishReview(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64) error {
-	result, err := a.English.GetReview(ctx, &pb.GetReviewRequest{})
+func (a *App) chooseEnglishDictionary(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64) error {
+	result, err := a.English.ListDictionaries(ctx, &pb.ListDictionariesRequest{})
+	if status.Code(err) == codes.Unimplemented {
+		return a.resumeEnglishReview(ctx, b, q, user, "")
+	}
+	if err != nil {
+		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishUnavailable), tgkeyboards.EnglishBack())
+	}
+	if err := a.setEnglish(ctx, user, tgstates.StateEnglishMenu, tgstates.EnglishContext{}); err != nil {
+		return err
+	}
+	return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishChooseDictionary), tgkeyboards.EnglishDictionaries(result.Dictionaries))
+}
+
+func (a *App) resumeEnglishReview(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, dictionary string) error {
+	result, err := a.English.GetReview(ctx, &pb.GetReviewRequest{DictionaryId: dictionary})
+	if dictionary != "" && status.Code(err) == codes.NotFound {
+		return a.chooseEnglishDictionary(ctx, b, q, user)
+	}
 	if err != nil {
 		return replyToCallback(ctx, b, q, tgfmt.Escape(r.EnglishUnavailable), tgkeyboards.EnglishBack())
 	}
@@ -68,7 +85,7 @@ func englishReviewAnswer(e tgstates.EnglishContext) tgfmt.HTML {
 func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext, parts []string) error {
 	if e.Review.GetCard() == nil || e.Review.PromptLanguage == "" {
 		// The previous release stored review queues entirely in Telegram.
-		return a.resumeEnglishReview(ctx, b, q, user)
+		return a.resumeEnglishReview(ctx, b, q, user, e.Review.GetDictionaryId())
 	}
 	switch parts[1] {
 	case "hint":
@@ -109,9 +126,11 @@ func (a *App) englishReviewAction(ctx context.Context, b *telego.Bot, q *telego.
 }
 
 func (a *App) advanceEnglishReview(ctx context.Context, b *telego.Bot, q *telego.CallbackQuery, user int64, e tgstates.EnglishContext, action pb.ReviewAction) error {
-	result, err := a.English.AdvanceReview(ctx, &pb.AdvanceReviewRequest{Token: e.Review.Token, Action: action})
-	if status.Code(err) == codes.FailedPrecondition {
-		return a.resumeEnglishReview(ctx, b, q, user)
+	result, err := a.English.AdvanceReview(ctx, &pb.AdvanceReviewRequest{
+		Token: e.Review.Token, Action: action, DictionaryId: e.Review.GetDictionaryId(),
+	})
+	if status.Code(err) == codes.FailedPrecondition || status.Code(err) == codes.NotFound {
+		return a.resumeEnglishReview(ctx, b, q, user, e.Review.GetDictionaryId())
 	}
 	if err != nil {
 		card := englishReviewFront(e)

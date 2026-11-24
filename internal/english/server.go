@@ -32,14 +32,6 @@ func rpcError(err error) error {
 	}
 }
 
-func (s *Server) material(ctx context.Context) ([]*pb.Card, error) {
-	snapshot, err := s.Dictionary.read(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return snapshot.reviewCards()
-}
-
 func (snapshot dictionarySnapshot) reviewCards() ([]*pb.Card, error) {
 	cards, err := snapshot.cards()
 	for _, card := range cards {
@@ -53,7 +45,15 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 	if kind != "" && kind != "word" && kind != "phrase" {
 		return nil, status.Error(codes.InvalidArgument, "invalid kind")
 	}
-	cards, err := s.material(ctx)
+	snapshot, err := s.Dictionary.read(ctx)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	id, err := snapshot.selectDictionary(req.GetDictionaryId())
+	if err != nil {
+		return nil, err
+	}
+	cards, err := snapshot.reviewCards()
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -67,18 +67,40 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 			return nil, rpcError(err)
 		}
 	}
-	resp := &pb.ListCardsResponse{}
+	resp := &pb.ListCardsResponse{Dictionaries: snapshot.dictionaries(cards)}
 	for _, card := range cards {
+		if id != allDictionaries && card.DictionaryId != id {
+			continue
+		}
 		if kind == "" || card.Kind == kind {
 			if req.IncludeProgress {
 				progress := state.Progress[card.Id]
-				card.EnToRu = progress.side("en").summary()
-				card.RuToEn = progress.side("ru").summary()
+				en, ru := progress.side("en"), progress.side("ru")
+				if id != allDictionaries {
+					due := state.Dictionaries[id].Due[card.Id]
+					if _, started := state.Dictionaries[id]; !started {
+						due = directionDue{max(0, en.Due-state.Round), max(0, ru.Due-state.Round)}
+					}
+					en.Due, ru.Due = due.English, due.Russian
+				}
+				card.EnToRu, card.RuToEn = en.summary(), ru.summary()
 			}
 			resp.Cards = append(resp.Cards, card)
 		}
 	}
 	return resp, nil
+}
+
+func (s *Server) ListDictionaries(ctx context.Context, _ *pb.ListDictionariesRequest) (*pb.ListDictionariesResponse, error) {
+	snapshot, err := s.Dictionary.read(ctx)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	cards, err := snapshot.cards()
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	return &pb.ListDictionariesResponse{Dictionaries: snapshot.dictionaries(cards)}, nil
 }
 
 func (s *Server) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (*pb.SaveCardResponse, error) {
@@ -92,11 +114,11 @@ func (s *Server) SaveCard(ctx context.Context, req *pb.SaveCardRequest) (*pb.Sav
 
 func (s *Server) GetReview(ctx context.Context, req *pb.GetReviewRequest) (*pb.GetReviewResponse, error) {
 	resp := &pb.GetReviewResponse{}
-	var remaining *[]*pb.ReviewPosition
+	var pack *pb.GetReviewResponse
 	if req.GetIncludeRemaining() {
-		remaining = &resp.Remaining
+		pack = resp
 	}
-	current, _, err := s.review(ctx, "", "", remaining)
+	current, _, err := s.review(ctx, req.GetDictionaryId(), "", "", pack)
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -121,14 +143,14 @@ func (s *Server) AdvanceReview(ctx context.Context, req *pb.AdvanceReviewRequest
 	if len(req.GetToken()) != 64 {
 		return nil, status.Error(codes.InvalidArgument, "invalid review token")
 	}
-	current, skipped, err := s.review(ctx, req.GetToken(), action, nil)
+	current, skipped, err := s.review(ctx, req.GetDictionaryId(), req.GetToken(), action, nil)
 	if err != nil {
 		return nil, rpcError(err)
 	}
 	return &pb.AdvanceReviewResponse{Current: current, SkippedRounds: skipped}, nil
 }
 
-func (s *Server) review(ctx context.Context, token, action string, remaining *[]*pb.ReviewPosition) (*pb.ReviewPosition, int32, error) {
+func (s *Server) review(ctx context.Context, dictionary, token, action string, pack *pb.GetReviewResponse) (*pb.ReviewPosition, int32, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var current *pb.ReviewPosition
@@ -142,16 +164,28 @@ func (s *Server) review(ctx context.Context, token, action string, remaining *[]
 		if err != nil {
 			return err
 		}
+		dictionary, err := snapshot.selectDictionary(dictionary)
+		if err != nil {
+			return err
+		}
 		cards, err := snapshot.reviewCards()
 		if err != nil {
 			return err
 		}
 		byID := make(map[string]*pb.Card, len(cards))
 		for _, card := range cards {
-			byID[card.Id] = card
+			if dictionary == allDictionaries || card.DictionaryId == dictionary {
+				byID[card.Id] = card
+			}
+		}
+		view := &state
+		var stored dictionaryRound
+		scoped := dictionary != allDictionaries
+		if scoped {
+			view, stored = state.dictionaryView(dictionary, byID)
 		}
 		var changed bool
-		current, changed = state.current(byID)
+		current, changed = view.current(byID)
 		if action != "" {
 			var previous string
 			err = tx.QueryRow(ctx, query("receipt"), token).Scan(&previous, &skipped)
@@ -171,18 +205,25 @@ func (s *Server) review(ctx context.Context, token, action string, remaining *[]
 						return err
 					}
 				}
-				skipped = state.advance(id, current.PromptLanguage, action)
+				skipped = view.advance(id, current.PromptLanguage, action)
+				if scoped && action != "skip" {
+					state.saveDictionaryGrade(stored, id, current.PromptLanguage, view.Progress[id].side(current.PromptLanguage))
+				}
 				if _, err := tx.Exec(ctx, query("record"), id, token, action, time.Now(), skipped, current.Round); err != nil {
 					return err
 				}
-				current, _ = state.current(byID)
+				current, _ = view.current(byID)
 				changed = true
 			}
 		}
-		if remaining != nil {
-			*remaining = state.remaining(byID)
+		if pack != nil {
+			pack.Remaining = view.remaining(byID)
+			pack.Dictionaries = snapshot.dictionaries(cards)
 		}
 		if changed {
+			if scoped {
+				state.saveDictionaryView(view, stored)
+			}
 			return saveSession(ctx, tx, state, imported)
 		}
 		return nil

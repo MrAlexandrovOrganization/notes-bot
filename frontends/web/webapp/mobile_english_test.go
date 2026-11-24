@@ -21,13 +21,16 @@ type mobileEnglishClient struct {
 	current *pb.ReviewPosition
 	next    *pb.ReviewPosition
 	calls   []*pb.AdvanceReviewRequest
+	review  *pb.GetReviewRequest
 	saved   *pb.SaveCardRequest
 }
 
 func (c *mobileEnglishClient) GetReview(_ context.Context, req *pb.GetReviewRequest, _ ...grpc.CallOption) (*pb.GetReviewResponse, error) {
+	c.review = req
 	resp := &pb.GetReviewResponse{Current: c.current}
 	if req.IncludeRemaining {
 		resp.Remaining = []*pb.ReviewPosition{c.current, c.next}
+		resp.Dictionaries = []*pb.DictionaryInfo{{Id: "movie", Title: "Фильм", CardCount: 2}}
 	}
 	return resp, nil
 }
@@ -117,6 +120,15 @@ func TestMobileEnglishOfflineRoundAndWord(t *testing.T) {
 	w := mobileRequest(router, "GET", "/mobile/v1/english/round", token, "")
 	require.Equal(t, 200, w.Code)
 	require.Contains(t, w.Body.String(), `"token":"two"`)
+	c.current.DictionaryId, c.next.DictionaryId = "movie", "movie"
+	w = mobileRequest(router, "GET", "/mobile/v1/english/round?dictionary_id=movie", token, "")
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "movie", c.review.DictionaryId)
+	require.Contains(t, w.Body.String(), `"dictionary_id":"movie"`)
+	require.Contains(t, w.Body.String(), `"title":"Фильм"`)
+	w = mobileRequest(router, "POST", "/mobile/v1/english/review/advance", token, `{"token":"one","action":"easy","dictionary_id":"movie"}`)
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "movie", c.calls[0].DictionaryId)
 	const words = "/mobile/v1/english/words"
 	const body = `{"id":"12345678-1234-4567-8901-123456789012","english":" cliff ","source":"утёс","date":"23-Nov-2026"}`
 	require.Equal(t, 401, mobileRequest(router, "POST", words, "", body).Code)
