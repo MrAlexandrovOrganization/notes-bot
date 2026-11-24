@@ -18,9 +18,9 @@ WITH latest AS (
     FROM public.geo_places p
     LEFT JOIN public.geo_states s ON s.place_id = p.id
     LEFT JOIN latest l ON true
-    WHERE p.enabled AND p.id::text = ${place:sqlstring}
+    WHERE p.enabled
 )
-SELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,
+SELECT id::text, name, latitude, longitude, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,
        confirmation_seconds, distance_m, accuracy_m, age_seconds,
        recorded_at, last_observed_at,
        CASE WHEN last_observed_at IS NULL OR last_observed_at < now()-interval '5 minutes'
@@ -39,4 +39,5 @@ SELECT name, radius_m, radius_m + greatest(50.0,radius_m*0.25) AS exit_radius_m,
                       WHEN 'outside' THEN 'Ожидается подтверждение выхода'
                       ELSE 'Нет' END AS pending_transition,
        candidate_since
-FROM measured;
+FROM measured
+ORDER BY name, id;
