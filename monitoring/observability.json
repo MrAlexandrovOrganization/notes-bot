@@ -36,21 +36,12 @@
     },
     {
       "kind": "dashboards",
-      "file": "monitoring/grafana-dashboards/location-blacklist.json",
-      "destination": "Location/location-blacklist.json",
-      "location": "central",
-      "adopt_sha256": [
-        "ec4ba89284d32d4916f1e118685065d82ba3935f7bf0954b27024a0fd3b5c2cd",
-        "ea7cb565798dad84be19766464714f5952cd90268db11093107d4bde0a62b5cc"
-      ]
-    },
-    {
-      "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location.json",
       "destination": "Location/location.json",
       "location": "central",
       "adopt_sha256": [
-        "60df02977eb0b179082345e9f232ed0e639422d574b5f15619bb9e3694a17aed"
+        "60df02977eb0b179082345e9f232ed0e639422d574b5f15619bb9e3694a17aed",
+        "f0278860a60302d410c7c95104ab87964e3cdae5bb31234ee1ff7e8bd1270a84"
       ]
     },
     {
@@ -122,6 +113,18 @@
       "destination": "notes-bot/location-blacklist.json",
       "sha256": [
         "100cf73bb13b63b37301e8b4b04656eb36e9bbf68fd74049e8703bebaf13d69e"
+      ],
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
+      "destination": "Location/location-blacklist.json",
+      "sha256": [
+        "47678fde7c81506bc0bc6fe8bdb8977c30cee3ba46c5e30a3f5c08d43a885cc6",
+        "a4d145321f52d74d83e1ceb37b747259844ba3129f74c08fa25c07bb4d6d2134",
+        "ec4ba89284d32d4916f1e118685065d82ba3935f7bf0954b27024a0fd3b5c2cd",
+        "ea7cb565798dad84be19766464714f5952cd90268db11093107d4bde0a62b5cc",
+        "eeb57663a12843b2cc4dbe34bc458cb4977cae249d62ad3b913667d8b5a258ed"
       ],
       "location": "central"
     }

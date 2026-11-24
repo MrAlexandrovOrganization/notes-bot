@@ -23,277 +23,10 @@
   "panels": [
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Prometheus scrape availability.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red"
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 54
-      },
-      "id": 101,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "up{project=\"location\"}",
-          "legendFormat": "location",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Availability",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Non-health HTTP requests per second.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              }
-            ]
-          },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 54
-      },
-      "id": 102,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(location_http_requests_total{path!=\"/healthz\"}[$__rate_interval]))",
-          "legendFormat": "",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Request rate",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Fraction of non-health HTTP requests returning a server error.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "orange",
-                "value": 0.01
-              },
-              {
-                "color": "red",
-                "value": 0.05
-              }
-            ]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 54
-      },
-      "id": 103,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(location_http_requests_total{path!=\"/healthz\",status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(location_http_requests_total{path!=\"/healthz\"}[$__rate_interval])), 0.000001)",
-          "legendFormat": "",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "5xx ratio",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "95th percentile non-health HTTP request latency.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "orange",
-                "value": 0.5
-              },
-              {
-                "color": "red",
-                "value": 2
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 54
-      },
-      "id": 104,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(location_http_request_duration_seconds_bucket{path!=\"/healthz\"}[$__rate_interval])))",
-          "legendFormat": "",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "p95 latency",
-      "type": "stat"
-    },
-    {
-      "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
+      "description": "Chronological route through visible location records in the selected dashboard time range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -324,10 +57,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 24,
-        "w": 24,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 24,
+        "h": 24
       },
       "id": 1,
       "options": {
@@ -412,7 +145,6 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE NOT hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at",
           "refId": "A",
           "sql": {
             "columns": [
@@ -431,18 +163,19 @@
             ],
             "limit": 50
           },
-          "table": "locations"
+          "table": "locations",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE NOT hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at"
         }
       ],
       "title": "Route",
-      "type": "geomap",
-      "description": "Chronological route through visible location records in the selected dashboard time range."
+      "type": "geomap"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
+      "description": "Individual visible location records in the selected dashboard time range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -472,10 +205,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 22,
-        "w": 24,
         "x": 0,
-        "y": 24
+        "y": 24,
+        "w": 24,
+        "h": 22
       },
       "id": 4,
       "options": {
@@ -558,7 +291,6 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE not hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at",
           "refId": "A",
           "sql": {
             "columns": [
@@ -577,18 +309,571 @@
             ],
             "limit": 50
           },
-          "table": "locations"
+          "table": "locations",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE not hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at"
         }
       ],
       "title": "Recorded points",
-      "type": "geomap",
-      "description": "Individual visible location records in the selected dashboard time range."
+      "type": "geomap"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "orange",
+            "mode": "fixed"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "active_rules"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Активных правил"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disabled_rules"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Отключённых правил"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "matched_points"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Записей под активными правилами"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 32
+        },
+        "textMode": "value_and_name",
+        "wideLayout": false
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT\n    (SELECT count(*) FROM public.location_blacklist WHERE enabled) AS active_rules,\n    (SELECT count(*) FROM public.location_blacklist WHERE NOT enabled) AS disabled_rules,\n    CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n         THEN (SELECT count(*) FROM public.locations\n               WHERE hidden AND public.location_blacklist_matches(latitude,longitude))\n         ELSE 0 END AS matched_points;"
+        }
+      ],
+      "title": "Состояние блэклиста",
+      "type": "stat",
+      "description": "Включённые и отключённые правила и скрытые точки, покрытые активными правилами, за всю историю."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 17
+      },
+      "id": 6,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "osm-standard"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "config": {
+              "showLegend": false,
+              "style": {
+                "color": {
+                  "fixed": "red"
+                },
+                "lineWidth": 2,
+                "opacity": 0.85,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 8,
+                  "max": 8,
+                  "min": 8
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "text": {
+                  "field": "id",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "textConfig": {
+                  "fontSize": 11,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            },
+            "location": {
+              "latitude": "latitude",
+              "longitude": "longitude",
+              "mode": "coords"
+            },
+            "name": "Действующие правила · центры",
+            "tooltip": true,
+            "type": "markers"
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "allLayers": true,
+          "id": "fit",
+          "lat": 55.9,
+          "lon": 37.6,
+          "zoom": 9
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
+          "rawSql": "SELECT id, latitude, longitude, radius_m, note, created_at\nFROM public.location_blacklist\nWHERE enabled\n  AND $__timeFilter(created_at)\nORDER BY id;"
+        }
+      ],
+      "title": "Действующие правила · центры",
+      "type": "geomap"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$postgres"
+      },
+      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Время измерения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID точки"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "targetBlank": true,
+                    "title": "Открыть место на OpenStreetMap",
+                    "url": "https://www.openstreetmap.org/?mlat=${__data.fields.latitude}&mlon=${__data.fields.longitude}#map=17/${__data.fields.latitude}/${__data.fields.longitude}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Широта"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "longitude"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Долгота"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "accuracy"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Погрешность"
+              },
+              {
+                "id": "unit",
+                "value": "lengthm"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "provider"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Провайдер"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality_reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Код причины"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина скрытия"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 22
+      },
+      "id": 7,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "osm-standard"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": true,
+          "showScale": true,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "config": {
+              "showLegend": false,
+              "style": {
+                "color": {
+                  "fixed": "purple"
+                },
+                "lineWidth": 1,
+                "opacity": 0.7,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 5,
+                  "max": 5,
+                  "min": 5
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 11,
+                  "offsetX": 0,
+                  "offsetY": 18,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            },
+            "location": {
+              "latitude": "latitude",
+              "longitude": "longitude",
+              "mode": "coords"
+            },
+            "name": "Скрытые вне блэклиста",
+            "tooltip": true,
+            "type": "markers"
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "lat": 0,
+          "lon": 0,
+          "zoom": 9
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
+          "rawSql": "-- Every hidden location outside enabled exact/radius rules, without proposal thresholds.\n-- Read-only review: a hidden measurement is not proof of a permanently bad coordinate.\nSELECT l.recorded_at AS \"time\", l.id, l.latitude, l.longitude, l.accuracy,\n       l.source::text AS source, l.provider, l.quality_reason,\n       CASE l.quality_reason\n           WHEN '' THEN 'Причина не записана'\n           WHEN 'speed' THEN 'Превышение скорости'\n           WHEN 'corroborated_jump' THEN 'Подтверждённый скачок'\n           WHEN 'extreme_jump' THEN 'Экстремальный скачок'\n           WHEN 'uncertain_jump' THEN 'Неподтверждённый скачок'\n           WHEN 'poor_accuracy' THEN 'Большая погрешность'\n           WHEN 'stale_measurement' THEN 'Запоздалое измерение'\n           WHEN 'duplicate_measurement' THEN 'Повтор измерения'\n           WHEN 'out_of_order_measurement' THEN 'Нарушен порядок измерений'\n           WHEN 'invalid_measurement' THEN 'Некорректное измерение'\n           ELSE l.quality_reason\n       END AS reason\nFROM public.locations l\nWHERE l.hidden\n  AND $__timeFilter(l.recorded_at)\n  AND l.latitude BETWEEN -90 AND 90 AND l.longitude BETWEEN -180 AND 180\n  AND NOT public.location_blacklist_matches(l.latitude, l.longitude)\nORDER BY l.recorded_at DESC, l.id;"
+        }
+      ],
+      "title": "Скрытые точки вне действующего блэклиста",
+      "type": "geomap"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Location records saved per minute, separated by visibility.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -645,10 +930,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 46
+        "y": 89,
+        "w": 24,
+        "h": 8
       },
       "id": 2,
       "options": {
@@ -681,106 +966,7 @@
         }
       ],
       "title": "Save rate",
-      "type": "timeseries",
-      "description": "Location records saved per minute, separated by visibility."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 46
-      },
-      "id": 3,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.0.0",
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum by (hidden) (location_saves_total)",
-          "legendFormat": "hidden={{hidden}}",
-          "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "title": "Total saves",
-      "type": "timeseries",
-      "description": "Cumulative location records saved since the service started, separated by visibility."
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -817,6 +1003,6 @@
   "timezone": "browser",
   "title": "Location",
   "uid": "4128eebc-4764-470e-9234-bba3ef454ef8",
-  "version": 26,
+  "version": 1,
   "description": "Location HTTP RED metrics, recorded route and points, and save activity."
 }
