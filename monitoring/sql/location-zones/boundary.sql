@@ -1,5 +1,5 @@
--- Separate geodesic line segments: no line ever connects different zones.
--- The spatial line-builder makes one geometry per segment for the markers layer.
+-- Each zone has its own closed ring of geodesic vertices.
+-- Small markers draw the contour without connecting different zones.
 WITH place AS (
     SELECT id, name, radius_m AS boundary_radius_m,
            radians(latitude) AS lat, radians(longitude) AS lon,
@@ -19,13 +19,7 @@ WITH place AS (
            degrees(lon + atan2(sin(bearing)*sin(delta)*cos(lat),
                               cos(delta)-sin(lat)*sin(dest_lat))) AS longitude
     FROM destinations
-), segments AS (
-    SELECT *, lead(latitude) OVER (PARTITION BY id ORDER BY step) AS end_latitude,
-              lead(longitude) OVER (PARTITION BY id ORDER BY step) AS end_longitude
-    FROM coordinates
 )
-SELECT id::text, name, boundary_radius_m, step,
-       latitude, longitude, end_latitude, end_longitude
-FROM segments
-WHERE step < 360
+SELECT id::text, name, boundary_radius_m, step, latitude, longitude
+FROM coordinates
 ORDER BY id, step;

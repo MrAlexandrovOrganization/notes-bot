@@ -50,14 +50,14 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Все включённые зоны показаны одновременно. **Синие окружности** — радиусы зон; **оранжевые** — пороги выхода с запасом max(50 м, 25% радиуса). **Фиолетовые точки с названиями** — центры; **зелёная** — последняя пригодная Android GPS-точка (её возраст указан ниже). Масштаб автоматически охватывает все зоны; далёкую GPS-точку можно увидеть, отдалив карту.\n\nВход: расстояние + погрешность ≤ радиуса. Выход: расстояние − погрешность ≥ оранжевого порога. Нужны повторные измерения в течение времени подтверждения. Карта и таблица обновляются каждые 30 секунд."
+        "content": "Все включённые зоны показаны одновременно. **Синие точечные окружности** — радиусы зон; **оранжевые точечные** — пороги выхода с запасом max(50 м, 25% радиуса). **Фиолетовые точки с названиями** — центры; **зелёная** — последняя пригодная Android GPS-точка (её возраст указан ниже). Масштаб автоматически охватывает все зоны; далёкую GPS-точку можно увидеть, отдалив карту.\n\nВход: расстояние + погрешность ≤ радиуса. Выход: расстояние − погрешность ≥ оранжевого порога. Нужны повторные измерения в течение времени подтверждения. Карта и таблица обновляются каждые 30 секунд."
       }
     },
     {
       "id": 6,
       "type": "geomap",
       "title": "Все зоны · границы и позиция",
-      "description": "Все включённые зоны без выбора места. Контуры построены по сферической модели Location (радиус Земли 6371000 м), 360 отдельных сегментов на зону. Автомасштаб по порогам выхода всех зон; GPS-точка не влияет на масштаб.",
+      "description": "Все включённые зоны без выбора места. Каждая окружность — замкнутый ряд из 361 геодезической вершины (радиус Земли 6371000 м). Контур показан мелкими маркерами: разные зоны не соединяются линиями. Автомасштаб по порогам выхода всех зон; GPS-точка не влияет на масштаб.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
@@ -157,7 +157,9 @@
               "options": "B"
             },
             "location": {
-              "mode": "auto"
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
             },
             "tooltip": true,
             "config": {
@@ -167,11 +169,15 @@
                 },
                 "opacity": 1,
                 "size": {
-                  "fixed": 2,
-                  "min": 2,
-                  "max": 2
+                  "fixed": 1.5,
+                  "min": 1.5,
+                  "max": 1.5
                 },
-                "lineWidth": 3
+                "lineWidth": 3,
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                }
               }
             }
           },
@@ -183,7 +189,9 @@
               "options": "A"
             },
             "location": {
-              "mode": "auto"
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
             },
             "tooltip": true,
             "config": {
@@ -193,11 +201,15 @@
                 },
                 "opacity": 1,
                 "size": {
-                  "fixed": 3,
-                  "min": 3,
-                  "max": 3
+                  "fixed": 1.5,
+                  "min": 1.5,
+                  "max": 1.5
                 },
-                "lineWidth": 3
+                "lineWidth": 3,
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                }
               }
             }
           },
@@ -288,55 +300,7 @@
           }
         ]
       },
-      "pluginVersion": "12.0.0",
-      "transformations": [
-        {
-          "id": "spatial",
-          "filter": {
-            "id": "byRefId",
-            "options": "A"
-          },
-          "options": {
-            "action": "modify",
-            "source": {
-              "mode": "coords",
-              "latitude": "latitude",
-              "longitude": "longitude"
-            },
-            "modify": {
-              "op": "lineBuilder",
-              "target": {
-                "mode": "coords",
-                "latitude": "end_latitude",
-                "longitude": "end_longitude"
-              }
-            }
-          }
-        },
-        {
-          "id": "spatial",
-          "filter": {
-            "id": "byRefId",
-            "options": "B"
-          },
-          "options": {
-            "action": "modify",
-            "source": {
-              "mode": "coords",
-              "latitude": "latitude",
-              "longitude": "longitude"
-            },
-            "modify": {
-              "op": "lineBuilder",
-              "target": {
-                "mode": "coords",
-                "latitude": "end_latitude",
-                "longitude": "end_longitude"
-              }
-            }
-          }
-        }
-      ]
+      "pluginVersion": "12.0.0"
     },
     {
       "id": 7,
