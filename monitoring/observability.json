@@ -91,6 +91,12 @@
       "adopt_sha256": [
         "28db22084e2caf95e613608f0450bca89ce207496e3f844e92b87377b1fc0c2d"
       ]
+    },
+    {
+      "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/location-context.json",
+      "destination": "Location/location-context.json",
+      "location": "central"
     }
   ],
   "retire": [

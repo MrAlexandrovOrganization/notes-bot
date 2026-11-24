@@ -1,0 +1,375 @@
+{
+  "uid": "location-context",
+  "id": null,
+  "title": "Location · контекст",
+  "description": "Наблюдения Android/iOS context v1. Только чтение. Generated from monitoring/templates and monitoring/sql/location-context.",
+  "tags": [
+    "location",
+    "context"
+  ],
+  "editable": true,
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "Europe/Moscow",
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "grafana-postgresql-datasource",
+          "value": "eftexe5xy5hxca"
+        },
+        "hide": 2,
+        "includeAll": false,
+        "label": "PostgreSQL",
+        "multi": false,
+        "name": "postgres",
+        "options": [],
+        "query": "grafana-postgresql-datasource",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "name": "device",
+        "label": "Устройство / слот авторизации",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "${postgres}"
+        },
+        "queryFile": "devices.sql",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": [],
+        "sort": 1
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "Location · блэклист",
+      "url": "/d/location-blacklist",
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Как читать контекст",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "description": "",
+      "options": {
+        "mode": "markdown",
+        "content": "Контекст — дополнительные наблюдения. **Фильтры скрытия его не используют.** `unknown` и отсутствие разрешения не означают ноль шагов. Число шагов относится к указанному интервалу: повторные снимки и пересекающиеся интервалы нельзя складывать. Возраст считается относительно времени координаты; отрицательный возраст требует проверки. `normal` — обычная частота запросов, а не доказанное движение. Идентификаторы `mobile:…:primary` обозначают текущие слоты авторизации; installation_id отдельно показывает установку приложения."
+      }
+    },
+    {
+      "id": 2,
+      "title": "Наличие контекста",
+      "type": "piechart",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "status.sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Причина пассивного режима · Android",
+      "type": "piechart",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "reasons.sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Покрытие контекстом",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSqlFile": "coverage.sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Свежесть наблюдений относительно координаты",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Это возраст последнего известного наблюдения, а не задержка отправки на сервер. Отсутствие значения означает неизвестно.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSqlFile": "ages.sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Измерения и контекст · видимые и скрытые",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 17
+      },
+      "description": "Последние 3000 точек в выбранном диапазоне, включая точки без контекста. Новые признаки не меняют hidden. Шаги — интервал наблюдения, не сумма за период.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "points.sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "filterable": true,
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_from"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_to"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "movement_at"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_age_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "movement_age_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requested_interval_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}

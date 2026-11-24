@@ -1,0 +1,376 @@
+{
+  "uid": "location-context",
+  "id": null,
+  "title": "Location · контекст",
+  "description": "Наблюдения Android/iOS context v1. Только чтение. Generated from monitoring/templates and monitoring/sql/location-context.",
+  "tags": [
+    "location",
+    "context"
+  ],
+  "editable": true,
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "Europe/Moscow",
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "grafana-postgresql-datasource",
+          "value": "eftexe5xy5hxca"
+        },
+        "hide": 2,
+        "includeAll": false,
+        "label": "PostgreSQL",
+        "multi": false,
+        "name": "postgres",
+        "options": [],
+        "query": "grafana-postgresql-datasource",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "name": "device",
+        "label": "Устройство / слот авторизации",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "${postgres}"
+        },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": [],
+        "sort": 1,
+        "query": "-- Include both configured credential slots before the first enriched measurement arrives.\nSELECT DISTINCT device AS __text, device AS __value FROM (\n    SELECT COALESCE(device_id, 'legacy:' || source::text) AS device\n    FROM public.location_context WHERE source IN ('android','ios')\n    UNION ALL SELECT 'mobile:android:primary'\n    UNION ALL SELECT 'mobile:ios:primary'\n) devices ORDER BY 1;",
+        "definition": "-- Include both configured credential slots before the first enriched measurement arrives.\nSELECT DISTINCT device AS __text, device AS __value FROM (\n    SELECT COALESCE(device_id, 'legacy:' || source::text) AS device\n    FROM public.location_context WHERE source IN ('android','ios')\n    UNION ALL SELECT 'mobile:android:primary'\n    UNION ALL SELECT 'mobile:ios:primary'\n) devices ORDER BY 1;"
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "Location · блэклист",
+      "url": "/d/location-blacklist",
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Как читать контекст",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "description": "",
+      "options": {
+        "mode": "markdown",
+        "content": "Контекст — дополнительные наблюдения. **Фильтры скрытия его не используют.** `unknown` и отсутствие разрешения не означают ноль шагов. Число шагов относится к указанному интервалу: повторные снимки и пересекающиеся интервалы нельзя складывать. Возраст считается относительно времени координаты; отрицательный возраст требует проверки. `normal` — обычная частота запросов, а не доказанное движение. Идентификаторы `mobile:…:primary` обозначают текущие слоты авторизации; installation_id отдельно показывает установку приложения."
+      }
+    },
+    {
+      "id": 2,
+      "title": "Наличие контекста",
+      "type": "piechart",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT context_status AS status, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Причина пассивного режима · Android",
+      "type": "piechart",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(passive_reason,'Нет данных') AS reason, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source='android'\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Покрытие контекстом",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(recorded_at, '5m'),\n       100.0 * count(*) FILTER (WHERE context_status='valid') / NULLIF(count(*),0) AS \"С контекстом, %\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Свежесть наблюдений относительно координаты",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Это возраст последнего известного наблюдения, а не задержка отправки на сервер. Отсутствие значения означает неизвестно.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT recorded_at AS \"time\", device_id AS device, steps_age_s AS \"Возраст интервала шагов, с\",\n       movement_age_s AS \"Возраст события движения, с\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND context_status='valid'\n  AND device_id IN (${device:sqlstring})\nORDER BY recorded_at;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Измерения и контекст · видимые и скрытые",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 17
+      },
+      "description": "Последние 3000 точек в выбранном диапазоне, включая точки без контекста. Новые признаки не меняют hidden. Шаги — интервал наблюдения, не сумма за период.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${postgres}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT recorded_at AS \"time\", id, source::text AS platform,\n       COALESCE(device_id,'legacy:' || source::text) AS device,\n       installation_id, app_version, context_status, steps_status,\n       steps_count, steps_from, steps_to, steps_age_s,\n       movement_status, movement_event, movement_at, movement_age_s,\n       collection_mode, requested_interval_ms / 1000.0 AS requested_interval_s,\n       delivery_channel, passive_reason, step_detector_status, step_counter_status,\n       hidden, quality_reason, latitude, longitude, accuracy\nFROM public.location_context\nWHERE $__timeFilter(recorded_at)\n  AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nORDER BY recorded_at DESC\nLIMIT 3000;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "filterable": true,
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_from"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_to"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "movement_at"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "steps_age_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "movement_age_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requested_interval_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}
