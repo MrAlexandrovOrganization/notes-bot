@@ -99,6 +99,7 @@ func decodeSession(data, visibility []byte) (session, error) {
 	if state.Progress == nil {
 		state.Progress = make(map[string]progress)
 	}
+	state.upgradeSchedule()
 	return state, nil
 }
 

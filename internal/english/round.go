@@ -12,19 +12,17 @@ import (
 )
 
 type directionProgress struct {
-	Due    int64  `json:"due"`
+	Next   int64  `json:"next_opportunity,omitempty"`
+	Due    int64  `json:"due,omitempty"` // Legacy, in rounds of All.
 	Level  int32  `json:"level"`
 	Lapses int32  `json:"lapses"`
 	Grade  string `json:"grade,omitempty"`
 }
 
-func (p directionProgress) summary() *pb.DirectionProgress {
-	return &pb.DirectionProgress{LastGrade: p.Grade, DueRound: p.Due}
-}
-
 type progress struct {
-	English *directionProgress `json:"en,omitempty"`
-	Russian *directionProgress `json:"ru,omitempty"`
+	English       *directionProgress `json:"en,omitempty"`
+	Russian       *directionProgress `json:"ru,omitempty"`
+	Opportunities int64              `json:"opportunities,omitempty"`
 	// Unattributed progress from versions with a shared schedule.
 	Due    int64 `json:"due"`
 	Level  int32 `json:"level"`
@@ -42,7 +40,22 @@ func (p progress) side(language string) directionProgress {
 	// Keep the old eligibility round without assigning a historical grade to either side.
 	return directionProgress{Due: p.Due}
 }
-func (p progress) due() int64 { return min(p.side("en").Due, p.side("ru").Due) }
+func (p progress) remaining(next int64) int64 { return max(0, next-p.Opportunities-1) }
+
+func (p progress) summary(language string) *pb.DirectionProgress {
+	side := p.side(language)
+	return &pb.DirectionProgress{LastGrade: side.Grade, SkippedRoundsRemaining: int32(p.remaining(side.Next))}
+}
+
+func earlierPrompt(en, ru int64) string {
+	if en < ru {
+		return "en"
+	}
+	if ru < en {
+		return "ru"
+	}
+	return "" // A tie uses the presentation token's parity.
+}
 
 // Android 1.6.1 and 1.6.2 use Java String.hashCode parity. For ASCII tokens
 // its low bit equals the XOR of each byte's low bit (31 is odd).
@@ -55,12 +68,14 @@ func englishToken(token string) bool {
 }
 
 type session struct {
-	Seed         string                     `json:"seed"`
-	Round        int64                      `json:"round"`
-	Queue        []string                   `json:"queue"`
-	Position     int                        `json:"position"`
-	Progress     map[string]progress        `json:"progress"`
-	Dictionaries map[string]dictionaryRound `json:"dictionaries,omitempty"`
+	Seed           string                     `json:"seed"`
+	Round          int64                      `json:"round"`
+	Queue          []string                   `json:"queue"`
+	Position       int                        `json:"position"`
+	Prompts        map[string]string          `json:"prompts,omitempty"`
+	Progress       map[string]progress        `json:"progress"`
+	Dictionaries   map[string]dictionaryRound `json:"dictionaries,omitempty"`
+	SharedSchedule bool                       `json:"shared_schedule,omitempty"`
 
 	cardVisibility cardVisibility
 	dictionaryID   string
@@ -71,7 +86,8 @@ type dictionaryRound struct {
 	Round    int64                   `json:"round"`
 	Queue    []string                `json:"queue"`
 	Position int                     `json:"position"`
-	Due      map[string]directionDue `json:"due"`
+	Prompts  map[string]string       `json:"prompts,omitempty"`
+	Due      map[string]directionDue `json:"due,omitempty"` // Legacy, in rounds of this selection.
 }
 
 type directionDue struct {
@@ -79,56 +95,23 @@ type directionDue struct {
 	Russian int64 `json:"ru,omitempty"`
 }
 
-// Grades and easy levels belong to the card. Each queue has its own round
-// numbers, so a new queue starts with the remaining waits from All.
-func (s *session) dictionaryView(id string, cards map[string]*pb.Card) (*session, dictionaryRound) {
-	stored, initialized := s.Dictionaries[id]
-	if !initialized {
-		stored.Due = make(map[string]directionDue)
-		for cardID := range cards {
-			p := s.Progress[cardID]
-			en, ru := p.side("en").Due, p.side("ru").Due
-			if en > s.Round || ru > s.Round {
-				stored.Due[cardID] = directionDue{max(0, en-s.Round), max(0, ru-s.Round)}
-			}
-		}
-	}
-	view := &session{
+var easyIntervals = [...]struct{ min, max int32 }{{2, 3}, {4, 5}, {7, 9}, {14, 16}}
+
+func (s *session) dictionaryView(id string) *session {
+	stored := s.Dictionaries[id]
+	return &session{
 		Seed: stored.Seed, Round: stored.Round, Queue: stored.Queue, Position: stored.Position,
-		Progress: make(map[string]progress, len(cards)), dictionaryID: id,
+		Prompts: stored.Prompts, Progress: s.Progress, dictionaryID: id,
 	}
-	for cardID := range cards {
-		p := s.Progress[cardID]
-		en, ru := p.side("en"), p.side("ru")
-		due := stored.Due[cardID]
-		en.Due, ru.Due = due.English, due.Russian
-		p.English, p.Russian = &en, &ru
-		view.Progress[cardID] = p
-	}
-	return view, stored
 }
 
-func (s *session) saveDictionaryView(view *session, stored dictionaryRound) {
-	stored.Seed, stored.Round, stored.Queue, stored.Position = view.Seed, view.Round, view.Queue, view.Position
+func (s *session) saveDictionaryView(view *session) {
 	if s.Dictionaries == nil {
 		s.Dictionaries = make(map[string]dictionaryRound)
 	}
-	s.Dictionaries[view.dictionaryID] = stored
-}
-
-func (s *session) saveDictionaryGrade(stored dictionaryRound, id, language string, graded directionProgress) {
-	p := s.Progress[id]
-	due := stored.Due[id]
-	queueDue := graded.Due
-	// Preserve the other queue's due rounds and presentation tokens.
-	graded.Due = p.side(language).Due
-	if language == "en" {
-		due.English, p.English = queueDue, &graded
-	} else {
-		due.Russian, p.Russian = queueDue, &graded
+	s.Dictionaries[view.dictionaryID] = dictionaryRound{
+		Seed: view.Seed, Round: view.Round, Queue: view.Queue, Position: view.Position, Prompts: view.Prompts,
 	}
-	stored.Due[id] = due
-	s.Progress[id] = p
 }
 
 func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) {
@@ -163,7 +146,7 @@ func (s *session) positionAt(cards map[string]*pb.Card, index int) *pb.ReviewPos
 	// Equal due rounds keep the original presentation token, including packs
 	// downloaded before the server upgrade.
 	english := englishToken(token)
-	if en.Due != ru.Due && english != (en.Due < ru.Due) {
+	if prompt := s.Prompts[card.Id]; prompt != "" && english != (prompt == "en") {
 		english = !english
 		// Preserve the legacy client's choice while keeping the token hexadecimal.
 		if englishToken(token[:63]) == english {
@@ -193,23 +176,32 @@ func (s *session) nextRound(cards map[string]*pb.Card) {
 	if s.Seed == "" {
 		s.Seed = rand.Text()
 	}
-	s.Round++
-	earliest := int64(0)
+	var emptyRounds int64 = -1
 	for id := range cards {
-		due := max(s.Round, s.Progress[id].due())
-		if earliest == 0 || due < earliest {
-			earliest = due
+		p := s.Progress[id]
+		wait := p.remaining(min(p.side("en").Next, p.side("ru").Next))
+		if emptyRounds == -1 || wait < emptyRounds {
+			emptyRounds = wait
 		}
 	}
 	// If all cards are resting, jump directly to the next nonempty round.
-	s.Round = earliest
+	opportunities := emptyRounds + 1
+	s.Round += opportunities
 	s.Queue = s.Queue[:0]
 	s.Position = 0
+	s.Prompts = make(map[string]string)
 	ranks := make(map[string]string, len(cards))
 	for id := range cards {
-		if s.Progress[id].due() <= s.Round {
+		p := s.Progress[id]
+		p.Opportunities += opportunities
+		s.Progress[id] = p
+		en, ru := p.side("en").Next, p.side("ru").Next
+		if min(en, ru) <= p.Opportunities {
 			s.Queue = append(s.Queue, id)
 			ranks[id] = englishHash(fmt.Sprintf("%s:%d:%s", s.Seed, s.Round, id))
+			if prompt := earlierPrompt(en, ru); prompt != "" {
+				s.Prompts[id] = prompt
+			}
 		}
 	}
 	slices.SortFunc(s.Queue, func(a, b string) int {
@@ -237,12 +229,11 @@ func (s *session) advance(id, language, action string) int32 {
 		p.Level = 0
 		skipped = s.chooseSkippedRounds(id, action, 0, 1)
 	case "easy":
-		intervals := [...]struct{ min, max int32 }{{2, 3}, {4, 5}, {7, 9}, {14, 16}}
-		p.Level = min(int32(len(intervals)), p.Level+1)
-		interval := intervals[p.Level-1]
+		p.Level = min(int32(len(easyIntervals)), p.Level+1)
+		interval := easyIntervals[p.Level-1]
 		skipped = s.chooseSkippedRounds(id, action, interval.min, interval.max)
 	}
-	p.Due = s.Round + 1 + int64(skipped)
+	p.Next = card.Opportunities + 1 + int64(skipped)
 	if language == "en" {
 		card.English = &p
 	} else {

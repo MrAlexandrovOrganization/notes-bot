@@ -111,7 +111,7 @@ func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 			seenSide, otherSide = otherSide, seenSide
 		}
 		require.Equal(t, "easy", seenSide.LastGrade)
-		require.Equal(t, updated.Round+1+int64(rated.SkippedRounds), seenSide.DueRound)
+		require.Equal(t, rated.SkippedRounds, seenSide.SkippedRoundsRemaining)
 		require.Empty(t, otherSide.LastGrade)
 	}
 	replayed, err := second.AdvanceReview(ctx, easy)
@@ -131,7 +131,7 @@ func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 	require.True(t, proto.Equal(current, get(second)))
 }
 
-func TestEnglishPostgresDictionaryQueuesShareGradesAndKeepTheirPositions(t *testing.T) {
+func TestEnglishPostgresDictionaryQueuesShareScheduleAndKeepTheirPositions(t *testing.T) {
 	ctx := t.Context()
 	store := testEnglishStore(t)
 	require.NoError(t, store.ImportLegacy(ctx, filepath.Join(t.TempDir(), "missing.json")))
@@ -181,7 +181,7 @@ func TestEnglishPostgresDictionaryQueuesShareGradesAndKeepTheirPositions(t *test
 			graded = card.EnToRu
 		}
 		require.Equal(t, "easy", graded.LastGrade)
-		require.Zero(t, graded.DueRound)
+		require.Equal(t, scored.SkippedRounds, graded.SkippedRoundsRemaining)
 	}
 	movieCards, err := bot.ListCards(ctx, &pb.ListCardsRequest{DictionaryId: move.ID, IncludeProgress: true})
 	require.NoError(t, err)
@@ -193,7 +193,7 @@ func TestEnglishPostgresDictionaryQueuesShareGradesAndKeepTheirPositions(t *test
 		if movie.Current.PromptLanguage == "en" {
 			graded = card.EnToRu
 		}
-		require.Equal(t, movie.Current.Round+1+int64(scored.SkippedRounds), graded.DueRound)
+		require.Equal(t, scored.SkippedRounds, graded.SkippedRoundsRemaining)
 	}
 }
 

@@ -75,15 +75,7 @@ func (s *Server) ListCards(ctx context.Context, req *pb.ListCardsRequest) (*pb.L
 		if kind == "" || card.Kind == kind {
 			if req.IncludeProgress {
 				progress := state.Progress[card.Id]
-				en, ru := progress.side("en"), progress.side("ru")
-				if selection.key != allDictionaries {
-					due := state.Dictionaries[selection.key].Due[card.Id]
-					if _, started := state.Dictionaries[selection.key]; !started {
-						due = directionDue{max(0, en.Due-state.Round), max(0, ru.Due-state.Round)}
-					}
-					en.Due, ru.Due = due.English, due.Russian
-				}
-				card.EnToRu, card.RuToEn = en.summary(), ru.summary()
+				card.EnToRu, card.RuToEn = progress.summary("en"), progress.summary("ru")
 			}
 			resp.Cards = append(resp.Cards, card)
 		}
@@ -184,10 +176,9 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 			}
 		}
 		view := &state
-		var stored dictionaryRound
 		scoped := selection.key != allDictionaries
 		if scoped {
-			view, stored = state.dictionaryView(selection.key, byID)
+			view = state.dictionaryView(selection.key)
 		}
 		current, changed := view.current(byID)
 		if action != "" {
@@ -210,9 +201,6 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 					}
 				}
 				result.skipped = view.advance(id, current.PromptLanguage, action)
-				if scoped && action != "skip" {
-					state.saveDictionaryGrade(stored, id, current.PromptLanguage, view.Progress[id].side(current.PromptLanguage))
-				}
 				if _, err := tx.Exec(ctx, query("record"), id, token, action, time.Now(), result.skipped, current.Round); err != nil {
 					return err
 				}
@@ -231,7 +219,7 @@ func (s *Server) review(ctx context.Context, dictionary, token, action string, p
 		}
 		if changed {
 			if scoped {
-				state.saveDictionaryView(view, stored)
+				state.saveDictionaryView(view)
 			}
 			return saveSession(ctx, tx, state, imported)
 		}

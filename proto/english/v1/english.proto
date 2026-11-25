@@ -45,7 +45,8 @@ message ListDictionariesResponse {
 }
 message DirectionProgress {
   string last_grade = 1;
-  int64 due_round = 2;
+  int64 due_round = 2; // Legacy, set only by servers with per-selection intervals.
+  int32 skipped_rounds_remaining = 3; // Future rounds including this card that it will skip in this direction.
 }
 message SaveCardRequest {
   string operation_id = 1;
