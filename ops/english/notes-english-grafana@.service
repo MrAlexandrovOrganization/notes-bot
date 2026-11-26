@@ -1,0 +1,13 @@
+[Unit]
+Description=Forward Notes English PostgreSQL through the WSL tailnet
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --connections-max=12 --exit-idle-time=5min 100.64.0.5:15435
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

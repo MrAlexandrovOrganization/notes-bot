@@ -154,7 +154,20 @@ Android. Текущий круг сохраняет исходные позиц�
 примените `ops/english/grafana-reader.sql` в БД `english`, задайте этой роли
 отдельный пароль и подставьте его при установке файла datasource на WSL.
 Роль читает только два представления. Порт 15435 слушает адрес Russia в
-tailnet, HAProxy принимает подключения от узла Grafana `100.64.0.10`.
+tailnet. HAProxy принимает подключения от узла Grafana `100.64.0.10`
+и от хоста WSL `100.64.0.3`.
+
+Когда контейнер Grafana теряет доступ к tailnet, источник данных может
+использовать Unix-сокет в уже смонтированной папке provisioning. На WSL
+установите `ops/english/notes-english-grafana@.socket` и одноимённый `.service`
+в `/etc/systemd/system`, затем выполните `sudo systemctl daemon-reload` и
+`sudo systemctl enable --now notes-english-grafana@maxim.socket`, где `maxim` —
+владелец каталога `.monitoring`. Укажите в приватном YAML источника данных
+`url: /etc/grafana/provisioning/datasources/notes-english` и перезагрузите
+provisioning источников данных. Сокет доступен группе Grafana, исходящее
+соединение идёт через Tailscale на WSL, пароль PostgreSQL остаётся обязательным.
+Чтобы вернуть прямое подключение, восстановите URL из шаблона, перезагрузите
+provisioning и отключите экземпляр `.socket`.
 
 ### API
 
