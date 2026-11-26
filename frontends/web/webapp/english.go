@@ -17,6 +17,7 @@ import (
 
 func (a *App) registerEnglishRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /english", a.handleEnglish)
+	mux.HandleFunc("GET /english/round", a.handleEnglishRound)
 	mux.HandleFunc("POST /english/grade", a.handleEnglishGrade)
 	mux.HandleFunc("POST /english/words", a.handleEnglishWord)
 	mux.HandleFunc("POST /english/visibility", a.handleEnglishVisibility)
@@ -62,20 +63,37 @@ func (a *App) handleEnglish(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		catalogue, err := a.English.ListDictionaries(r.Context(), &pb.ListDictionariesRequest{})
-		if err != nil {
-			a.serverError(w, r, err)
-			return
-		}
-		d.Dictionaries = catalogue.GetDictionaries()
-		response, err := a.English.GetReview(r.Context(), &pb.GetReviewRequest{DictionaryId: d.Selection})
+		response, err := a.loadEnglishRound(r, d.Selection)
 		if err != nil {
 			a.englishReadError(w, r, d.Selection, err)
 			return
 		}
 		d.Current = response.GetCurrent()
+		d.Dictionaries = response.GetDictionaries()
+		d.Round = response.GetRemaining()
 	}
 	a.render(w, r, views.English(d))
+}
+
+func (a *App) loadEnglishRound(r *http.Request, selection string) (*pb.GetReviewResponse, error) {
+	return a.English.GetReview(r.Context(), &pb.GetReviewRequest{
+		DictionaryId: selection, IncludeRemaining: true,
+	})
+}
+
+func (a *App) handleEnglishRound(w http.ResponseWriter, r *http.Request) {
+	if a.English == nil {
+		mobileError(w, http.StatusServiceUnavailable)
+		return
+	}
+	round, err := a.loadEnglishRound(r, englishSelection(r.URL.Query()))
+	if err != nil {
+		mobileFailure(w, err)
+		return
+	}
+	mobileJSON(w, http.StatusOK, struct {
+		Positions []*pb.ReviewPosition `json:"positions"`
+	}{Positions: round.GetRemaining()})
 }
 
 func (a *App) englishReadError(w http.ResponseWriter, r *http.Request, selection string, err error) {
@@ -123,6 +141,14 @@ func (a *App) handleEnglishGrade(w http.ResponseWriter, r *http.Request) {
 	_, err := a.English.AdvanceReview(r.Context(), &pb.AdvanceReviewRequest{
 		Token: token, Action: action, DictionaryId: englishSelection(r.PostForm),
 	})
+	if r.Header.Get("Accept") == "application/json" {
+		if err != nil {
+			mobileFailure(w, err)
+		} else {
+			w.WriteHeader(http.StatusNoContent)
+		}
+		return
+	}
 	englishRedirect(w, r, false, err)
 }
 

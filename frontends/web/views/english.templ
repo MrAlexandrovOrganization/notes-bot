@@ -17,6 +17,7 @@ type EnglishData struct {
 	Message      string
 	Dictionaries []*pb.DictionaryInfo
 	Current      *pb.ReviewPosition
+	Round        []*pb.ReviewPosition
 	Words        []*pb.Card
 }
 
@@ -87,10 +88,8 @@ templ English(d EnglishData) {
 		@ErrorBanner(d.Message)
 		if d.Dictionary {
 			@englishDictionary(d)
-		} else if d.Current.GetCard() != nil {
-			@englishReview(d)
 		} else {
-			<p class="notes-row notes-card notes-group notes-subtle">Пока нет карточек</p>
+			@englishReview(d)
 		}
 	}
 }
@@ -102,39 +101,39 @@ templ englishReview(d EnglishData) {
 	if position.GetPromptLanguage() == "ru" {
 		{{ prompt, answer, instruction = card.GetSource(), card.GetEnglish(), "Вспомни по-английски" }}
 	}
-	<section class="notes-card notes-review">
-		<p class="notes-subtle">{ "Круг " + strconv.FormatInt(position.GetRound(), 10) + " · Карточка " + strconv.Itoa(int(position.GetPosition())) + " из " + strconv.Itoa(int(position.GetRoundSize())) }</p>
-		<progress aria-label="Прогресс круга" value={ strconv.Itoa(int(position.GetPosition())) } max={ strconv.Itoa(int(max(1, position.GetRoundSize()))) }></progress>
-		<p class="notes-subtle mt-4">{ instruction }</p>
-		<h2>{ prompt }</h2>
-		<details class="notes-group">
-			<summary class="notes-primary">Показать ответ</summary>
-			<div class="notes-answer">
-				<h2 class="notes-accent">{ answer }</h2>
-				if card.GetExplanation() != "" {
-					<p>{ card.GetExplanation() }</p>
-				}
-				if card.GetExample() != "" {
-					<p class="notes-subtle">{ card.GetExample() }</p>
-				}
-				if card.GetContext() != "" {
-					<p class="notes-subtle">{ card.GetContext() }</p>
-				}
-				<form method="post" action="/english/grade" class="notes-grades">
-					@englishFields(d)
-					<input type="hidden" name="token" value={ position.GetToken() }/>
-					<button class="notes-secondary" name="action" value="miss" type="submit">Не вспомнил</button>
-					<button class="notes-secondary" name="action" value="hard" type="submit">С трудом</button>
-					<button class="notes-secondary" name="action" value="easy" type="submit">Легко</button>
-				</form>
-			</div>
-		</details>
-		<form method="post" action="/english/grade">
-			@englishFields(d)
-			<input type="hidden" name="token" value={ position.GetToken() }/>
-			<button class="notes-secondary notes-skip" name="action" value="skip" type="submit">Пропустить</button>
-		</form>
+	<section class="notes-card notes-review" data-english-review data-scope={ d.Selection }>
+		<div data-review-card hidden?={ card == nil }>
+			<p class="notes-subtle" data-review-position>{ "Круг " + strconv.FormatInt(position.GetRound(), 10) + " · Карточка " + strconv.Itoa(int(position.GetPosition())) + " из " + strconv.Itoa(int(position.GetRoundSize())) }</p>
+			<progress aria-label="Прогресс круга" value={ strconv.Itoa(int(position.GetPosition())) } max={ strconv.Itoa(int(max(1, position.GetRoundSize()))) }></progress>
+			<p class="notes-subtle mt-4" data-review-instruction>{ instruction }</p>
+			<h2 data-review-prompt>{ prompt }</h2>
+			<details class="notes-group">
+				<summary class="notes-primary notes-review-action">Показать ответ</summary>
+				<div class="notes-answer">
+					<h2 class="notes-accent" data-review-answer>{ answer }</h2>
+					<p data-review-detail="explanation" hidden?={ card.GetExplanation() == "" }>{ card.GetExplanation() }</p>
+					<p data-review-detail="example" class="notes-subtle" hidden?={ card.GetExample() == "" }>{ card.GetExample() }</p>
+					<p data-review-detail="context" class="notes-subtle" hidden?={ card.GetContext() == "" }>{ card.GetContext() }</p>
+					<form method="post" action="/english/grade" class="notes-grades">
+						@englishFields(d)
+						<input type="hidden" name="token" value={ position.GetToken() }/>
+						<button class="notes-secondary" name="action" value="miss" type="submit">Не вспомнил</button>
+						<button class="notes-secondary" name="action" value="hard" type="submit">С трудом</button>
+						<button class="notes-secondary" name="action" value="easy" type="submit">Легко</button>
+					</form>
+				</div>
+			</details>
+			<form method="post" action="/english/grade">
+				@englishFields(d)
+				<input type="hidden" name="token" value={ position.GetToken() }/>
+				<button class="notes-secondary notes-review-action notes-skip" name="action" value="skip" type="submit">Пропустить</button>
+			</form>
+		</div>
+		<p class="notes-subtle" data-review-empty hidden?={ card != nil }>Пока нет карточек</p>
+		<p class="notes-subtle" data-review-status role="status" hidden></p>
+		@templ.JSONScript("english-round", d.Round)
 	</section>
+	<script src="/static/english-review.js" defer></script>
 }
 
 templ englishDictionary(d EnglishData) {
