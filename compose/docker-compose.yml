@@ -374,6 +374,8 @@ services:
     environment:
       - CORE_GRPC_HOST=core
       - CORE_GRPC_PORT=50051
+      - ENGLISH_GRPC_HOST=${ENGLISH_GRPC_HOST:-english}
+      - ENGLISH_GRPC_PORT=${ENGLISH_GRPC_PORT:-50057}
       - NOTIFICATIONS_GRPC_HOST=notifications
       - NOTIFICATIONS_GRPC_PORT=50052
       - SEARCH_GRPC_HOST=search

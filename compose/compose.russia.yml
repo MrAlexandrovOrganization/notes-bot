@@ -58,6 +58,7 @@ services:
     extra_hosts:
       - "kafka=${NOTES_KAFKA_HOST:?Set the Kafka tailnet address}"
     environment:
+      NOTES_MINI_APP_URL: ${NOTES_MINI_APP_URL-https://notes.mralexandrov.duckdns.org/mini}
       REDIS_HOST: ${NOTES_REDIS_HOST:?Set the Redis tailnet address}
       REDIS_PORT: ${NOTES_REDIS_PORT:?Set the private Redis forwarder port}
       LOCATION_HOST: ${NOTES_LOCATION_HOST:?Set the location tailnet address}

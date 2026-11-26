@@ -3,60 +3,155 @@ package views
 import "strconv"
 
 type TaskData struct {
-	Index   int
-	Text    string
-	Status  string // "pending", "completed", "rejected"
+	Index  int
+	Text   string
+	Status string
 }
 
 type DayData struct {
 	Date      string
+	DateTitle string
+	Today     bool
 	Content   string
 	Rating    int
 	HasRating bool
 	Tasks     []TaskData
 }
 
-templ Day(d DayData) {
-	@Page("Заметка "+d.Date, "day") {
-		<div class="space-y-6">
-			<div class="flex items-center justify-between">
-				<h1 class="text-xl font-semibold">{ d.Date }</h1>
-				<a href="/calendar" class="text-sm text-slate-500 hover:underline">Выбрать дату</a>
-			</div>
+func dayTitle(d DayData) string {
+	if d.Today {
+		return "Сегодня"
+	}
+	return "Дневная заметка"
+}
 
-			@ratingSection(d)
-			@tasksSection(d)
-			@noteSection(d)
+templ Day(d DayData) {
+	@Page(dayTitle(d), "day") {
+		<h1 class="notes-title">{ dayTitle(d) }</h1>
+		<div class="notes-date">
+			<a href="/calendar" aria-label={ d.DateTitle + ", открыть календарь" }>{ d.DateTitle }</a>
+			<details>
+				<summary class="notes-pill">
+					@Icon("star")
+					if d.HasRating {
+						{ strconv.Itoa(d.Rating) + "/10" }
+					} else {
+						Оценить
+					}
+				</summary>
+				<form method="post" action="/day/rating" hx-post="/day/rating" hx-select="main" hx-target="main" hx-swap="outerHTML" class="notes-form">
+					<input type="hidden" name="date" value={ d.Date }/>
+					<input type="number" name="rating" min="0" max="10" value={ ratingValue(d) } required aria-label="Оценка от 0 до 10"/>
+					<button class="notes-primary" type="submit">Сохранить</button>
+				</form>
+			</details>
 		</div>
+		<section class="notes-group">
+			<h2 class="notes-label">Задачи</h2>
+			<div class="notes-card">
+				for _, task := range d.Tasks {
+					@taskRow(d.Date, task)
+				}
+				if len(d.Tasks) == 0 {
+					<p class="notes-row notes-subtle">Пока нет задач</p>
+				}
+				@dayEditor(d.Date, "/day/tasks", "Добавить задачу", "plus", false)
+			</div>
+		</section>
+		<section class="notes-group">
+			<h2 class="notes-label">Дневник</h2>
+			<div class="notes-card">
+				if d.Content == "" {
+					<p class="notes-copy notes-subtle">Пока нет записей</p>
+				} else {
+					<div class="notes-copy">{ d.Content }</div>
+				}
+				@dayEditor(d.Date, "/day/append", "Добавить запись", "edit", true)
+			</div>
+		</section>
+		<nav class="notes-card notes-group" aria-label="Хранилище">
+			<a class="notes-row" href="/browse">@Icon("folder") Все заметки</a>
+			<a class="notes-row" href="/calendar">@Icon("calendar") Дневник по датам</a>
+		</nav>
 	}
 }
 
-templ ratingSection(d DayData) {
-	<section class="rounded-lg border border-slate-200 bg-white p-4">
-		<h2 class="mb-2 text-sm font-medium text-slate-500">Оценка дня</h2>
-		<form
-			hx-post="/day/rating"
-			hx-select="main" hx-target="main"
-			hx-swap="outerHTML"
-			class="flex items-center gap-2"
-		>
-			<input type="hidden" name="date" value={ d.Date }/>
-			<input
-				type="number"
-				name="rating"
-				min="0"
-				max="10"
-				value={ ratingValue(d) }
-				class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
-			/>
-			<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
-				Сохранить
+templ taskRow(date string, task TaskData) {
+	<div class={ "notes-task", "notes-task-" + task.Status }>
+		<form method="post" action={ templ.URL(taskURL(task.Index, taskToggleAction(task))) } hx-post={ taskURL(task.Index, taskToggleAction(task)) } hx-select="main" hx-target="main" hx-swap="outerHTML">
+			<input type="hidden" name="date" value={ date }/>
+			<input type="hidden" name="task_text" value={ task.Text }/>
+			<button type="submit" class="notes-task-toggle" aria-label={ taskButtonLabel(task) }>
+				<span class="notes-task-mark" aria-hidden="true">
+					if task.Status == "completed" {
+						✓
+					} else if task.Status == "rejected" {
+						×
+					}
+				</span>
+				<span class="notes-task-text">{ task.Text }</span>
 			</button>
-			if !d.HasRating {
-				<span class="text-sm text-slate-400">не установлена</span>
-			}
 		</form>
-	</section>
+		<details>
+			<summary aria-label={ "Действия с задачей: " + task.Text }>•••</summary>
+			<div class="notes-task-menu">
+				if task.Status != "pending" {
+					@taskAction(date, task, "open", "Открыть")
+				}
+				if task.Status != "completed" {
+					@taskAction(date, task, "accept", "Выполнить")
+				}
+				if task.Status != "rejected" {
+					@taskAction(date, task, "reject", "Отменить")
+				}
+			</div>
+		</details>
+	</div>
+}
+
+templ taskAction(date string, task TaskData, action, label string) {
+	<form method="post" action={ templ.URL(taskURL(task.Index, action)) } hx-post={ taskURL(task.Index, action) } hx-select="main" hx-target="main" hx-swap="outerHTML">
+		<input type="hidden" name="date" value={ date }/>
+		<input type="hidden" name="task_text" value={ task.Text }/>
+		<button class="notes-secondary" type="submit">{ label }</button>
+	</form>
+}
+
+templ dayEditor(date, action, label, icon string, multiline bool) {
+	<details>
+		<summary class="notes-row notes-action">@Icon(icon) <span>{ label }</span></summary>
+		<form method="post" action={ templ.URL(action) } hx-post={ action } hx-select="main" hx-target="main" hx-swap="outerHTML" class="notes-form">
+			<input type="hidden" name="date" value={ date }/>
+			if multiline {
+				<textarea name="text" rows="4" required aria-label="Текст записи"></textarea>
+			} else {
+				<input name="text" type="text" required aria-label="Текст задачи"/>
+			}
+			<button class="notes-primary" type="submit">Добавить</button>
+		</form>
+	</details>
+}
+
+func taskURL(index int, action string) string {
+	return "/day/tasks/" + strconv.Itoa(index) + "/" + action
+}
+
+func taskToggleAction(task TaskData) string {
+	if task.Status == "pending" {
+		return "accept"
+	}
+	return "open"
+}
+
+func taskButtonLabel(task TaskData) string {
+	switch task.Status {
+	case "completed":
+		return "Открыть выполненную задачу: " + task.Text
+	case "rejected":
+		return "Открыть отменённую задачу: " + task.Text
+	default:
+		return "Выполнить задачу: " + task.Text
+	}
 }
 
 func ratingValue(d DayData) string {
@@ -64,97 +159,4 @@ func ratingValue(d DayData) string {
 		return ""
 	}
 	return strconv.Itoa(d.Rating)
-}
-
-templ tasksSection(d DayData) {
-	<section class="rounded-lg border border-slate-200 bg-white p-4">
-		<h2 class="mb-2 text-sm font-medium text-slate-500">Задачи</h2>
-		<ul class="mb-3 space-y-1">
-			for _, t := range d.Tasks {
-				<li class="flex items-center gap-2">
-					<form
-						hx-post={ toggleTaskURL(t.Index) }
-						hx-select="main" hx-target="main"
-						hx-swap="outerHTML"
-					>
-						<input type="hidden" name="date" value={ d.Date }/>
-						<button type="submit" class="flex items-center gap-2 text-left text-sm">
-							if t.Status == "completed" {
-								<span class="text-emerald-600">☑</span>
-							} else if t.Status == "rejected" {
-								<span class="text-red-600">✕</span>
-							} else {
-								<span class="text-slate-400">?</span>
-							}
-							if t.Status == "completed" {
-								<span class="text-slate-400 line-through">{ t.Text }</span>
-							} else if t.Status == "rejected" {
-								<span class="text-red-400 line-through">{ t.Text }</span>
-							} else {
-								<span>{ t.Text }</span>
-							}
-						</button>
-					</form>
-					if t.Status == "pending" {
-						<form hx-post={ acceptTaskURL(t.Index) } hx-select="main" hx-target="main" hx-swap="outerHTML">
-							<input type="hidden" name="date" value={ d.Date }/>
-							<button type="submit" class="text-xs text-emerald-600 hover:underline">Принять</button>
-						</form>
-						<form hx-post={ rejectTaskURL(t.Index) } hx-select="main" hx-target="main" hx-swap="outerHTML">
-							<input type="hidden" name="date" value={ d.Date }/>
-							<button type="submit" class="text-xs text-red-600 hover:underline">Отклонить</button>
-						</form>
-					}
-				</li>
-			}
-			if len(d.Tasks) == 0 {
-				<li class="text-sm text-slate-400">Пока нет задач</li>
-			}
-		</ul>
-		<form hx-post="/day/tasks" hx-select="main" hx-target="main" hx-swap="outerHTML" class="flex gap-2">
-			<input type="hidden" name="date" value={ d.Date }/>
-			<input
-				type="text"
-				name="text"
-				placeholder="Новая задача"
-				required
-				class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
-			/>
-			<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
-				Добавить
-			</button>
-		</form>
-	</section>
-}
-
-func toggleTaskURL(index int) string {
-	return "/day/tasks/" + strconv.Itoa(index) + "/toggle"
-}
-
-func acceptTaskURL(index int) string {
-	return "/day/tasks/" + strconv.Itoa(index) + "/accept"
-}
-
-func rejectTaskURL(index int) string {
-	return "/day/tasks/" + strconv.Itoa(index) + "/reject"
-}
-
-templ noteSection(d DayData) {
-	<section class="rounded-lg border border-slate-200 bg-white p-4">
-		<h2 class="mb-2 text-sm font-medium text-slate-500">Заметка</h2>
-		<pre class="mb-3 whitespace-pre-wrap break-words text-sm text-slate-800">{ d.Content }</pre>
-		<form hx-post="/day/append" hx-select="main" hx-target="main" hx-swap="outerHTML" class="flex gap-2">
-			<input type="hidden" name="date" value={ d.Date }/>
-			<input
-				type="text"
-				name="text"
-				placeholder="Добавить запись"
-				required
-				class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
-			/>
-			<button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
-				Добавить
-			</button>
-		</form>
-	</section>
 }

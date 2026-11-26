@@ -31,6 +31,7 @@ type App struct {
 	revokedSessions map[string]time.Time
 
 	// loginAttempts bounds password guessing: remote IP -> attempt timestamps.
-	loginMu       sync.Mutex
-	loginFailures map[string][]time.Time
+	loginMu        sync.Mutex
+	loginFailures  map[string][]time.Time
+	telegramLogins map[string]time.Time
 }

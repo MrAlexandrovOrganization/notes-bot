@@ -3,6 +3,7 @@ package resources
 import "notes-bot/frontends/telegram/tgfmt"
 
 const (
+	OpenNotesMiniApp     = "Открыть Notes"
 	MainMenuWelcome      = "👋 Добро пожаловать!"
 	MainMenuDateSelected = "✅ Дата выбрана."
 )

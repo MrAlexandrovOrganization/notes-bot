@@ -34,6 +34,7 @@ import (
 	"notes-bot/frontends/telegram/bot"
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/config"
+	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tghandlers"
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
@@ -244,6 +245,22 @@ func main() {
 		logger.Fatal("failed to authorize telegram bot", zap.Error(err))
 	}
 	logger.Info("bot authorized", zap.String("username", me.Username))
+	if cfg.MiniAppURL != "" {
+		menuCtx, cancelMenu := context.WithTimeout(ctx, 10*time.Second)
+		err := tgBot.SetChatMenuButton(menuCtx, &telego.SetChatMenuButtonParams{
+			ChatID: cfg.RootID,
+			MenuButton: &telego.MenuButtonWebApp{
+				Type: telego.ButtonTypeWebApp, Text: resources.OpenNotesMiniApp,
+				WebApp: telego.WebAppInfo{URL: cfg.MiniAppURL},
+			},
+		})
+		cancelMenu()
+		if err != nil {
+			logger.Warn("could not configure Notes Mini App menu", zap.Error(err))
+		} else {
+			logger.Info("Notes Mini App menu configured")
+		}
+	}
 
 	// Start Kafka consumer in background.
 	// Offsets are committed to Kafka via consumer group — no external store needed.

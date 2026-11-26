@@ -1,0 +1,224 @@
+package views
+
+import (
+	"net/url"
+	"strconv"
+	"strings"
+
+	pb "notes-bot/proto/english/v1"
+)
+
+type EnglishData struct {
+	Dictionary   bool
+	Hidden       bool
+	Query        string
+	Selection    string
+	Operation    string
+	Message      string
+	Dictionaries []*pb.DictionaryInfo
+	Current      *pb.ReviewPosition
+	Words        []*pb.Card
+}
+
+func (d EnglishData) scopes() []string {
+	if d.Selection == "" || d.Selection == "all" {
+		return nil
+	}
+	return strings.Split(d.Selection, "+")
+}
+
+func (d EnglishData) scopeTitle() string {
+	if d.Hidden {
+		return "Скрытые карточки"
+	}
+	var titles []string
+	for _, dictionary := range d.Dictionaries {
+		if containsScope(d.Selection, dictionary.GetId()) {
+			titles = append(titles, dictionary.GetTitle())
+		}
+	}
+	if len(titles) == 0 {
+		return "Все слова"
+	}
+	return strings.Join(titles, " + ")
+}
+
+func containsScope(selection, id string) bool {
+	return selection != "" && id != "all" && strings.Contains("+"+selection+"+", "+"+id+"+")
+}
+
+func englishURL(scopes []string, dictionary, hidden bool) templ.SafeURL {
+	values := url.Values{"scope": scopes}
+	if dictionary {
+		values.Set("view", "dictionary")
+	}
+	if hidden {
+		values.Set("hidden", "1")
+	}
+	return templ.URL("/english?" + values.Encode())
+}
+
+templ English(d EnglishData) {
+	@Page("Английский", "english") {
+		<h1 class="notes-title">Английский</h1>
+		<nav class="notes-segment" aria-label="Режим английского">
+			<a href={ englishURL(d.scopes(), false, false) } if !d.Dictionary { aria-current="page" }>Повторение</a>
+			<a href={ englishURL(d.scopes(), true, false) } if d.Dictionary { aria-current="page" }>Словарь</a>
+		</nav>
+		<details class="notes-card mt-3">
+			<summary class="notes-row notes-accent">{ d.scopeTitle() }</summary>
+			<form action="/english" method="get" class="notes-form">
+				if d.Dictionary {
+					<input type="hidden" name="view" value="dictionary"/>
+				}
+				<a class="notes-accent" href={ englishURL(nil, d.Dictionary, false) }>Все слова</a>
+				for _, dictionary := range d.Dictionaries {
+					if dictionary.GetId() != "all" {
+						<label>
+							<input type="checkbox" name="scope" value={ dictionary.GetId() } checked?={ containsScope(d.Selection, dictionary.GetId()) }/>
+							{ dictionary.GetTitle() }
+						</label>
+					}
+				}
+				<button type="submit" class="notes-primary">Выбрать</button>
+				<a class="notes-accent" href={ englishURL(nil, true, true) }>Скрытые карточки</a>
+			</form>
+		</details>
+		@ErrorBanner(d.Message)
+		if d.Dictionary {
+			@englishDictionary(d)
+		} else if d.Current.GetCard() != nil {
+			@englishReview(d)
+		} else {
+			<p class="notes-row notes-card notes-group notes-subtle">Пока нет карточек</p>
+		}
+	}
+}
+
+templ englishReview(d EnglishData) {
+	{{ position := d.Current }}
+	{{ card := position.GetCard() }}
+	{{ prompt, answer, instruction := card.GetEnglish(), card.GetSource(), "Вспомни по-русски" }}
+	if position.GetPromptLanguage() == "ru" {
+		{{ prompt, answer, instruction = card.GetSource(), card.GetEnglish(), "Вспомни по-английски" }}
+	}
+	<section class="notes-card notes-review">
+		<p class="notes-subtle">{ "Круг " + strconv.FormatInt(position.GetRound(), 10) + " · Карточка " + strconv.Itoa(int(position.GetPosition())) + " из " + strconv.Itoa(int(position.GetRoundSize())) }</p>
+		<progress aria-label="Прогресс круга" value={ strconv.Itoa(int(position.GetPosition())) } max={ strconv.Itoa(int(max(1, position.GetRoundSize()))) }></progress>
+		<p class="notes-subtle mt-4">{ instruction }</p>
+		<h2>{ prompt }</h2>
+		<details class="notes-group">
+			<summary class="notes-primary">Показать ответ</summary>
+			<div class="notes-answer">
+				<h2 class="notes-accent">{ answer }</h2>
+				if card.GetExplanation() != "" {
+					<p>{ card.GetExplanation() }</p>
+				}
+				if card.GetExample() != "" {
+					<p class="notes-subtle">{ card.GetExample() }</p>
+				}
+				if card.GetContext() != "" {
+					<p class="notes-subtle">{ card.GetContext() }</p>
+				}
+				<form method="post" action="/english/grade" class="notes-grades">
+					@englishFields(d)
+					<input type="hidden" name="token" value={ position.GetToken() }/>
+					<button class="notes-secondary" name="action" value="miss" type="submit">Не вспомнил</button>
+					<button class="notes-secondary" name="action" value="hard" type="submit">С трудом</button>
+					<button class="notes-secondary" name="action" value="easy" type="submit">Легко</button>
+				</form>
+			</div>
+		</details>
+		<form method="post" action="/english/grade">
+			@englishFields(d)
+			<input type="hidden" name="token" value={ position.GetToken() }/>
+			<button class="notes-secondary notes-skip" name="action" value="skip" type="submit">Пропустить</button>
+		</form>
+	</section>
+}
+
+templ englishDictionary(d EnglishData) {
+	<form action="/english" method="get" class="notes-form notes-group notes-card">
+		@englishFields(d)
+		<label for="word-search">Слово или перевод</label>
+		<input id="word-search" name="q" type="search" value={ d.Query }/>
+		<button class="notes-secondary" type="submit">Найти</button>
+	</form>
+	if !d.Hidden {
+		<details class="notes-card notes-group">
+			<summary class="notes-row notes-action">@Icon("plus") Добавить слово</summary>
+			<form action="/english/words" method="post" class="notes-form">
+				@englishFields(d)
+				<input name="q" type="hidden" value={ d.Query }/>
+				<input name="operation" type="hidden" value={ d.Operation }/>
+				<label for="word-english">Слово по-английски</label>
+				<input id="word-english" name="english" required maxlength="600"/>
+				<label for="word-translation">Перевод на русский</label>
+				<input id="word-translation" name="source" required maxlength="600"/>
+				<button class="notes-primary" type="submit">Сохранить</button>
+			</form>
+		</details>
+	}
+	<div class="notes-card notes-group">
+		for _, word := range d.Words {
+			<details class="notes-word">
+				<summary>{ word.GetEnglish() + " — " + word.GetSource() }</summary>
+				if word.GetExample() != "" {
+					<p>{ word.GetExample() }</p>
+				}
+				<p class="notes-subtle">{ "EN → RU · " + englishProgress(word.GetEnToRu()) }</p>
+				<p class="notes-subtle">{ "RU → EN · " + englishProgress(word.GetRuToEn()) }</p>
+				<form action="/english/visibility" method="post">
+					@englishFields(d)
+					<input name="q" type="hidden" value={ d.Query }/>
+					<input name="operation" type="hidden" value={ d.Operation }/>
+					<input name="card" type="hidden" value={ word.GetId() }/>
+					if d.Hidden {
+						<button class="notes-secondary" type="submit" name="action" value="restore">Вернуть в повторение</button>
+					} else {
+						<button class="notes-secondary" type="submit" name="action" value="hide">Скрыть карточку</button>
+					}
+				</form>
+			</details>
+		}
+		if len(d.Words) == 0 {
+			<p class="notes-row notes-subtle">
+				if d.Query != "" {
+					Совпадений нет
+				} else if d.Hidden {
+					Скрытых карточек пока нет
+				} else {
+					Словарь пока пуст
+				}
+			</p>
+		}
+	</div>
+}
+
+templ englishFields(d EnglishData) {
+	for _, scope := range d.scopes() {
+		<input type="hidden" name="scope" value={ scope }/>
+	}
+	if d.Dictionary {
+		<input type="hidden" name="view" value="dictionary"/>
+	}
+	if d.Hidden {
+		<input type="hidden" name="hidden" value="1"/>
+	}
+}
+
+func englishProgress(progress *pb.DirectionProgress) string {
+	label := "Нет оценки"
+	switch progress.GetLastGrade() {
+	case "miss":
+		label = "Не вспомнил"
+	case "hard":
+		label = "С трудом"
+	case "easy":
+		label = "Легко"
+	}
+	if remaining := progress.GetSkippedRoundsRemaining(); remaining > 0 {
+		return label + " · осталось пропусков: " + strconv.Itoa(int(remaining))
+	}
+	return label
+}

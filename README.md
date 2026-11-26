@@ -1,5 +1,8 @@
 # Telegram Notes Bot
 
+[Notes для браузера и Telegram Mini App](docs/web.md) использует тот же
+сервер Notes и HTTPS-вход через VPN.
+
 Нативный клиент Android с локальными заметками и очередью отправки:
 [API, подключение и ограничения](docs/android.md). Мобильный API включается
 отдельно и доступен только через VPN.

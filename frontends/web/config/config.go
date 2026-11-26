@@ -14,6 +14,7 @@ type Config struct {
 	WebListenAddr    string
 	WebPassword      string
 	WebSessionSecret string
+	TelegramBotToken string
 	// RootID must match the Telegram frontend's ROOT_ID: reminders are
 	// scoped by user_id in notifications' storage, and both frontends must
 	// use the same user_id to see each other's reminders.
@@ -64,6 +65,7 @@ func Load() (*Config, error) {
 		WebListenAddr:         env.Str("WEB_LISTEN_ADDR", ":8090"),
 		WebPassword:           password,
 		WebSessionSecret:      secret,
+		TelegramBotToken:      os.Getenv("BOT_TOKEN"),
 		RootID:                rootID,
 		TimezoneOffsetHours:   env.Int("TIMEZONE_OFFSET_HOURS", 3),
 		DayStartHour:          env.Int("DAY_START_HOUR", 7),

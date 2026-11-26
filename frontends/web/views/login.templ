@@ -1,31 +1,35 @@
 package views
 
+import "strconv"
+
 templ Login(errMessage string) {
+	@LoginPage(errMessage, false, false)
+}
+
+templ LoginPage(errMessage string, miniApp, signedIn bool) {
 	<!DOCTYPE html>
 	<html lang="ru">
 		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>Вход — Заметки</title>
-			<link rel="stylesheet" href="/static/tailwind.css"/>
+			@AppHead("Вход")
+			if miniApp {
+				<script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+				<script src="/static/mini.js" defer></script>
+			}
 		</head>
-		<body class="flex min-h-screen items-center justify-center bg-slate-50">
-			<form method="post" action="/login" class="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-				<h1 class="mb-4 text-lg font-semibold">Заметки</h1>
+		<body class="notes-app notes-login">
+			<main class="notes-card">
+				<img src="/static/notes-icon.png" width="54" height="54" alt=""/>
+				<h1 class="notes-title">Notes</h1>
 				@ErrorBanner(errMessage)
-				<label class="mb-1 block text-sm font-medium text-slate-700" for="password">Пароль</label>
-				<input
-					id="password"
-					name="password"
-					type="password"
-					autofocus
-					required
-					class="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-				/>
-				<button type="submit" class="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
-					Войти
-				</button>
-			</form>
+				if miniApp {
+					<p id="mini-login" class="notes-subtle" data-signed-in={ strconv.FormatBool(signedIn) } aria-live="polite"></p>
+				}
+				<form method="post" action="/login" class="notes-form">
+					<label for="password">Пароль Notes</label>
+					<input id="password" name="password" type="password" autocomplete="current-password" required/>
+					<button class="notes-primary" type="submit">Войти</button>
+				</form>
+			</main>
 		</body>
 	</html>
 }

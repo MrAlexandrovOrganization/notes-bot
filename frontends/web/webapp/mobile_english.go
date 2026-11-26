@@ -65,6 +65,21 @@ func (a *App) mobileEnglishReview(w http.ResponseWriter, r *http.Request) {
 	mobileJSON(w, http.StatusOK, mobileEnglishResponse{Current: mobileReviewPosition(resp.GetCurrent())})
 }
 
+func englishReviewAction(raw string) pb.ReviewAction {
+	switch raw {
+	case "miss":
+		return pb.ReviewAction_REVIEW_ACTION_MISS
+	case "hard":
+		return pb.ReviewAction_REVIEW_ACTION_HARD
+	case "easy":
+		return pb.ReviewAction_REVIEW_ACTION_EASY
+	case "skip":
+		return pb.ReviewAction_REVIEW_ACTION_SKIP
+	default:
+		return pb.ReviewAction_REVIEW_ACTION_UNSPECIFIED
+	}
+}
+
 func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Token        string `json:"token"`
@@ -74,17 +89,7 @@ func (a *App) mobileAdvanceEnglishReview(w http.ResponseWriter, r *http.Request)
 	if !mobileDecode(w, r, &request) {
 		return
 	}
-	var action pb.ReviewAction
-	switch request.Action {
-	case "miss":
-		action = pb.ReviewAction_REVIEW_ACTION_MISS
-	case "hard":
-		action = pb.ReviewAction_REVIEW_ACTION_HARD
-	case "easy":
-		action = pb.ReviewAction_REVIEW_ACTION_EASY
-	case "skip":
-		action = pb.ReviewAction_REVIEW_ACTION_SKIP
-	}
+	action := englishReviewAction(request.Action)
 	if request.Token == "" || action == pb.ReviewAction_REVIEW_ACTION_UNSPECIFIED {
 		mobileError(w, http.StatusBadRequest)
 		return

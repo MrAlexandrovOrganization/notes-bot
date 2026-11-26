@@ -25,6 +25,7 @@ func main() {
 	logger := applog.New("notes-bot-web",
 		os.Getenv("WEB_PASSWORD"),
 		os.Getenv("WEB_SESSION_SECRET"),
+		os.Getenv("BOT_TOKEN"),
 	)
 
 	cfg, err := config.Load()
@@ -88,14 +89,15 @@ func main() {
 	if os.Getenv("AUTOMATIONS_ENABLED") == "true" {
 		app.Automations = notifClient.Automations()
 	}
+	englishConn, err := grpcutil.Dial(cfg.EnglishGRPCHost, cfg.EnglishGRPCPort)
+	if err != nil {
+		logger.Fatal("failed to create English client", zap.Error(err))
+	}
+	defer englishConn.Close()
+	app.English = englishpb.NewEnglishServiceClient(englishConn)
+
 	var router http.Handler
 	if cfg.MobileOnly {
-		englishConn, err := grpcutil.Dial(cfg.EnglishGRPCHost, cfg.EnglishGRPCPort)
-		if err != nil {
-			logger.Fatal("failed to create English client", zap.Error(err))
-		}
-		defer englishConn.Close()
-		app.English = englishpb.NewEnglishServiceClient(englishConn)
 		router = app.NewMobileRouter()
 	} else {
 		router = app.NewRouter()

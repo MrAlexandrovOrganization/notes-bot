@@ -21,6 +21,7 @@ func (a *App) NewRouter() http.Handler {
 	protected.HandleFunc("GET /logout", a.handleLogout)
 
 	a.registerDayRoutes(protected)
+	a.registerEnglishRoutes(protected)
 	a.registerAutomationRoutes(protected)
 	a.registerCalendarRoutes(protected)
 	a.registerReminderRoutes(protected)
@@ -30,6 +31,8 @@ func (a *App) NewRouter() http.Handler {
 	a.registerSmartRoutes(protected)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /mini", a.handleMiniApp)
+	mux.HandleFunc("POST /mini/session", a.handleTelegramLogin)
 	mux.HandleFunc("GET /login", a.handleLoginPage)
 	mux.HandleFunc("POST /login", a.handleLoginSubmit)
 	mux.HandleFunc("GET /healthz", handleHealthz)

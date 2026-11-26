@@ -30,19 +30,28 @@ type RemindersData struct {
 }
 
 templ Reminders(d RemindersData) {
-	@Page("Напоминания", "reminders") {
+	@Page("Уведомления", "reminders") {
+		<h1 class="notes-title">Уведомления</h1>
 		<div class="space-y-6">
-			<section class="rounded-lg border border-slate-200 bg-white p-4">
-				<h2 class="mb-2 text-sm font-medium text-slate-500">Список</h2>
-				<ul class="space-y-2">
+			<section>
+				<h2 class="notes-label">Напоминания</h2>
+				<ul class="notes-card notes-reminders-list">
 					for _, item := range d.Reminders {
 						@reminderRow(item)
 					}
 					if len(d.Reminders) == 0 {
-						<li class="text-sm text-slate-400">Напоминаний пока нет</li>
+						<li class="notes-row notes-subtle">Напоминаний пока нет</li>
 					}
 				</ul>
 			</section>
+			<details class="notes-card" open?={ d.FormError != "" }>
+				<summary class="notes-row notes-action">@Icon("plus") Новое напоминание</summary>
+				<div class="p-4">
+					@ErrorBanner(d.FormError)
+					@reminderCreateForm(d.Form, "/reminders") {
+					}
+				</div>
+			</details>
 
 			<section class="rounded-lg border border-slate-200 bg-white p-4">
 				<h2 class="mb-2 text-sm font-medium text-slate-500">Создать из текста</h2>
@@ -59,31 +68,32 @@ templ Reminders(d RemindersData) {
 					</button>
 				</form>
 			</section>
-
-			<section class="rounded-lg border border-slate-200 bg-white p-4">
-				<h2 class="mb-2 text-sm font-medium text-slate-500">Новое напоминание</h2>
-				@ErrorBanner(d.FormError)
-				@reminderCreateForm(d.Form, "/reminders") {
-				}
-			</section>
 		</div>
 	}
 }
 
 templ reminderRow(item ReminderItem) {
-	<li class="flex items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-sm">
-		<div>
-			<div class="font-medium">{ item.Title }</div>
-			<div class="text-xs text-slate-500">{ item.ScheduleType } · след.: { item.NextFireAt }</div>
-		</div>
-		<div class="flex items-center gap-2">
-			<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/postpone") } class="flex items-center gap-1">
-				<input type="text" name="duration" placeholder="30m" class="w-16 rounded border border-slate-300 px-1.5 py-1 text-xs"/>
-				<button type="submit" class="rounded bg-slate-100 px-2 py-1 text-xs hover:bg-slate-200">Перенести</button>
-			</form>
-			<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/delete") }>
-				<button type="submit" class="rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100">Удалить</button>
-			</form>
+	<li class="notes-reminder">
+		<div class="notes-reminder-title">
+			<div>
+				<div class="font-medium">{ item.Title }</div>
+				<div class="notes-subtle">{ item.NextFireAt }</div>
+			</div>
+			<details>
+				<summary class="notes-tool" aria-label={ "Действия с напоминанием: " + item.Title }>@Icon("menu")</summary>
+				<div class="notes-reminder-actions">
+					<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/postpone") } class="notes-form">
+						<label>
+							Отложить на
+							<input type="text" name="duration" placeholder="30m" required/>
+						</label>
+						<button type="submit" class="notes-secondary">Отложить</button>
+					</form>
+					<form method="post" action={ templ.URL("/reminders/" + strconv.FormatInt(item.ID, 10) + "/delete") } class="notes-form">
+						<button type="submit" class="text-red-600">Удалить</button>
+					</form>
+				</div>
+			</details>
 		</div>
 	</li>
 }

@@ -170,6 +170,7 @@ func sameOrigin(r *http.Request) error {
 // mutating requests, and revokes logged-out sessions.
 func (a *App) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			if err := sameOrigin(r); err != nil {
@@ -232,10 +233,17 @@ func clientIP(r *http.Request) string {
 }
 
 func (a *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	a.render(w, r, views.Login(""))
 }
 
 func (a *App) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if sameOrigin(r) != nil {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
 		a.render(w, r, views.Login("Некорректная форма"))
 		return

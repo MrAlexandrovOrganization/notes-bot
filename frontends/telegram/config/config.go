@@ -34,6 +34,7 @@ type Config struct {
 	LocationHost          string
 	LocationPort          string
 	LocalAPIURL           string
+	MiniAppURL            string
 	DBHost                string
 	DBPort                string
 	DBName                string
@@ -90,6 +91,7 @@ func Load() (*Config, error) {
 		LocationHost:          env.Str("LOCATION_HOST", "localhost"),
 		LocationPort:          env.Str("LOCATION_PORT", "8080"),
 		LocalAPIURL:           env.Str("TELEGRAM_LOCAL_API_URL", ""),
+		MiniAppURL:            env.Str("NOTES_MINI_APP_URL", ""),
 		DBHost:                env.Str("DB_HOST", "localhost"),
 		DBPort:                env.Str("DB_PORT", "5432"),
 		DBName:                env.Str("DB_NAME", "notifications"),
@@ -104,6 +106,13 @@ func Load() (*Config, error) {
 // Validate checks optional configuration values are within valid ranges.
 // BOT_TOKEN and ROOT_ID are already validated by Load().
 func (c *Config) Validate() error {
+	if c.MiniAppURL != "" {
+		u, err := url.Parse(c.MiniAppURL)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil ||
+			u.Fragment != "" || u.RawQuery != "" || u.ForceQuery {
+			return fmt.Errorf("NOTES_MINI_APP_URL must be a valid HTTPS URL without credentials, query or fragment")
+		}
+	}
 	if c.TimezoneOffsetHours < -12 || c.TimezoneOffsetHours > 14 {
 		return fmt.Errorf("TIMEZONE_OFFSET_HOURS must be between -12 and 14, got %d", c.TimezoneOffsetHours)
 	}
