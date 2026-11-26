@@ -835,6 +835,36 @@
               {
                 "id": "displayName",
                 "value": "Источник"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -871,44 +901,6 @@
               {
                 "id": "displayName",
                 "value": "Причина скрытия"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "source"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "android": {
-                        "text": "Android",
-                        "color": "dark-green",
-                        "index": 0
-                      },
-                      "ios": {
-                        "text": "iPhone",
-                        "color": "blue",
-                        "index": 1
-                      },
-                      "telegram-bot": {
-                        "text": "Telegram",
-                        "color": "orange",
-                        "index": 2
-                      },
-                      "unknown": {
-                        "text": "Неизвестный",
-                        "color": "gray",
-                        "index": 3
-                      }
-                    }
-                  }
-                ]
               }
             ]
           }
