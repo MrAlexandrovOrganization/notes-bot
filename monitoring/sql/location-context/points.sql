@@ -9,6 +9,7 @@ SELECT recorded_at AS "time", id, source::text AS platform,
 FROM public.location_context
 WHERE $__timeFilter(recorded_at)
   AND source IN ('android','ios')
+  AND source::text IN (${source:sqlstring})
   AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})
 ORDER BY recorded_at DESC
 LIMIT 3000;

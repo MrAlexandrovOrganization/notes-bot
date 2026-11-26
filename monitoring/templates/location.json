@@ -19,14 +19,22 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "type": "link",
+      "title": "Location · контекст",
+      "url": "/d/location-context",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
   "panels": [
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Chronological route through visible location records in the selected dashboard time range.",
+      "description": "Маршруты видимых точек за выбранный период. Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -87,38 +95,97 @@
                 },
                 "lineWidth": 2,
                 "opacity": 1,
-                "rotation": {
-                  "fixed": 0,
-                  "max": 360,
-                  "min": -360,
-                  "mode": "mod"
-                },
                 "size": {
-                  "fixed": 5,
-                  "max": 15,
-                  "min": 2
-                },
-                "symbol": {
-                  "fixed": "img/icons/marker/circle.svg",
-                  "mode": "fixed"
-                },
-                "symbolAlign": {
-                  "horizontal": "center",
-                  "vertical": "center"
-                },
-                "textConfig": {
-                  "fontSize": 12,
-                  "offsetX": 0,
-                  "offsetY": 0,
-                  "textAlign": "center",
-                  "textBaseline": "middle"
+                  "fixed": 5
                 }
               }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Layer 1",
+            "name": "Android",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "blue"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "iPhone",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "C"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Telegram",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "gray"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "D"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Неизвестный",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -146,25 +213,40 @@
           "format": "table",
           "rawQuery": true,
           "refId": "A",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
+          "rawSqlFile": "route-android.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
           },
-          "table": "locations",
-          "rawSqlFile": "route.sql"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSqlFile": "route-ios.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "C",
+          "rawSqlFile": "route-telegram-bot.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "D",
+          "rawSqlFile": "route-unknown.sql"
         }
       ],
       "title": "Route",
@@ -175,7 +257,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Individual visible location records in the selected dashboard time range.",
+      "description": "Individual visible location records in the selected dashboard time range. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -202,7 +284,46 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -228,12 +349,13 @@
         "layers": [
           {
             "config": {
-              "showLegend": true,
+              "showLegend": false,
               "style": {
                 "color": {
-                  "fixed": "dark-green"
+                  "field": "source",
+                  "fixed": "gray"
                 },
-                "opacity": 0.4,
+                "opacity": 0.8,
                 "rotation": {
                   "fixed": 0,
                   "max": 360,
@@ -424,7 +546,7 @@
       ],
       "title": "Состояние блэклиста",
       "type": "stat",
-      "description": "Включённые и отключённые правила и скрытые точки, покрытые активными правилами, за всю историю."
+      "description": "Правила считаются целиком, скрытые точки в пределах правил — по выбранным источникам за всю историю."
     },
     {
       "datasource": {
@@ -585,7 +707,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление.",
+      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -751,6 +873,44 @@
                 "value": "Причина скрытия"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -781,10 +941,11 @@
               "showLegend": false,
               "style": {
                 "color": {
-                  "fixed": "purple"
+                  "field": "source",
+                  "fixed": "gray"
                 },
                 "lineWidth": 1,
-                "opacity": 0.7,
+                "opacity": 0.8,
                 "rotation": {
                   "fixed": 0,
                   "max": 360,
@@ -874,7 +1035,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Location records saved per minute, separated by visibility.",
+      "description": "Общая частота сохранений по метрике Location. Учитывает все источники.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -993,6 +1154,45 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "name": "source",
+        "label": "Источник",
+        "type": "custom",
+        "query": "Android : android, iPhone : ios, Telegram : telegram-bot, Неизвестный : unknown",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "Android",
+            "value": "android",
+            "selected": false
+          },
+          {
+            "text": "iPhone",
+            "value": "ios",
+            "selected": false
+          },
+          {
+            "text": "Telegram",
+            "value": "telegram-bot",
+            "selected": false
+          },
+          {
+            "text": "Неизвестный",
+            "value": "unknown",
+            "selected": false
+          }
+        ]
       }
     ]
   },

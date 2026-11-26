@@ -37,6 +37,35 @@
         "type": "datasource"
       },
       {
+        "name": "source",
+        "label": "Источник",
+        "type": "custom",
+        "query": "Android : android, iPhone : ios",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "Android",
+            "value": "android",
+            "selected": false
+          },
+          {
+            "text": "iPhone",
+            "value": "ios",
+            "selected": false
+          }
+        ]
+      },
+      {
         "name": "device",
         "label": "Устройство / слот авторизации",
         "type": "query",
@@ -65,9 +94,10 @@
   "links": [
     {
       "type": "link",
-      "title": "Location · блэклист",
-      "url": "/d/location-blacklist",
-      "targetBlank": false
+      "title": "Location",
+      "url": "/d/4128eebc-4764-470e-9234-bba3ef454ef8/location",
+      "targetBlank": false,
+      "keepTime": true
     }
   ],
   "panels": [
@@ -108,7 +138,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT context_status AS status, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
+          "rawSql": "SELECT context_status AS status, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND source::text IN (${source:sqlstring})\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
         }
       ],
       "fieldConfig": {
@@ -157,7 +187,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(passive_reason,'Нет данных') AS reason, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source='android'\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
+          "rawSql": "SELECT COALESCE(passive_reason,'Нет данных') AS reason, count(*) AS points\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source='android'\n  AND source::text IN (${source:sqlstring})\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 2 DESC;"
         }
       ],
       "fieldConfig": {
@@ -206,7 +236,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(recorded_at, '5m'),\n       100.0 * count(*) FILTER (WHERE context_status='valid') / NULLIF(count(*),0) AS \"С контекстом, %\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 1;"
+          "rawSql": "SELECT $__timeGroupAlias(recorded_at, '5m'),\n       100.0 * count(*) FILTER (WHERE context_status='valid') / NULLIF(count(*),0) AS \"С контекстом, %\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND source IN ('android','ios')\n  AND source::text IN (${source:sqlstring})\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nGROUP BY 1 ORDER BY 1;"
         }
       ],
       "fieldConfig": {
@@ -242,7 +272,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT recorded_at AS \"time\", device_id AS device, steps_age_s AS \"Возраст интервала шагов, с\",\n       movement_age_s AS \"Возраст события движения, с\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND context_status='valid'\n  AND device_id IN (${device:sqlstring})\nORDER BY recorded_at;"
+          "rawSql": "SELECT recorded_at AS \"time\", device_id AS device, steps_age_s AS \"Возраст интервала шагов, с\",\n       movement_age_s AS \"Возраст события движения, с\"\nFROM public.location_context\nWHERE $__timeFilter(recorded_at) AND context_status='valid'\n  AND source::text IN (${source:sqlstring})\n  AND device_id IN (${device:sqlstring})\nORDER BY recorded_at;"
         }
       ],
       "fieldConfig": {
@@ -276,7 +306,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT recorded_at AS \"time\", id, source::text AS platform,\n       COALESCE(device_id,'legacy:' || source::text) AS device,\n       installation_id, app_version, context_status, steps_status,\n       steps_count, steps_from, steps_to, steps_age_s,\n       movement_status, movement_event, movement_at, movement_age_s,\n       collection_mode, requested_interval_ms / 1000.0 AS requested_interval_s,\n       delivery_channel, passive_reason, step_detector_status, step_counter_status,\n       hidden, quality_reason, latitude, longitude, accuracy\nFROM public.location_context\nWHERE $__timeFilter(recorded_at)\n  AND source IN ('android','ios')\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nORDER BY recorded_at DESC\nLIMIT 3000;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, source::text AS platform,\n       COALESCE(device_id,'legacy:' || source::text) AS device,\n       installation_id, app_version, context_status, steps_status,\n       steps_count, steps_from, steps_to, steps_age_s,\n       movement_status, movement_event, movement_at, movement_age_s,\n       collection_mode, requested_interval_ms / 1000.0 AS requested_interval_s,\n       delivery_channel, passive_reason, step_detector_status, step_counter_status,\n       hidden, quality_reason, latitude, longitude, accuracy\nFROM public.location_context\nWHERE $__timeFilter(recorded_at)\n  AND source IN ('android','ios')\n  AND source::text IN (${source:sqlstring})\n  AND COALESCE(device_id,'legacy:' || source::text) IN (${device:sqlstring})\nORDER BY recorded_at DESC\nLIMIT 3000;"
         }
       ],
       "fieldConfig": {

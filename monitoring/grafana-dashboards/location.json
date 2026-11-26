@@ -19,14 +19,22 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "type": "link",
+      "title": "Location · контекст",
+      "url": "/d/location-context",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
   "panels": [
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Chronological route through visible location records in the selected dashboard time range.",
+      "description": "Маршруты видимых точек за выбранный период. Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -87,38 +95,97 @@
                 },
                 "lineWidth": 2,
                 "opacity": 1,
-                "rotation": {
-                  "fixed": 0,
-                  "max": 360,
-                  "min": -360,
-                  "mode": "mod"
-                },
                 "size": {
-                  "fixed": 5,
-                  "max": 15,
-                  "min": 2
-                },
-                "symbol": {
-                  "fixed": "img/icons/marker/circle.svg",
-                  "mode": "fixed"
-                },
-                "symbolAlign": {
-                  "horizontal": "center",
-                  "vertical": "center"
-                },
-                "textConfig": {
-                  "fontSize": 12,
-                  "offsetX": 0,
-                  "offsetY": 0,
-                  "textAlign": "center",
-                  "textBaseline": "middle"
+                  "fixed": 5
                 }
               }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Layer 1",
+            "name": "Android",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "blue"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "iPhone",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "C"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Telegram",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "gray"
+                },
+                "lineWidth": 2,
+                "opacity": 1,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "D"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Неизвестный",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -146,25 +213,40 @@
           "format": "table",
           "rawQuery": true,
           "refId": "A",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
           },
-          "table": "locations",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE NOT hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "C",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "D",
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         }
       ],
       "title": "Route",
@@ -175,7 +257,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Individual visible location records in the selected dashboard time range.",
+      "description": "Individual visible location records in the selected dashboard time range. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -202,7 +284,46 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -228,12 +349,13 @@
         "layers": [
           {
             "config": {
-              "showLegend": true,
+              "showLegend": false,
               "style": {
                 "color": {
-                  "fixed": "dark-green"
+                  "field": "source",
+                  "fixed": "gray"
                 },
-                "opacity": 0.4,
+                "opacity": 0.8,
                 "rotation": {
                   "fixed": 0,
                   "max": 360,
@@ -310,7 +432,7 @@
             "limit": 50
           },
           "table": "locations",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date\nFROM locations\nWHERE not hidden\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at"
+          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE not hidden\n  AND $__timeFilter(recorded_at)\n  AND source::text IN (${source:sqlstring})\nORDER BY recorded_at"
         }
       ],
       "title": "Recorded points",
@@ -419,12 +541,12 @@
           "format": "table",
           "rawQuery": true,
           "refId": "A",
-          "rawSql": "SELECT\n    (SELECT count(*) FROM public.location_blacklist WHERE enabled) AS active_rules,\n    (SELECT count(*) FROM public.location_blacklist WHERE NOT enabled) AS disabled_rules,\n    CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n         THEN (SELECT count(*) FROM public.locations\n               WHERE hidden AND public.location_blacklist_matches(latitude,longitude))\n         ELSE 0 END AS matched_points;"
+          "rawSql": "SELECT\n    (SELECT count(*) FROM public.location_blacklist WHERE enabled) AS active_rules,\n    (SELECT count(*) FROM public.location_blacklist WHERE NOT enabled) AS disabled_rules,\n    CASE WHEN EXISTS (SELECT FROM public.location_blacklist WHERE enabled)\n         THEN (SELECT count(*) FROM public.locations\n               WHERE hidden AND source::text IN (${source:sqlstring})\n                 AND public.location_blacklist_matches(latitude,longitude))\n         ELSE 0 END AS matched_points;"
         }
       ],
       "title": "Состояние блэклиста",
       "type": "stat",
-      "description": "Включённые и отключённые правила и скрытые точки, покрытые активными правилами, за всю историю."
+      "description": "Правила считаются целиком, скрытые точки в пределах правил — по выбранным источникам за всю историю."
     },
     {
       "datasource": {
@@ -585,7 +707,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$postgres"
       },
-      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление.",
+      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -751,6 +873,44 @@
                 "value": "Причина скрытия"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -781,10 +941,11 @@
               "showLegend": false,
               "style": {
                 "color": {
-                  "fixed": "purple"
+                  "field": "source",
+                  "fixed": "gray"
                 },
                 "lineWidth": 1,
-                "opacity": 0.7,
+                "opacity": 0.8,
                 "rotation": {
                   "fixed": 0,
                   "max": 360,
@@ -863,7 +1024,7 @@
             ],
             "limit": 50
           },
-          "rawSql": "-- Every hidden location outside enabled exact/radius rules, without proposal thresholds.\n-- Read-only review: a hidden measurement is not proof of a permanently bad coordinate.\nSELECT l.recorded_at AS \"time\", l.id, l.latitude, l.longitude, l.accuracy,\n       l.source::text AS source, l.provider, l.quality_reason,\n       CASE l.quality_reason\n           WHEN '' THEN 'Причина не записана'\n           WHEN 'speed' THEN 'Превышение скорости'\n           WHEN 'corroborated_jump' THEN 'Подтверждённый скачок'\n           WHEN 'extreme_jump' THEN 'Экстремальный скачок'\n           WHEN 'uncertain_jump' THEN 'Неподтверждённый скачок'\n           WHEN 'poor_accuracy' THEN 'Большая погрешность'\n           WHEN 'stale_measurement' THEN 'Запоздалое измерение'\n           WHEN 'duplicate_measurement' THEN 'Повтор измерения'\n           WHEN 'out_of_order_measurement' THEN 'Нарушен порядок измерений'\n           WHEN 'invalid_measurement' THEN 'Некорректное измерение'\n           ELSE l.quality_reason\n       END AS reason\nFROM public.locations l\nWHERE l.hidden\n  AND $__timeFilter(l.recorded_at)\n  AND l.latitude BETWEEN -90 AND 90 AND l.longitude BETWEEN -180 AND 180\n  AND NOT public.location_blacklist_matches(l.latitude, l.longitude)\nORDER BY l.recorded_at DESC, l.id;"
+          "rawSql": "-- Every hidden location outside enabled exact/radius rules, without proposal thresholds.\n-- Read-only review: a hidden measurement is not proof of a permanently bad coordinate.\nSELECT l.recorded_at AS \"time\", l.id, l.latitude, l.longitude, l.accuracy,\n       l.source::text AS source, l.provider, l.quality_reason,\n       CASE l.quality_reason\n           WHEN '' THEN 'Причина не записана'\n           WHEN 'speed' THEN 'Превышение скорости'\n           WHEN 'corroborated_jump' THEN 'Подтверждённый скачок'\n           WHEN 'extreme_jump' THEN 'Экстремальный скачок'\n           WHEN 'uncertain_jump' THEN 'Неподтверждённый скачок'\n           WHEN 'poor_accuracy' THEN 'Большая погрешность'\n           WHEN 'stale_measurement' THEN 'Запоздалое измерение'\n           WHEN 'duplicate_measurement' THEN 'Повтор измерения'\n           WHEN 'out_of_order_measurement' THEN 'Нарушен порядок измерений'\n           WHEN 'invalid_measurement' THEN 'Некорректное измерение'\n           ELSE l.quality_reason\n       END AS reason\nFROM public.locations l\nWHERE l.hidden\n  AND $__timeFilter(l.recorded_at)\n  AND l.source::text IN (${source:sqlstring})\n  AND l.latitude BETWEEN -90 AND 90 AND l.longitude BETWEEN -180 AND 180\n  AND NOT public.location_blacklist_matches(l.latitude, l.longitude)\nORDER BY l.recorded_at DESC, l.id;"
         }
       ],
       "title": "Скрытые точки вне действующего блэклиста",
@@ -874,7 +1035,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Location records saved per minute, separated by visibility.",
+      "description": "Общая частота сохранений по метрике Location. Учитывает все источники.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -993,6 +1154,45 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "name": "source",
+        "label": "Источник",
+        "type": "custom",
+        "query": "Android : android, iPhone : ios, Telegram : telegram-bot, Неизвестный : unknown",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "Android",
+            "value": "android",
+            "selected": false
+          },
+          {
+            "text": "iPhone",
+            "value": "ios",
+            "selected": false
+          },
+          {
+            "text": "Telegram",
+            "value": "telegram-bot",
+            "selected": false
+          },
+          {
+            "text": "Неизвестный",
+            "value": "unknown",
+            "selected": false
+          }
+        ]
       }
     ]
   },

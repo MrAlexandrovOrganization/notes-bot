@@ -37,6 +37,35 @@
         "type": "datasource"
       },
       {
+        "name": "source",
+        "label": "Источник",
+        "type": "custom",
+        "query": "Android : android, iPhone : ios",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "Android",
+            "value": "android",
+            "selected": false
+          },
+          {
+            "text": "iPhone",
+            "value": "ios",
+            "selected": false
+          }
+        ]
+      },
+      {
         "name": "device",
         "label": "Устройство / слот авторизации",
         "type": "query",
@@ -64,9 +93,10 @@
   "links": [
     {
       "type": "link",
-      "title": "Location · блэклист",
-      "url": "/d/location-blacklist",
-      "targetBlank": false
+      "title": "Location",
+      "url": "/d/4128eebc-4764-470e-9234-bba3ef454ef8/location",
+      "targetBlank": false,
+      "keepTime": true
     }
   ],
   "panels": [

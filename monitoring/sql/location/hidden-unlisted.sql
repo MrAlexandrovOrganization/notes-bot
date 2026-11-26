@@ -18,6 +18,7 @@ SELECT l.recorded_at AS "time", l.id, l.latitude, l.longitude, l.accuracy,
 FROM public.locations l
 WHERE l.hidden
   AND $__timeFilter(l.recorded_at)
+  AND l.source::text IN (${source:sqlstring})
   AND l.latitude BETWEEN -90 AND 90 AND l.longitude BETWEEN -180 AND 180
   AND NOT public.location_blacklist_matches(l.latitude, l.longitude)
 ORDER BY l.recorded_at DESC, l.id;
