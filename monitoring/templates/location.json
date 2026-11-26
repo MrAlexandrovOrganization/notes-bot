@@ -32,7 +32,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "$postgres"
+        "uid": "eftexe5xy5hxca"
       },
       "description": "Маршруты видимых точек за выбранный период. Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
@@ -207,7 +207,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -218,7 +218,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -229,7 +229,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -240,7 +240,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -255,7 +255,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "$postgres"
+        "uid": "eftexe5xy5hxca"
       },
       "description": "Individual visible location records in the selected dashboard time range. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
@@ -408,7 +408,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -441,7 +441,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "$postgres"
+        "uid": "eftexe5xy5hxca"
       },
       "fieldConfig": {
         "defaults": {
@@ -535,7 +535,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -551,7 +551,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "$postgres"
+        "uid": "eftexe5xy5hxca"
       },
       "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей.",
       "fieldConfig": {
@@ -673,7 +673,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -705,7 +705,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "$postgres"
+        "uid": "eftexe5xy5hxca"
       },
       "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
       "fieldConfig": {
@@ -993,7 +993,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "$postgres"
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
           "format": "table",
@@ -1133,20 +1133,6 @@
   ],
   "templating": {
     "list": [
-      {
-        "current": {
-          "text": "grafana-postgresql-datasource",
-          "value": "eftexe5xy5hxca"
-        },
-        "includeAll": false,
-        "label": "PostgreSQL",
-        "name": "postgres",
-        "options": [],
-        "query": "grafana-postgresql-datasource",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      },
       {
         "name": "source",
         "label": "Источник",

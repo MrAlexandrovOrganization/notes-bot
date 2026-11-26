@@ -19,24 +19,6 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "grafana-postgresql-datasource",
-          "value": "eftexe5xy5hxca"
-        },
-        "hide": 2,
-        "includeAll": false,
-        "label": "PostgreSQL",
-        "multi": false,
-        "name": "postgres",
-        "options": [],
-        "query": "grafana-postgresql-datasource",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
         "name": "source",
         "label": "Источник",
         "type": "custom",
@@ -71,7 +53,7 @@
         "type": "query",
         "datasource": {
           "type": "grafana-postgresql-datasource",
-          "uid": "${postgres}"
+          "uid": "eftexe5xy5hxca"
         },
         "refresh": 2,
         "multi": true,
@@ -130,7 +112,7 @@
       "description": "",
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${postgres}"
+        "uid": "eftexe5xy5hxca"
       },
       "targets": [
         {
@@ -179,7 +161,7 @@
       "description": "",
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${postgres}"
+        "uid": "eftexe5xy5hxca"
       },
       "targets": [
         {
@@ -228,7 +210,7 @@
       "description": "",
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${postgres}"
+        "uid": "eftexe5xy5hxca"
       },
       "targets": [
         {
@@ -264,7 +246,7 @@
       "description": "Это возраст последнего известного наблюдения, а не задержка отправки на сервер. Отсутствие значения означает неизвестно.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${postgres}"
+        "uid": "eftexe5xy5hxca"
       },
       "targets": [
         {
@@ -298,7 +280,7 @@
       "description": "Последние 3000 точек в выбранном диапазоне, включая точки без контекста. Новые признаки не меняют hidden. Шаги — интервал наблюдения, не сумма за период.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${postgres}"
+        "uid": "eftexe5xy5hxca"
       },
       "targets": [
         {
