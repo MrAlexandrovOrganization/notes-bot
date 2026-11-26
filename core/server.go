@@ -408,6 +408,9 @@ func (s *NotesServer) AppendToNoteByPath(ctx context.Context, req *pb.AppendByPa
 			return nil, status.Error(codes.FailedPrecondition, "note store does not support idempotent append by path")
 		}
 		err = store.AppendByPathOnce(ctx, req.Relpath, req.Text, operationID)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, status.Error(codes.NotFound, "destination note not found")
+		}
 	} else {
 		err = s.notes.AppendByPath(ctx, req.Relpath, req.Text)
 	}

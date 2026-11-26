@@ -18,6 +18,14 @@ services:
       NOTIFICATIONS_GRPC_PORT: "50052"
       SEARCH_GRPC_HOST: search
       SEARCH_GRPC_PORT: "50054"
+      DB_HOST: notes-bot-postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-notifications}
+      DB_USER: ${DB_USER:-notif}
+      DB_PASSWORD: ${DB_PASSWORD}
+      WHISPER_GRPC_HOST: ${WHISPER_GRPC_HOST:-whisper-ingress}
+      WHISPER_GRPC_PORT: "${WHISPER_GRPC_PORT:-50053}"
+      GOMEMLIMIT: 128MiB
       LLM_HOST: ${NOTES_LLM_HOST:-ollama}
       LLM_PORT: ${NOTES_LLM_PORT:-11434}
       METRICS_PORT: "9105"
@@ -29,7 +37,11 @@ services:
         read_only: true
     ports:
       - "${NOTES_MOBILE_BIND_IP:?Set this host's tailnet IP}:18090:8090"
-    networks: [default, prometheus-net, jaeger-net]
+    networks: [default, prometheus-net, jaeger-net, whisper-net]
+    deploy:
+      resources:
+        limits:
+          memory: 192m
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/healthz"]
       interval: 30s

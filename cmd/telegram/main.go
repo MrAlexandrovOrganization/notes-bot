@@ -39,6 +39,7 @@ import (
 	"notes-bot/frontends/telegram/tgstates"
 	"notes-bot/internal/applog"
 	"notes-bot/internal/grpcutil"
+	"notes-bot/internal/mobilevoice"
 	"notes-bot/internal/telemetry"
 	"notes-bot/internal/voicejobs"
 	englishpb "notes-bot/proto/english/v1"
@@ -126,6 +127,9 @@ func main() {
 		defer cancel()
 		if err := voiceStore.Migrate(migrateCtx); err != nil {
 			logger.Fatal("voice migration failed")
+		}
+		if err := (&mobilevoice.Store{Pool: voicePool}).Migrate(migrateCtx); err != nil {
+			logger.Fatal("mobile voice migration failed")
 		}
 		logger.Info("voice migration complete")
 		return

@@ -23,6 +23,7 @@ type App struct {
 	Notifications clients.NotificationsService
 	Search        clients.SearchService
 	LLM           clients.LLMService
+	Voice         mobileVoiceStore
 	Logger        *zap.Logger
 
 	// revokedSessions tracks logged-out session IDs until their natural

@@ -97,16 +97,26 @@ func main() {
 	app.English = englishpb.NewEnglishServiceClient(englishConn)
 
 	var router http.Handler
+	var voiceDone <-chan struct{}
+	readTimeout := 15 * time.Second
 	if cfg.MobileOnly {
+		var closeVoice func()
+		closeVoice, voiceDone, err = startMobileVoice(ctx, app, coreClient)
+		if err != nil {
+			logger.Fatal("failed to start mobile voice", zap.Error(err))
+		}
+		defer closeVoice()
 		router = app.NewMobileRouter()
+		readTimeout = 2 * time.Minute
 	} else {
 		router = app.NewRouter()
 	}
 	srv := &http.Server{
-		Addr:         cfg.WebListenAddr,
-		Handler:      otelhttp.NewHandler(router, "web"),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 5 * time.Minute,
+		Addr:              cfg.WebListenAddr,
+		Handler:           otelhttp.NewHandler(router, "web"),
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      5 * time.Minute,
 	}
 
 	go func() {
@@ -122,5 +132,12 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("http server shutdown error", zap.Error(err))
+	}
+	if voiceDone != nil {
+		select {
+		case <-voiceDone:
+		case <-shutdownCtx.Done():
+			logger.Warn("mobile voice shutdown timed out")
+		}
 	}
 }

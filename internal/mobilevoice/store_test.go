@@ -1,0 +1,187 @@
+package mobilevoice
+
+import (
+	"context"
+	"io"
+	"net"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"notes-bot/frontends/telegram/clients"
+	pb "notes-bot/proto/whisper"
+)
+
+func testStore(t *testing.T) *Store {
+	t.Helper()
+	dsn := os.Getenv("TEST_VOICE_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set TEST_VOICE_DATABASE_URL to an isolated local PostgreSQL database")
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	require.NoError(t, err)
+	local := func(host string) bool { return host == "localhost" || net.ParseIP(host).IsLoopback() }
+	require.True(t, local(cfg.ConnConfig.Host))
+	for _, fallback := range cfg.ConnConfig.Fallbacks {
+		require.True(t, local(fallback.Host))
+	}
+	admin, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(admin.Close)
+
+	schema := pgx.Identifier{"mobile_voice_" + strings.ReplaceAll(uuid.NewString(), "-", "")}.Sanitize()
+	_, err = admin.Exec(t.Context(), "CREATE SCHEMA "+schema)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		require.NoError(t, err)
+	})
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	return &Store{Pool: pool}
+}
+
+type testTranscriber struct {
+	t          *testing.T
+	upload     Upload
+	submits    int
+	checkpoint func()
+}
+
+func (s *testTranscriber) SubmitOnce(_ context.Context, audio io.Reader, format, preset, identity string) (string, int, error) {
+	b, err := io.ReadAll(audio)
+	require.NoError(s.t, err)
+	require.Equal(s.t, s.upload.Audio, b)
+	require.Equal(s.t, "mp4", format)
+	require.Equal(s.t, "voice", preset)
+	require.Equal(s.t, "notes-mobile:"+s.upload.ID, identity)
+	s.submits++
+	if s.submits == 1 {
+		// The backend accepted the upload but the caller missed its reply.
+		return "", 0, status.Error(codes.Unavailable, "synthetic interruption")
+	}
+	return "test-remote", 1, nil
+}
+
+func (s *testTranscriber) GetStatus(_ context.Context, jobID string) (*clients.JobResult, error) {
+	require.Equal(s.t, "test-remote", jobID)
+	return &clients.JobResult{Status: pb.JobStatus_DONE, Text: "Synthetic transcript"}, nil
+}
+
+func (s *testTranscriber) Ack(_ context.Context, jobID string) (bool, error) {
+	require.Equal(s.t, "test-remote", jobID)
+	s.checkpoint()
+	return false, status.Error(codes.NotFound, "ack was already recorded")
+}
+
+type testNotes struct {
+	t       *testing.T
+	upload  Upload
+	written map[string]string
+	calls   int
+}
+
+func (n *testNotes) EnsureNote(context.Context, string) (bool, error) {
+	n.t.Fatal("path recording must not ensure a daily note")
+	return false, nil
+}
+
+func (n *testNotes) AppendToNoteOnce(context.Context, string, string, string) (bool, error) {
+	n.t.Fatal("path recording must not append to a daily note")
+	return false, nil
+}
+
+func (n *testNotes) AppendToNoteByPathOnce(_ context.Context, path, text, identity string) (bool, error) {
+	require.Equal(n.t, n.upload.Path, path)
+	require.Equal(n.t, "mobile-voice:"+n.upload.ID, identity)
+	require.Equal(n.t, "Synthetic transcript", text)
+	n.written[identity] = text
+	n.calls++
+	if n.calls == 1 {
+		return false, status.Error(codes.Unavailable, "synthetic interruption after note write")
+	}
+	return true, nil
+}
+
+func TestDurableVoiceCheckpointsAndReplays(t *testing.T) {
+	store := testStore(t)
+	ctx := t.Context()
+	require.Error(t, store.CheckSchema(ctx))
+	require.NoError(t, store.Migrate(ctx))
+	require.NoError(t, store.Migrate(ctx))
+	require.NoError(t, store.CheckSchema(ctx))
+
+	upload := Upload{ID: uuid.NewString(), Path: "Папка/Запись.md", Audio: []byte("synthetic audio")}
+	s, created, err := store.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.Equal(t, Status{ID: upload.ID, State: Queued}, s)
+	s, created, err = store.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, Queued, s.State)
+	wrong := upload
+	wrong.Path = "Другая.md"
+	_, _, err = store.Enqueue(ctx, wrong)
+	require.ErrorIs(t, err, ErrConflict)
+	wrong = upload
+	wrong.Audio = []byte("different")
+	_, _, err = store.Enqueue(ctx, wrong)
+	require.ErrorIs(t, err, ErrConflict)
+
+	stale, err := store.Claim(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stale)
+	blocked, err := store.Claim(ctx)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	_, err = store.Pool.Exec(ctx, "UPDATE mobile_voice_jobs SET lease_until = now() WHERE id = $1", upload.ID)
+	require.NoError(t, err)
+	job, err := store.Claim(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.ErrorIs(t, store.Release(ctx, stale, 0), errLeaseLost)
+	require.NoError(t, store.Release(ctx, job, 0))
+
+	whisper := &testTranscriber{t: t, upload: upload, checkpoint: func() {
+		var persisted string
+		var hasAudio bool
+		err := store.Pool.QueryRow(ctx, "SELECT transcript, audio IS NOT NULL FROM mobile_voice_jobs WHERE id = $1", upload.ID).Scan(&persisted, &hasAudio)
+		require.NoError(t, err)
+		require.Equal(t, "Synthetic transcript", persisted)
+		require.False(t, hasAudio)
+	}}
+	notes := &testNotes{t: t, upload: upload, written: make(map[string]string)}
+	step := func(want string) {
+		// New instance on every step simulates restart and loss of memory state.
+		worker := NewWorker(&Store{Pool: store.Pool}, whisper, notes, zap.NewNop())
+		require.Zero(t, worker.step(ctx))
+		s, err := store.Get(ctx, upload.ID)
+		require.NoError(t, err)
+		require.Equal(t, want, s.State)
+		_, err = store.Pool.Exec(ctx, "UPDATE mobile_voice_jobs SET next_at = now() WHERE id = $1", upload.ID)
+		require.NoError(t, err)
+	}
+	step(Queued)
+	step(Transcribing)
+	step(Transcribing)
+	step(Transcribing)
+	step(Saved)
+	require.Equal(t, 2, whisper.submits)
+	require.Equal(t, 2, notes.calls)
+	require.Len(t, notes.written, 1)
+	s, created, err = store.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, Saved, s.State)
+}

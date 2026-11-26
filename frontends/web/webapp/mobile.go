@@ -27,6 +27,7 @@ import (
 func (a *App) NewMobileRouter() http.Handler {
 	protected := http.NewServeMux()
 	a.registerAppUpdates(protected)
+	a.registerMobileVoice(protected)
 	protected.HandleFunc("GET /mobile/v1/english/dictionary", a.mobileEnglishDictionary)
 	protected.HandleFunc("GET /mobile/v1/english/round", a.mobileEnglishRound)
 	protected.HandleFunc("POST /mobile/v1/english/words", a.mobileEnglishWord)

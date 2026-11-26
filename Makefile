@@ -170,7 +170,7 @@ assert-active:
 up: assert-active monitoring-register migrate-voice migrate-geo migrate-automations migrate-english
 	$(DOCKER_COMPOSE) up --build -d
 
-# Explicit deployment migration; normal telegram startup only checks the schema.
+# Explicit Telegram and mobile voice migration; normal startup checks the schema.
 migrate-voice: assert-active
 	$(DOCKER_COMPOSE) up -d postgres
 	$(DOCKER_COMPOSE) build telegram
@@ -202,7 +202,7 @@ proto-check: proto-lint proto-breaking
 
 test-voice-db:
 	@test -n "$(TEST_VOICE_DATABASE_URL)" || { echo 'Set TEST_VOICE_DATABASE_URL to an isolated local PostgreSQL database'; exit 1; }
-	go test -race ./internal/voicejobs -v
+	go test -race ./internal/voicejobs ./internal/mobilevoice -v
 
 test-voice-db-up:
 	docker run --detach --rm --name notes-bot-voice-ci-db --label app=notes-bot-voice-ci-db --tmpfs /var/lib/postgresql/data:rw,size=256m --memory=512m -p 127.0.0.1:55442:5432 -e POSTGRES_USER=voicejobs_test -e POSTGRES_PASSWORD=synthetic-voicejobs-test -e POSTGRES_DB=voicejobs_test postgres:$(POSTGRES_VERSION)
