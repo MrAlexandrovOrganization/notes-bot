@@ -553,7 +553,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей.",
+      "description": "Правила за период их создания. При выборе источника карта показывает правила, созданные по его точкам или покрывающие его скрытые точки. В подсказке указаны заметка, происхождение и источники затронутых записей за всю историю. Радиус указан в метрах.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -581,7 +581,116 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID правила"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "created_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Создано"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус, м"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "note"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Заметка"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rule_origin"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Как появилось правило"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "origin_point_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID исходной точки"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "origin_source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник исходной точки"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "affected_sources"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источники затронутых точек"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "selected_points"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Скрытых точек выбранных источников"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -707,7 +816,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
+      "description": "Скрытые точки выбранных источников и периода вне действующих точных правил и радиусов. Подсказка показывает источник, время, погрешность и сохранённую причину скрытия. Цвета совпадают с маршрутами.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1024,10 +1133,10 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
       },
-      "description": "Общая частота сохранений по метрике Location. Учитывает все источники.",
+      "description": "Число сохранённых точек в минуту по времени приёма сервером, отдельно для каждого выбранного источника и текущего статуса видимости. Исторические записи без времени приёма в график не входят.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1037,7 +1146,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "точек/мин",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
@@ -1081,7 +1190,86 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Android · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^iPhone · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Telegram · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Неизвестный · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "gray"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": " · скрытые$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    4
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -1099,7 +1287,7 @@
         },
         "tooltip": {
           "hideZeros": false,
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
         }
       },
@@ -1107,20 +1295,19 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
-          "expr": "sum by (hidden) (rate(location_saves_total[$__rate_interval])) * 60",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "hidden={{hidden}}",
-          "range": true,
-          "refId": "A"
+          "format": "time_series",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSqlFile": "save-rate.sql"
         }
       ],
       "title": "Save rate",
-      "type": "timeseries"
+      "type": "timeseries",
+      "interval": "1m"
     }
   ],
   "preload": false,

@@ -553,7 +553,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Центры окружностей; радиус в метрах указан в таблице и подсказке. Маркеры не показывают границы окружностей.",
+      "description": "Правила за период их создания. При выборе источника карта показывает правила, созданные по его точкам или покрывающие его скрытые точки. В подсказке указаны заметка, происхождение и источники затронутых записей за всю историю. Радиус указан в метрах.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -581,7 +581,116 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID правила"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "created_at"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Создано"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "radius_m"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Радиус, м"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "note"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Заметка"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rule_origin"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Как появилось правило"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "origin_point_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "ID исходной точки"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "origin_source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник исходной точки"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "affected_sources"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источники затронутых точек"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "selected_points"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Скрытых точек выбранных источников"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -696,7 +805,7 @@
             ],
             "limit": 50
           },
-          "rawSql": "SELECT id, latitude, longitude, radius_m, note, created_at\nFROM public.location_blacklist\nWHERE enabled\n  AND $__timeFilter(created_at)\nORDER BY id;"
+          "rawSql": "WITH rules AS NOT MATERIALIZED (\n    SELECT id, latitude, longitude, radius_m, note, created_at\n    FROM public.location_blacklist\n    WHERE enabled AND $__timeFilter(created_at)\n),\naffected AS (\n    SELECT id,\n           string_agg(DISTINCT source, ', ' ORDER BY source) AS sources,\n           count(*) FILTER (WHERE source IN (${source:sqlstring})) AS selected_points\n    FROM (\n        SELECT r.id, p.source::text AS source\n        FROM rules r\n        JOIN public.locations p ON p.latitude = r.latitude AND p.longitude = r.longitude\n        WHERE r.radius_m = 0 AND p.hidden\n        UNION ALL\n        SELECT r.id, p.source::text AS source\n        FROM rules r\n        JOIN public.locations p\n          ON public.location_distance_m(r.latitude, r.longitude, p.latitude, p.longitude) <= r.radius_m\n        WHERE r.radius_m > 0 AND p.hidden\n    ) matches\n    GROUP BY id\n)\nSELECT r.id, r.latitude, r.longitude, r.radius_m, r.note, r.created_at,\n       CASE\n           WHEN starts_with(r.note, 'auto_speed_confirmed; source_id=') THEN 'Автоматически: подтверждённый скачок'\n           WHEN origin_id.point_id IS NOT NULL THEN 'В заметке указан ID исходной точки'\n           ELSE 'См. заметку к правилу'\n       END AS rule_origin,\n       origin_id.point_id AS origin_point_id,\n       COALESCE(origin.source::text, 'Не указан') AS origin_source,\n       affected.sources AS affected_sources,\n       COALESCE(affected.selected_points, 0) AS selected_points\nFROM rules r\nCROSS JOIN LATERAL (\n    SELECT substring(r.note FROM '(?:^|[;[:space:]])source_id=([^;[:space:]]+)') AS point_id\n) origin_id\nLEFT JOIN public.locations origin ON origin.id = origin_id.point_id\nLEFT JOIN affected ON affected.id = r.id\nWHERE ARRAY['android','ios','telegram-bot','unknown'] <@ ARRAY[${source:sqlstring}]\n   OR origin.source::text IN (${source:sqlstring})\n   OR affected.selected_points > 0\nORDER BY r.id;"
         }
       ],
       "title": "Действующие правила · центры",
@@ -707,7 +816,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Скрытые точки в выбранном временном диапазоне, не покрытые включёнными точными правилами или радиусами. Пороги дней/записей сверху не применяются. Наведи на точку: ID, время, погрешность и причина скрытия. Это список для ручной проверки, не автоматическое добавление. Цвета совпадают с цветами маршрутов: Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
+      "description": "Скрытые точки выбранных источников и периода вне действующих точных правил и радиусов. Подсказка показывает источник, время, погрешность и сохранённую причину скрытия. Цвета совпадают с маршрутами.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1024,10 +1133,10 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "grafana-postgresql-datasource",
+        "uid": "eftexe5xy5hxca"
       },
-      "description": "Общая частота сохранений по метрике Location. Учитывает все источники.",
+      "description": "Число сохранённых точек в минуту по времени приёма сервером, отдельно для каждого выбранного источника и текущего статуса видимости. Исторические записи без времени приёма в график не входят.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1037,7 +1146,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "точек/мин",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
@@ -1081,7 +1190,86 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Android · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^iPhone · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Telegram · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Неизвестный · "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "gray"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": " · скрытые$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    4
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -1099,7 +1287,7 @@
         },
         "tooltip": {
           "hideZeros": false,
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
         }
       },
@@ -1107,20 +1295,19 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
           },
           "editorMode": "code",
-          "expr": "sum by (hidden) (rate(location_saves_total[$__rate_interval])) * 60",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "hidden={{hidden}}",
-          "range": true,
-          "refId": "A"
+          "format": "time_series",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT $__timeGroupAlias(received_at, '$__interval', 0),\n       count(*) * 60000.0 / $__interval_ms AS value,\n       CASE source\n           WHEN 'android' THEN 'Android'\n           WHEN 'ios' THEN 'iPhone'\n           WHEN 'telegram-bot' THEN 'Telegram'\n           ELSE 'Неизвестный'\n       END || CASE WHEN hidden THEN ' · скрытые' ELSE ' · видимые' END AS metric\nFROM public.locations\nWHERE $__timeFilter(received_at)\n  AND source::text IN (${source:sqlstring})\nGROUP BY 1, 3\nORDER BY 1, 3;"
         }
       ],
       "title": "Save rate",
-      "type": "timeseries"
+      "type": "timeseries",
+      "interval": "1m"
     }
   ],
   "preload": false,
