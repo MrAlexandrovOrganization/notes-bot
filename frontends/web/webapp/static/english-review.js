@@ -9,6 +9,14 @@
   const empty = review.querySelector("[data-review-empty]");
   const status = review.querySelector("[data-review-status]");
   const reveal = cardPanel.querySelector("details");
+  const showAnswer = reveal.querySelector("summary");
+  showAnswer.addEventListener("click", (event) => {
+    if (event.detail === 0) {
+      requestAnimationFrame(() => {
+        if (reveal.open) reveal.querySelector("button").focus({ preventScroll: true });
+      });
+    }
+  });
   const progress = cardPanel.querySelector("progress");
   const tokens = cardPanel.querySelectorAll('input[name="token"]');
   const keyPrefix = "notes.english.grade.";
@@ -88,7 +96,7 @@
     const changed = tokens[0].value !== current.token;
     for (const token of tokens) token.value = current.token;
     if (changed) reveal.open = false;
-    if (focus) reveal.querySelector("summary").focus({ preventScroll: true });
+    if (focus) showAnswer.focus({ preventScroll: true });
   }
 
   function scopeParams(value) {

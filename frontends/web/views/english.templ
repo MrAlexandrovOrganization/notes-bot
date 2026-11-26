@@ -107,27 +107,29 @@ templ englishReview(d EnglishData) {
 			<progress aria-label="Прогресс круга" value={ strconv.Itoa(int(position.GetPosition())) } max={ strconv.Itoa(int(max(1, position.GetRoundSize()))) }></progress>
 			<p class="notes-subtle mt-4" data-review-instruction>{ instruction }</p>
 			<h2 data-review-prompt>{ prompt }</h2>
-			<details class="notes-group">
-				<summary class="notes-primary notes-review-action">Показать ответ</summary>
-				<div class="notes-answer">
-					<h2 class="notes-accent" data-review-answer>{ answer }</h2>
-					<p data-review-detail="explanation" hidden?={ card.GetExplanation() == "" }>{ card.GetExplanation() }</p>
-					<p data-review-detail="example" class="notes-subtle" hidden?={ card.GetExample() == "" }>{ card.GetExample() }</p>
-					<p data-review-detail="context" class="notes-subtle" hidden?={ card.GetContext() == "" }>{ card.GetContext() }</p>
+			<div id="review-answer" class="notes-answer">
+				<h2 class="notes-accent" data-review-answer>{ answer }</h2>
+				<p data-review-detail="explanation" hidden?={ card.GetExplanation() == "" }>{ card.GetExplanation() }</p>
+				<p data-review-detail="example" class="notes-subtle" hidden?={ card.GetExample() == "" }>{ card.GetExample() }</p>
+				<p data-review-detail="context" class="notes-subtle" hidden?={ card.GetContext() == "" }>{ card.GetContext() }</p>
+			</div>
+			<div class="notes-review-actions">
+				<details class="notes-review-reveal">
+					<summary class="notes-primary notes-review-action" aria-controls="review-answer">Показать ответ</summary>
 					<form method="post" action="/english/grade" class="notes-grades">
 						@englishFields(d)
 						<input type="hidden" name="token" value={ position.GetToken() }/>
-						<button class="notes-secondary" name="action" value="miss" type="submit">Не вспомнил</button>
-						<button class="notes-secondary" name="action" value="hard" type="submit">С трудом</button>
-						<button class="notes-secondary" name="action" value="easy" type="submit">Легко</button>
+						<button class="notes-secondary notes-review-action" name="action" value="miss" type="submit">Не вспомнил</button>
+						<button class="notes-secondary notes-review-action" name="action" value="hard" type="submit">С трудом</button>
+						<button class="notes-secondary notes-review-action" name="action" value="easy" type="submit">Легко</button>
 					</form>
-				</div>
-			</details>
-			<form method="post" action="/english/grade">
-				@englishFields(d)
-				<input type="hidden" name="token" value={ position.GetToken() }/>
-				<button class="notes-secondary notes-review-action notes-skip" name="action" value="skip" type="submit">Пропустить</button>
-			</form>
+				</details>
+				<form method="post" action="/english/grade">
+					@englishFields(d)
+					<input type="hidden" name="token" value={ position.GetToken() }/>
+					<button class="notes-secondary notes-review-action" name="action" value="skip" type="submit">Пропустить</button>
+				</form>
+			</div>
 		</div>
 		<p class="notes-subtle" data-review-empty hidden?={ card != nil }>Пока нет карточек</p>
 		<p class="notes-subtle" data-review-status role="status" hidden></p>
