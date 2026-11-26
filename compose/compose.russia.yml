@@ -11,6 +11,28 @@ services:
     image: ${NOTES_POSTGRES_IMAGE:?Set the migrated PostgreSQL image digest}
   postgres-search:
     image: ${NOTES_SEARCH_POSTGRES_IMAGE:?Set the migrated pgvector image digest}
+  english-reporting:
+    image: haproxy:${HAPROXY_VERSION:?Run via make}
+    container_name: ${CONTAINER_NAME_PREFIX:-}notes-bot-english-reporting
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      postgres-english:
+        condition: service_healthy
+    ports:
+      - "100.64.0.5:15435:5432"
+    volumes:
+      - ./ops/english/reporting.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8404/health >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    extends:
+      file: compose/docker-compose.base.yml
+      service: base
   core:
     # The sync client must be able to read files created by the note writer.
     user: "${NOTES_VAULT_UID:?}:${NOTES_VAULT_GID:?}"

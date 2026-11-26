@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Location dashboards from their templates and SQL sources."""
+"""Build Grafana dashboards from their templates and SQL sources."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DASHBOARDS = ("location", "location-zones", "location-context")
+DASHBOARDS = ("location", "location-zones", "location-context", "notes-english")
 
 
 def build(name):

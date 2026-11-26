@@ -1,0 +1,55 @@
+{
+  "uid": "notes-english",
+  "id": null,
+  "title": "English · занятия",
+  "description": "Сохранённые ответы NotesBot. Подход начинается после паузы больше 30 минут между ответами. Данные привязаны ко времени, когда сервер принял ответ.",
+  "tags": ["notes", "english"],
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "Europe/Moscow",
+  "refresh": "1m",
+  "time": {"from": "now-30d/d", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "За выбранный период",
+      "description": "Ответы и уникальные карточки без пропусков. Подходы считаются по времени начала.",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 5},
+      "datasource": {"type": "grafana-postgresql-datasource", "uid": "notes-english-postgres"},
+      "targets": [{"refId": "A", "format": "table", "rawQuery": true, "rawSqlFile": "summary.sql"}],
+      "options": {"graphMode": "none", "colorMode": "none", "textMode": "value_and_name", "reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Ответы и пропуски по дням",
+      "gridPos": {"x": 0, "y": 5, "w": 24, "h": 10},
+      "datasource": {"type": "grafana-postgresql-datasource", "uid": "notes-english-postgres"},
+      "targets": [{"refId": "A", "format": "time_series", "rawQuery": true, "rawSqlFile": "daily.sql"}],
+      "fieldConfig": {"defaults": {"min": 0, "decimals": 0, "custom": {"drawStyle": "bars", "fillOpacity": 75, "lineWidth": 0, "stacking": {"mode": "normal", "group": "daily"}}}, "overrides": []},
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "none"}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Карточки за подход",
+      "description": "Если одна карточка встретилась несколько раз, она учитывается во всех ответах и один раз в уникальных карточках.",
+      "gridPos": {"x": 0, "y": 15, "w": 24, "h": 9},
+      "datasource": {"type": "grafana-postgresql-datasource", "uid": "notes-english-postgres"},
+      "targets": [{"refId": "A", "format": "time_series", "rawQuery": true, "rawSqlFile": "approaches.sql"}],
+      "fieldConfig": {"defaults": {"min": 0, "decimals": 0, "custom": {"drawStyle": "points", "showPoints": "always", "pointSize": 8}}, "overrides": []},
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "none"}}
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "История подходов",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 12},
+      "datasource": {"type": "grafana-postgresql-datasource", "uid": "notes-english-postgres"},
+      "targets": [{"refId": "A", "format": "table", "rawQuery": true, "rawSqlFile": "approach-details.sql"}],
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": false}}
+    }
+  ]
+}

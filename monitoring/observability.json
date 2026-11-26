@@ -36,6 +36,12 @@
     },
     {
       "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/notes-english.json",
+      "destination": "notes-bot/notes-english.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location.json",
       "destination": "Location/location.json",
       "location": "central",

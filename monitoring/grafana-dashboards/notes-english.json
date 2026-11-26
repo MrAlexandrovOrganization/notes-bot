@@ -1,0 +1,182 @@
+{
+  "uid": "notes-english",
+  "id": null,
+  "title": "English · занятия",
+  "description": "Сохранённые ответы NotesBot. Подход начинается после паузы больше 30 минут между ответами. Данные привязаны ко времени, когда сервер принял ответ.",
+  "tags": [
+    "notes",
+    "english"
+  ],
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "Europe/Moscow",
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d/d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "За выбранный период",
+      "description": "Ответы и уникальные карточки без пропусков. Подходы считаются по времени начала.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-english-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FILTER (WHERE action <> 'skip') AS \"Ответы\",\n       count(DISTINCT card_id) FILTER (WHERE action <> 'skip') AS \"Уникальные карточки\",\n       count(DISTINCT (reviewed_at AT TIME ZONE 'Europe/Moscow')::date)\n           FILTER (WHERE action <> 'skip') AS \"Дни с занятиями\",\n       (SELECT count(*) FROM english_report_sessions WHERE $__timeFilter(started_at)) AS \"Подходы\"\nFROM english_report_events\nWHERE $__timeFilter(reviewed_at);"
+        }
+      ],
+      "options": {
+        "graphMode": "none",
+        "colorMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Ответы и пропуски по дням",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-english-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH dates AS (\n    SELECT generate_series(\n        date_trunc('day', $__timeFrom()::timestamptz AT TIME ZONE 'Europe/Moscow'),\n        date_trunc('day', $__timeTo()::timestamptz AT TIME ZONE 'Europe/Moscow'),\n        interval '1 day'\n    ) AS day\n), totals AS (\n    SELECT date_trunc('day', reviewed_at AT TIME ZONE 'Europe/Moscow') AS day,\n           count(*) FILTER (WHERE action = 'miss') AS misses,\n           count(*) FILTER (WHERE action = 'hard') AS hard_answers,\n           count(*) FILTER (WHERE action = 'easy') AS easy_answers,\n           count(*) FILTER (WHERE action = 'skip') AS skips\n    FROM english_report_events\n    WHERE $__timeFilter(reviewed_at)\n    GROUP BY 1\n)\nSELECT greatest(dates.day AT TIME ZONE 'Europe/Moscow', $__timeFrom()::timestamptz) AS time,\n       coalesce(misses, 0) AS \"Не вспомнил\",\n       coalesce(hard_answers, 0) AS \"С трудом\",\n       coalesce(easy_answers, 0) AS \"Легко\",\n       coalesce(skips, 0) AS \"Пропустил\"\nFROM dates\nLEFT JOIN totals USING (day)\nORDER BY time;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 75,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "daily"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Карточки за подход",
+      "description": "Если одна карточка встретилась несколько раз, она учитывается во всех ответах и один раз в уникальных карточках.",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-english-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS time,\n       attempts AS \"Ответы\",\n       unique_cards AS \"Уникальные карточки\"\nFROM english_report_sessions\nWHERE $__timeFilter(started_at)\nORDER BY time;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "points",
+            "showPoints": "always",
+            "pointSize": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "История подходов",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-english-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS \"Начало\",\n       ended_at AS \"Последний ответ\",\n       attempts AS \"Ответы\",\n       unique_cards AS \"Уникальные карточки\",\n       misses AS \"Не вспомнил\",\n       hard_answers AS \"С трудом\",\n       easy_answers AS \"Легко\"\nFROM english_report_sessions\nWHERE $__timeFilter(started_at)\nORDER BY started_at DESC;"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}

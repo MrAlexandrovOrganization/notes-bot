@@ -45,6 +45,36 @@ func testEnglishStore(t *testing.T) Store {
 	return store
 }
 
+func TestEnglishPostgresReportingGroupsAnswersAndIgnoresSkips(t *testing.T) {
+	ctx := t.Context()
+	store := testEnglishStore(t)
+	_, err := store.Pool.Exec(ctx, `
+		INSERT INTO english_review_history VALUES
+		('a','01','miss','2026-11-25 08:00Z',0,1),
+		('a','02','hard','2026-11-25 08:10Z',0,1),
+		('b','03','easy','2026-11-25 08:40Z',2,1),
+		('c','04','skip','2026-11-25 09:00Z',0,1),
+		('c','05','easy','2026-11-25 09:11Z',2,1),
+		('c','06','miss','2026-11-25 09:11Z',0,1)`)
+	require.NoError(t, err)
+	rows, err := store.Pool.Query(ctx, `
+		SELECT attempts, unique_cards, misses, hard_answers, easy_answers
+		FROM english_report_sessions ORDER BY started_at`)
+	require.NoError(t, err)
+	defer rows.Close()
+	var got [][5]int64
+	for rows.Next() {
+		var counts [5]int64
+		require.NoError(t, rows.Scan(&counts[0], &counts[1], &counts[2], &counts[3], &counts[4]))
+		got = append(got, counts)
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, [][5]int64{{3, 2, 1, 1, 1}, {2, 1, 1, 0, 1}}, got)
+	var skips int
+	require.NoError(t, store.Pool.QueryRow(ctx, `SELECT count(*) FROM english_report_events WHERE action = 'skip'`).Scan(&skips))
+	require.Equal(t, 1, skips)
+}
+
 func TestEnglishPostgresResumeMigrationAndConcurrentGrades(t *testing.T) {
 	ctx := t.Context()
 	store := testEnglishStore(t)
