@@ -49,23 +49,27 @@ templ Day(d DayData) {
 		<section class="notes-group">
 			<h2 class="notes-label">Задачи</h2>
 			<div class="notes-card">
-				for _, task := range d.Tasks {
-					@taskRow(d.Date, task)
-				}
-				if len(d.Tasks) == 0 {
-					<p class="notes-row notes-subtle">Пока нет задач</p>
-				}
+				<div data-draft-refresh="tasks">
+					for _, task := range d.Tasks {
+						@taskRow(d.Date, task)
+					}
+					if len(d.Tasks) == 0 {
+						<p class="notes-row notes-subtle">Пока нет задач</p>
+					}
+				</div>
 				@dayEditor(d.Date, "/day/tasks", "Добавить задачу", "plus", false)
 			</div>
 		</section>
 		<section class="notes-group">
 			<h2 class="notes-label">Дневник</h2>
 			<div class="notes-card">
-				if d.Content == "" {
-					<p class="notes-copy notes-subtle">Пока нет записей</p>
-				} else {
-					<div class="notes-copy">{ d.Content }</div>
-				}
+				<div data-draft-refresh="note">
+					if d.Content == "" {
+						<p class="notes-copy notes-subtle">Пока нет записей</p>
+					} else {
+						<div class="notes-copy">{ d.Content }</div>
+					}
+				</div>
 				@dayEditor(d.Date, "/day/append", "Добавить запись", "edit", true)
 			</div>
 		</section>
@@ -120,7 +124,7 @@ templ taskAction(date string, task TaskData, action, label string) {
 templ dayEditor(date, action, label, icon string, multiline bool) {
 	<details>
 		<summary class="notes-row notes-action">@Icon(icon) <span>{ label }</span></summary>
-		<form method="post" action={ templ.URL(action) } hx-post={ action } hx-select="main" hx-target="main" hx-swap="outerHTML" class="notes-form">
+		<form method="post" action={ templ.URL(action) } hx-post={ action } hx-select="main" hx-target="main" hx-swap="outerHTML" class="notes-form" data-note-draft={ dayDraftKind(multiline) }>
 			<input type="hidden" name="date" value={ date }/>
 			if multiline {
 				<textarea name="text" rows="4" required aria-label="Текст записи"></textarea>
@@ -128,12 +132,20 @@ templ dayEditor(date, action, label, icon string, multiline bool) {
 				<input name="text" type="text" required aria-label="Текст задачи"/>
 			}
 			<button class="notes-primary" type="submit">Добавить</button>
+			<p class="notes-subtle" data-draft-status aria-live="polite" hidden></p>
 		</form>
 	</details>
 }
 
 func taskURL(index int, action string) string {
 	return "/day/tasks/" + strconv.Itoa(index) + "/" + action
+}
+
+func dayDraftKind(multiline bool) string {
+	if multiline {
+		return "day"
+	}
+	return "task"
 }
 
 func taskToggleAction(task TaskData) string {

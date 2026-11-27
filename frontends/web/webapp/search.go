@@ -92,11 +92,18 @@ func (a *App) handleSearchOpenNote(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// A newly appended entry may be visible in Core before reindexing finishes.
+	content := note.Content
+	if note.Relpath != "" {
+		if live, err := a.Core.GetNoteByPath(r.Context(), note.Relpath); err == nil && live != "" {
+			content = live
+		}
+	}
 	a.render(w, r, views.SearchNote(views.SearchNoteData{
 		ID:      note.ID,
 		Name:    note.Name,
 		Relpath: note.Relpath,
-		Content: normalizeNoteContent(note.Content),
+		Content: normalizeNoteContent(content),
 	}))
 }
 
@@ -118,6 +125,9 @@ func (a *App) handleSearchAppendNote(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := a.Core.AppendToNoteByPath(r.Context(), relpath, text); err != nil {
 		a.serverError(w, r, err)
+		return
+	}
+	if confirmDraftWrite(w, r) {
 		return
 	}
 	http.Redirect(w, r, "/search/note/"+strconv.FormatInt(id, 10), http.StatusSeeOther)

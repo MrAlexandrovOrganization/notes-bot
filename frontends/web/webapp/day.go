@@ -205,6 +205,9 @@ func (a *App) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, r, err)
 		return
 	}
+	if confirmDraftWrite(w, r) {
+		return
+	}
 	a.reloadDayFragment(w, r, date)
 }
 
@@ -290,6 +293,9 @@ func (a *App) handleAppendToNote(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := a.Core.AppendToNote(ctx, date, text); err != nil {
 		a.serverError(w, r, err)
+		return
+	}
+	if confirmDraftWrite(w, r) {
 		return
 	}
 	a.reloadDayFragment(w, r, date)

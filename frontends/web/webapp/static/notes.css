@@ -142,6 +142,7 @@ body.notes-app {
 .notes-task { display: flex; align-items: center; gap: 11px; padding: 8px 13px; min-height: 54px; }
 .notes-task > form:first-child { flex: 1; min-width: 0; }
 .notes-task + .notes-task, .notes-task + details, .notes-copy + details { border-top: 1px solid var(--line); }
+.notes-card > [data-draft-refresh] + details { border-top: 1px solid var(--line); }
 .notes-task-toggle { display: flex; width: 100%; align-items: center; gap: 13px; min-height: 36px; text-align: left; }
 .notes-task-mark { flex: 0 0 21px; height: 21px; border: 1.8px solid var(--accent); border-radius: 50%; color: var(--accent); text-align: center; line-height: 17px; font-size: .85rem; font-weight: 700; }
 .notes-task-completed .notes-task-mark { background: var(--accent); color: var(--surface); }

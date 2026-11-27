@@ -80,5 +80,8 @@ func (a *App) handleBrowseFileAppend(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, r, err)
 		return
 	}
+	if confirmDraftWrite(w, r) {
+		return
+	}
 	http.Redirect(w, r, "/browse/file?path="+url.QueryEscape(relpath), http.StatusSeeOther)
 }
