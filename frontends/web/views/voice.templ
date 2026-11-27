@@ -1,0 +1,27 @@
+package views
+
+templ VoiceComposer(date, path string) {
+	if (date == "") != (path == "") {
+		<div class="voice-composer" data-voice-composer data-date={ date } data-path={ path } hidden>
+			<div class="voice-controls">
+				<button type="button" class="voice-button" data-voice-record aria-label="Записать голосовую" title="Записать голосовую">
+					<svg data-voice-mic viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<rect x="9" y="2.5" width="6" height="13" rx="3"></rect>
+						<path d="M5.5 10.5v2a6.5 6.5 0 0 0 13 0v-2M12 19v2.5"></path>
+					</svg>
+					<svg data-voice-send hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M12 19V5m-6 6 6-6 6 6"></path>
+					</svg>
+				</button>
+				<span data-voice-timer class="voice-timer" role="timer" hidden>0:00</span>
+				<button type="button" class="voice-button voice-cancel" data-voice-cancel aria-label="Отменить запись" title="Отменить запись" hidden>×</button>
+				<button type="button" class="voice-file" data-voice-pick>Выбрать аудио</button>
+				<input type="file" accept="audio/*,.m4a,.mp4,.webm,.ogg,.oga,.opus,.wav,.mp3,.aac,.flac" data-voice-file hidden/>
+			</div>
+			<div class="voice-feedback" aria-live="polite">
+				<p data-voice-message hidden></p>
+				<ul class="voice-jobs" data-voice-jobs hidden></ul>
+			</div>
+		</div>
+	}
+}

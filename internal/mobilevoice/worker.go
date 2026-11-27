@@ -80,7 +80,7 @@ func (w *Worker) step(ctx context.Context) time.Duration {
 	cancelClaim()
 	if err != nil {
 		if ctx.Err() == nil {
-			w.logger.Warn("failed to claim mobile voice job")
+			w.logger.Warn("failed to claim voice job")
 		}
 		return retryAfter
 	}
@@ -96,7 +96,7 @@ func (w *Worker) step(ctx context.Context) time.Duration {
 	saveCtx, cancelSave := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancelSave()
 	if err := w.store.Release(saveCtx, job, delay); err != nil && !errors.Is(err, errLeaseLost) {
-		w.logger.Warn("failed to checkpoint mobile voice job", zap.String("job_id", job.ID))
+		w.logger.Warn("failed to checkpoint voice job", zap.String("job_id", job.ID))
 		return retryAfter
 	}
 	return 0
@@ -113,7 +113,15 @@ func (w *Worker) advance(ctx context.Context, job *Job) time.Duration {
 }
 
 func (w *Worker) submit(ctx context.Context, job *Job) time.Duration {
-	remoteID, _, err := w.whisper.SubmitOnce(ctx, bytes.NewReader(job.Audio), "mp4", "voice", "notes-mobile:"+job.ID)
+	format, identity := "mp4", "notes-mobile:"+job.ID
+	if job.web {
+		format, identity = WebAudioFormat(job.Audio), "notes-web:"+job.ID
+		if format == "" {
+			job.State, job.Error = Failed, invalidRecording
+			return 0
+		}
+	}
+	remoteID, _, err := w.whisper.SubmitOnce(ctx, bytes.NewReader(job.Audio), format, "voice", identity)
 	switch {
 	case status.Code(err) == codes.InvalidArgument:
 		job.State, job.Error = Failed, invalidRecording
@@ -172,6 +180,9 @@ func (w *Worker) deliver(ctx context.Context, job *Job) time.Duration {
 
 func (w *Worker) append(ctx context.Context, job *Job) (bool, error) {
 	operationID := "mobile-voice:" + job.ID
+	if job.web {
+		operationID = "web-voice:" + job.ID
+	}
 	if job.UploadPath != "" {
 		return w.notes.AppendToNoteByPathOnce(ctx, job.UploadPath, job.Transcript, operationID)
 	}

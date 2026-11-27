@@ -129,7 +129,7 @@ func main() {
 			logger.Fatal("voice migration failed")
 		}
 		if err := (&mobilevoice.Store{Pool: voicePool}).Migrate(migrateCtx); err != nil {
-			logger.Fatal("mobile voice migration failed")
+			logger.Fatal("Notes client voice migration failed")
 		}
 		logger.Info("voice migration complete")
 		return

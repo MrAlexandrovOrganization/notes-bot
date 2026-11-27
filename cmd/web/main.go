@@ -99,15 +99,17 @@ func main() {
 	var router http.Handler
 	var voiceDone <-chan struct{}
 	readTimeout := 15 * time.Second
-	if cfg.MobileOnly {
+	if cfg.MobileOnly || os.Getenv("WEB_VOICE_ENABLED") == "true" {
 		var closeVoice func()
-		closeVoice, voiceDone, err = startMobileVoice(ctx, app, coreClient)
+		closeVoice, voiceDone, err = startVoice(ctx, app, coreClient, cfg.MobileOnly)
 		if err != nil {
-			logger.Fatal("failed to start mobile voice", zap.Error(err))
+			logger.Fatal("failed to start voice worker", zap.Error(err))
 		}
 		defer closeVoice()
-		router = app.NewMobileRouter()
 		readTimeout = 2 * time.Minute
+	}
+	if cfg.MobileOnly {
+		router = app.NewMobileRouter()
 	} else {
 		router = app.NewRouter()
 	}
@@ -137,7 +139,7 @@ func main() {
 		select {
 		case <-voiceDone:
 		case <-shutdownCtx.Done():
-			logger.Warn("mobile voice shutdown timed out")
+			logger.Warn("voice worker shutdown timed out")
 		}
 	}
 }

@@ -63,7 +63,7 @@ templ Day(d DayData) {
 		<section class="notes-group">
 			<h2 class="notes-label">Дневник</h2>
 			<div class="notes-card">
-				<div data-draft-refresh="note">
+				<div data-draft-refresh="note" data-voice-note-content>
 					if d.Content == "" {
 						<p class="notes-copy notes-subtle">Пока нет записей</p>
 					} else {
@@ -134,7 +134,9 @@ templ dayEditor(date, action, label, icon string, multiline bool) {
 			<button class="notes-primary" type="submit">Добавить</button>
 			<p class="notes-subtle" data-draft-status aria-live="polite" hidden></p>
 		</form>
-
+		if multiline {
+			@VoiceComposer(date, "")
+		}
 	</details>
 }
 

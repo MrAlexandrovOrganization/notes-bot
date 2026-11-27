@@ -54,6 +54,8 @@ func testStore(t *testing.T) *Store {
 type testTranscriber struct {
 	t          *testing.T
 	upload     Upload
+	format     string
+	requestID  string
 	submits    int
 	checkpoint func()
 }
@@ -62,9 +64,9 @@ func (s *testTranscriber) SubmitOnce(_ context.Context, audio io.Reader, format,
 	b, err := io.ReadAll(audio)
 	require.NoError(s.t, err)
 	require.Equal(s.t, s.upload.Audio, b)
-	require.Equal(s.t, "mp4", format)
+	require.Equal(s.t, s.format, format)
 	require.Equal(s.t, "voice", preset)
-	require.Equal(s.t, "notes-mobile:"+s.upload.ID, identity)
+	require.Equal(s.t, s.requestID, identity)
 	s.submits++
 	if s.submits == 1 {
 		// The backend accepted the upload but the caller missed its reply.
@@ -87,6 +89,7 @@ func (s *testTranscriber) Ack(_ context.Context, jobID string) (bool, error) {
 type testNotes struct {
 	t       *testing.T
 	upload  Upload
+	opID    string
 	written map[string]string
 	calls   int
 }
@@ -103,7 +106,7 @@ func (n *testNotes) AppendToNoteOnce(context.Context, string, string, string) (b
 
 func (n *testNotes) AppendToNoteByPathOnce(_ context.Context, path, text, identity string) (bool, error) {
 	require.Equal(n.t, n.upload.Path, path)
-	require.Equal(n.t, "mobile-voice:"+n.upload.ID, identity)
+	require.Equal(n.t, n.opID, identity)
 	require.Equal(n.t, "Synthetic transcript", text)
 	n.written[identity] = text
 	n.calls++
@@ -153,7 +156,7 @@ func TestDurableVoiceCheckpointsAndReplays(t *testing.T) {
 	require.ErrorIs(t, store.Release(ctx, stale, 0), errLeaseLost)
 	require.NoError(t, store.Release(ctx, job, 0))
 
-	whisper := &testTranscriber{t: t, upload: upload, checkpoint: func() {
+	whisper := &testTranscriber{t: t, upload: upload, format: "mp4", requestID: "notes-mobile:" + upload.ID, checkpoint: func() {
 		var persisted string
 		var hasAudio bool
 		err := store.Pool.QueryRow(ctx, "SELECT transcript, audio IS NOT NULL FROM mobile_voice_jobs WHERE id = $1", upload.ID).Scan(&persisted, &hasAudio)
@@ -161,7 +164,7 @@ func TestDurableVoiceCheckpointsAndReplays(t *testing.T) {
 		require.Equal(t, "Synthetic transcript", persisted)
 		require.False(t, hasAudio)
 	}}
-	notes := &testNotes{t: t, upload: upload, written: make(map[string]string)}
+	notes := &testNotes{t: t, upload: upload, opID: "mobile-voice:" + upload.ID, written: make(map[string]string)}
 	step := func(want string) {
 		// New instance on every step simulates restart and loss of memory state.
 		worker := NewWorker(&Store{Pool: store.Pool}, whisper, notes, zap.NewNop())
@@ -184,4 +187,81 @@ func TestDurableVoiceCheckpointsAndReplays(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, created)
 	require.Equal(t, Saved, s.State)
+}
+
+func TestWebVoiceMigrationLeavesLegacyMobileQueueRunning(t *testing.T) {
+	mobile := testStore(t)
+	ctx := t.Context()
+	_, err := mobile.Pool.Exec(ctx, `CREATE TABLE mobile_voice_schema_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`)
+	require.NoError(t, err)
+	_, err = mobile.Pool.Exec(ctx, sql("migrations/001"))
+	require.NoError(t, err)
+	_, err = mobile.Pool.Exec(ctx, sql("sql/migration_record"))
+	require.NoError(t, err)
+	web := NewWebStore(mobile.Pool)
+	require.Error(t, web.CheckSchema(ctx))
+	legacy := Upload{ID: uuid.NewString(), Path: "Synthetic/mobile.md", Audio: []byte("synthetic MP4")}
+	_, created, err := mobile.Enqueue(ctx, legacy)
+	require.NoError(t, err)
+	require.True(t, created)
+	job, err := mobile.Claim(ctx)
+	require.NoError(t, err)
+	require.Equal(t, legacy.ID, job.ID)
+	job.State, job.RemoteID = Transcribing, "synthetic-legacy-id"
+	require.NoError(t, mobile.Release(ctx, job, 0))
+
+	require.NoError(t, mobile.Migrate(ctx))
+	require.NoError(t, mobile.Migrate(ctx))
+	var legacyVersion int
+	require.NoError(t, mobile.Pool.QueryRow(ctx, "SELECT max(version) FROM mobile_voice_schema_migrations").Scan(&legacyVersion))
+	require.Equal(t, 1, legacyVersion, "older mobile binaries check for exactly version 1")
+	require.NoError(t, web.CheckSchema(ctx))
+	job, err = web.Claim(ctx)
+	require.NoError(t, err)
+	require.Nil(t, job, "web worker must not process existing mobile jobs")
+
+	// Use the same operation UUID to exercise per-source deduplication and
+	// simulate a browser upload whose first response was lost.
+	upload := Upload{ID: legacy.ID, Path: "Synthetic/web.md", Audio: []byte("\x1a\x45\xdf\xa3\x9f\x42\x82\x84webm")}
+	state, created, err := web.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.Equal(t, Queued, state.State)
+	state, created, err = web.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, Queued, state.State)
+	conflict := upload
+	conflict.Audio = append([]byte("\x1a\x45\xdf\xa3"), 'a')
+	_, _, err = web.Enqueue(ctx, conflict)
+	require.ErrorIs(t, err, ErrConflict)
+
+	job, err = mobile.Claim(ctx)
+	require.NoError(t, err)
+	require.Equal(t, legacy.Path, job.UploadPath)
+	require.Equal(t, "synthetic-legacy-id", job.RemoteID)
+	job.State = Saved
+	require.NoError(t, mobile.Release(ctx, job, 0))
+	job, err = mobile.Claim(ctx)
+	require.NoError(t, err)
+	require.Nil(t, job, "legacy mobile claim cannot see the browser's queued recording")
+
+	whisper := &testTranscriber{t: t, upload: upload, format: "webm", requestID: "notes-web:" + upload.ID, checkpoint: func() {}}
+	notes := &testNotes{t: t, upload: upload, opID: "web-voice:" + upload.ID, written: make(map[string]string)}
+	for _, expected := range []string{Queued, Transcribing, Transcribing, Transcribing, Saved} {
+		worker := NewWorker(NewWebStore(mobile.Pool), whisper, notes, zap.NewNop())
+		require.Zero(t, worker.step(ctx))
+		state, err := web.Get(ctx, upload.ID)
+		require.NoError(t, err)
+		require.Equal(t, expected, state.State)
+		_, err = mobile.Pool.Exec(ctx, "UPDATE web_voice_jobs SET next_at = now() WHERE id = $1", upload.ID)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 2, whisper.submits)
+	require.Equal(t, 2, notes.calls)
+	require.Len(t, notes.written, 1)
+	state, created, err = web.Enqueue(ctx, upload)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, Saved, state.State)
 }

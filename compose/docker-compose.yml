@@ -384,14 +384,28 @@ services:
       - LLM_PORT=11434
       - LLM_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - WEB_LISTEN_ADDR=:8090
+      - WEB_VOICE_ENABLED=${WEB_VOICE_ENABLED:-true}
+      - GOMEMLIMIT=128MiB
+      - DB_HOST=notes-bot-postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-notifications}
+      - DB_USER=${DB_USER:-notif}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - WHISPER_GRPC_HOST=${WHISPER_GRPC_HOST:-whisper-ingress}
+      - WHISPER_GRPC_PORT=${WHISPER_GRPC_PORT:-50053}
       - METRICS_PORT=9105
       - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     networks:
       - default
       - caddy-net
       - ollama-net     # shared Ollama LLM service
+      - whisper-net
       - prometheus-net
       - jaeger-net
+    deploy:
+      resources:
+        limits:
+          memory: 192m
     depends_on:
       core:
         condition: service_healthy

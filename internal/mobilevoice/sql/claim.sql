@@ -1,5 +1,5 @@
 WITH selected AS (
-    SELECT id FROM mobile_voice_jobs
+    SELECT id FROM {{jobs}}
     WHERE status IN ('queued', 'transcribing')
         AND next_at <= now()
         AND (lease_until IS NULL OR lease_until <= now())
@@ -7,7 +7,7 @@ WITH selected AS (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-UPDATE mobile_voice_jobs AS job
+UPDATE {{jobs}} AS job
 SET lease_token = $1, lease_until = now() + interval '150 seconds'
 FROM selected
 WHERE job.id = selected.id

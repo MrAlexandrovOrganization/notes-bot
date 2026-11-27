@@ -50,7 +50,7 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
   web:
-    networks: !override [default, caddy-net, prometheus-net, jaeger-net]
+    networks: !override [default, caddy-net, whisper-net, prometheus-net, jaeger-net]
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${NOTES_OTLP_ENDPOINT:?Set the existing trace collector}
   telegram:

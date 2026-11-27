@@ -30,6 +30,7 @@ func (a *App) NewRouter() http.Handler {
 	a.registerBrowseRoutes(protected)
 	a.registerSmartRoutes(protected)
 	a.registerWebMarkdownRoutes(protected)
+	a.registerWebVoiceRoutes(protected)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /mini", a.handleMiniApp)

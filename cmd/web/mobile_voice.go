@@ -13,9 +13,9 @@ import (
 	"notes-bot/internal/voicejobs"
 )
 
-func startMobileVoice(ctx context.Context, app *webapp.App, core *clients.CoreClient) (func(), <-chan struct{}, error) {
+func startVoice(ctx context.Context, app *webapp.App, core *clients.CoreClient, mobileOnly bool) (func(), <-chan struct{}, error) {
 	if os.Getenv("DB_PASSWORD") == "" {
-		return nil, nil, errors.New("DB_PASSWORD is required for mobile voice")
+		return nil, nil, errors.New("DB_PASSWORD is required for voice jobs")
 	}
 	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -26,6 +26,9 @@ func startMobileVoice(ctx context.Context, app *webapp.App, core *clients.CoreCl
 		return nil, nil, err
 	}
 	store := &mobilevoice.Store{Pool: pool}
+	if !mobileOnly {
+		store = mobilevoice.NewWebStore(pool)
+	}
 	if err := store.CheckSchema(dbCtx); err != nil {
 		pool.Close()
 		return nil, nil, err
@@ -33,7 +36,7 @@ func startMobileVoice(ctx context.Context, app *webapp.App, core *clients.CoreCl
 	whisper, err := clients.NewWhisperClient(env.Str("WHISPER_GRPC_HOST", "whisper-ingress"), env.Str("WHISPER_GRPC_PORT", "50053"))
 	if err != nil {
 		pool.Close()
-		return nil, nil, errors.New("failed to configure mobile Transcriber client")
+		return nil, nil, errors.New("failed to configure voice Transcriber client")
 	}
 	app.Voice = store
 	worker := mobilevoice.NewWorker(store, whisper, core, app.Logger)

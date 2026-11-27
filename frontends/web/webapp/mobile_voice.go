@@ -22,12 +22,16 @@ type mobileVoiceStore interface {
 	Get(context.Context, string) (mobilevoice.Status, error)
 }
 
-var errInvalidVoice = errors.New("invalid mobile voice upload")
+var errInvalidVoice = errors.New("invalid voice upload")
 
 func (a *App) registerMobileVoice(mux *http.ServeMux) {
+	a.registerVoice(mux, "/mobile/v1/voice/{id}", false)
+}
+
+func (a *App) registerVoice(mux *http.ServeMux, pattern string, web bool) {
 	// Bound in-flight audio buffers even if several clients retry after a VPN outage.
 	uploadSlot := make(chan struct{}, 1)
-	mux.HandleFunc("PUT /mobile/v1/voice/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT "+pattern, func(w http.ResponseWriter, r *http.Request) {
 		if a.Voice == nil {
 			mobileError(w, http.StatusServiceUnavailable)
 			return
@@ -45,14 +49,14 @@ func (a *App) registerMobileVoice(mux *http.ServeMux) {
 			mobileError(w, http.StatusTooManyRequests)
 			return
 		}
-		a.mobileUploadVoice(w, r, id)
+		a.uploadVoice(w, r, id, web)
 	})
-	mux.HandleFunc("GET /mobile/v1/voice/{id}", a.mobileVoiceStatus)
+	mux.HandleFunc("GET "+pattern, a.voiceStatus)
 }
 
-func (a *App) mobileUploadVoice(w http.ResponseWriter, r *http.Request, id string) {
+func (a *App) uploadVoice(w http.ResponseWriter, r *http.Request, id string, web bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, mobilevoice.MaxAudioBytes+(16<<10))
-	upload, err := readMobileVoice(r, id)
+	upload, err := readVoice(r, id, web)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		var networkErr net.Error
@@ -82,7 +86,7 @@ func (a *App) mobileUploadVoice(w http.ResponseWriter, r *http.Request, id strin
 	}
 }
 
-func (a *App) mobileVoiceStatus(w http.ResponseWriter, r *http.Request) {
+func (a *App) voiceStatus(w http.ResponseWriter, r *http.Request) {
 	if a.Voice == nil {
 		mobileError(w, http.StatusServiceUnavailable)
 		return
@@ -103,7 +107,7 @@ func (a *App) mobileVoiceStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func readMobileVoice(r *http.Request, id string) (mobilevoice.Upload, error) {
+func readVoice(r *http.Request, id string, web bool) (mobilevoice.Upload, error) {
 	var upload = mobilevoice.Upload{ID: id}
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -125,15 +129,17 @@ func readMobileVoice(r *http.Request, id string) (mobilevoice.Upload, error) {
 		seen[name] = true
 		switch name {
 		case "audio":
-			mediaType, _, err := mime.ParseMediaType(part.Header.Get("Content-Type"))
-			if err != nil || mediaType != "audio/mp4" {
-				return upload, errInvalidVoice
+			if !web {
+				mediaType, _, err := mime.ParseMediaType(part.Header.Get("Content-Type"))
+				if err != nil || mediaType != "audio/mp4" {
+					return upload, errInvalidVoice
+				}
 			}
 			data, err := readVoicePart(part, mobilevoice.MaxAudioBytes)
 			if err != nil {
 				return upload, err
 			}
-			if len(data) < 12 || !bytes.Equal(data[4:8], []byte("ftyp")) {
+			if !validVoiceAudio(data, web) {
 				return upload, errInvalidVoice
 			}
 			upload.Audio = data
@@ -167,6 +173,13 @@ func readMobileVoice(r *http.Request, id string) (mobilevoice.Upload, error) {
 		return upload, errInvalidVoice
 	}
 	return upload, nil
+}
+
+func validVoiceAudio(data []byte, web bool) bool {
+	if web {
+		return mobilevoice.WebAudioFormat(data) != ""
+	}
+	return len(data) >= 12 && bytes.Equal(data[4:8], []byte("ftyp"))
 }
 
 func readVoicePart(r io.Reader, limit int64) ([]byte, error) {

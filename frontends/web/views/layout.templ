@@ -13,6 +13,7 @@ templ AppHead(title string) {
 	<link rel="stylesheet" href="/static/notes.css"/>
 	<link rel="stylesheet" href="/static/note-markdown.css"/>
 	<link rel="stylesheet" href="/static/english-tools.css"/>
+	<link rel="stylesheet" href="/static/web-voice.css"/>
 }
 
 templ Page(title string, active string) {
@@ -23,6 +24,7 @@ templ Page(title string, active string) {
 			<script src="/static/htmx.min.js" defer></script>
 			<script src="/static/notes.js" defer></script>
 			<script src="/static/note-drafts.js" defer></script>
+			<script src="/static/web-voice.js" defer></script>
 		</head>
 		<body class="notes-app">
 			<div class="notes-shell">

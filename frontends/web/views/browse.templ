@@ -85,7 +85,7 @@ templ BrowseFile(d BrowseFileData) {
 				</div>
 				<a href={ templ.URL(folderURL(d.FolderURL)) } class="text-sm text-slate-500 hover:underline">⬆ К папке</a>
 			</div>
-			<div data-draft-refresh="note">
+			<div data-draft-refresh="note" data-voice-note-content>
 				@noteMarkdown(d.Content, d.Relpath)
 			</div>
 			<form method="post" action="/browse/file/append" class="flex flex-wrap gap-2" data-note-draft="file">
@@ -102,7 +102,7 @@ templ BrowseFile(d BrowseFileData) {
 				</button>
 				<p class="notes-subtle basis-full" data-draft-status aria-live="polite" hidden></p>
 			</form>
-
+			@VoiceComposer("", d.Relpath)
 		</div>
 	}
 }

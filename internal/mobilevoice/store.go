@@ -1,4 +1,4 @@
-// Package mobilevoice manages audio submitted by the native Notes clients.
+// Package mobilevoice manages durable audio submissions from Notes clients.
 package mobilevoice
 
 import (
@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,9 +57,19 @@ type Job struct {
 	Transcript  string
 	ResultReady bool
 	Lease       string
+	web         bool
 }
 
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct {
+	Pool *pgxpool.Pool
+	web  bool
+}
+
+// NewWebStore uses a separate queue so legacy mobile workers cannot claim
+// browser recordings. Both queues deliver through the same Worker.
+func NewWebStore(pool *pgxpool.Pool) *Store {
+	return &Store{Pool: pool, web: true}
+}
 
 func sql(name string) string {
 	b, err := sqlFiles.ReadFile(name + ".sql")
@@ -66,6 +77,14 @@ func sql(name string) string {
 		panic(err)
 	}
 	return string(b)
+}
+
+func (s *Store) jobSQL(name string) string {
+	table := "mobile_voice_jobs"
+	if s.web {
+		table = "web_voice_jobs"
+	}
+	return strings.ReplaceAll(sql("sql/"+name), "{{jobs}}", pgx.Identifier{table}.Sanitize())
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -96,10 +115,32 @@ func (s *Store) Migrate(ctx context.Context) error {
 	default:
 		return errors.New("unsupported mobile voice schema version")
 	}
+	// Keep the version used by older mobile binaries at 1; they check it
+	// exactly, including on restart during a rolling deployment.
+	var webVersion int
+	if err := tx.QueryRow(ctx, sql("sql/web_migration_version")).Scan(&webVersion); err != nil {
+		return err
+	}
+	switch webVersion {
+	case 0:
+		if _, err := tx.Exec(ctx, sql("migrations/002")); err != nil {
+			return err
+		}
+	case 2:
+	default:
+		return errors.New("unsupported web voice schema version")
+	}
 	return tx.Commit(ctx)
 }
 
 func (s *Store) CheckSchema(ctx context.Context) error {
+	if s.web {
+		var version int
+		if s.Pool.QueryRow(ctx, sql("sql/web_migration_version")).Scan(&version) != nil || version != 2 {
+			return errors.New("web voice schema unavailable; run make migrate-voice")
+		}
+		return nil
+	}
 	var version int
 	if s.Pool.QueryRow(ctx, sql("sql/migration_version")).Scan(&version) != nil || version != 1 {
 		return errors.New("mobile voice schema unavailable; run make migrate-voice")
@@ -122,7 +163,7 @@ func (s *Store) Enqueue(ctx context.Context, upload Upload) (Status, bool, error
 	var result Status
 	var date, path string
 	var storedHash []byte
-	err = tx.QueryRow(ctx, sql("sql/find"), upload.ID).
+	err = tx.QueryRow(ctx, s.jobSQL("find"), upload.ID).
 		Scan(&result.ID, &result.State, &result.Error, &date, &path, &storedHash)
 	switch {
 	case err == nil:
@@ -134,7 +175,7 @@ func (s *Store) Enqueue(ctx context.Context, upload Upload) (Status, bool, error
 		return Status{}, false, err
 	}
 
-	err = tx.QueryRow(ctx, sql("sql/enqueue"), upload.ID, upload.Date, upload.Path, digest[:], upload.Audio).
+	err = tx.QueryRow(ctx, s.jobSQL("enqueue"), upload.ID, upload.Date, upload.Path, digest[:], upload.Audio).
 		Scan(&result.ID, &result.State, &result.Error)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Status{}, false, ErrQueueFull
@@ -147,7 +188,7 @@ func (s *Store) Enqueue(ctx context.Context, upload Upload) (Status, bool, error
 
 func (s *Store) Get(ctx context.Context, id string) (Status, error) {
 	var result Status
-	err := s.Pool.QueryRow(ctx, sql("sql/get"), id).Scan(&result.ID, &result.State, &result.Error)
+	err := s.Pool.QueryRow(ctx, s.jobSQL("get"), id).Scan(&result.ID, &result.State, &result.Error)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -155,8 +196,8 @@ func (s *Store) Get(ctx context.Context, id string) (Status, error) {
 }
 
 func (s *Store) Claim(ctx context.Context) (*Job, error) {
-	job := &Job{Lease: uuid.NewString()}
-	err := s.Pool.QueryRow(ctx, sql("sql/claim"), job.Lease).Scan(
+	job := &Job{Lease: uuid.NewString(), web: s.web}
+	err := s.Pool.QueryRow(ctx, s.jobSQL("claim"), job.Lease).Scan(
 		&job.ID, &job.State, &job.Error, &job.UploadDate, &job.UploadPath,
 		&job.Audio, &job.RemoteID, &job.Transcript, &job.ResultReady)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -167,7 +208,7 @@ func (s *Store) Claim(ctx context.Context) (*Job, error) {
 
 func (s *Store) Release(ctx context.Context, job *Job, delay time.Duration) error {
 	next := pgtype.Interval{Microseconds: delay.Microseconds(), Valid: true}
-	tag, err := s.Pool.Exec(ctx, sql("sql/release"), job.ID, job.Lease,
+	tag, err := s.Pool.Exec(ctx, s.jobSQL("release"), job.ID, job.Lease,
 		job.State, job.RemoteID, job.Transcript, job.Error, job.ResultReady, next)
 	if err == nil && tag.RowsAffected() != 1 {
 		return errLeaseLost
