@@ -20,10 +20,10 @@
         "type": "custom",
         "name": "activity",
         "label": "Календарь",
-        "query": "Текст : characters,Связи : links,Зал : gym",
+        "query": "Оценка : rating,Текст : characters,Связи : links,Зал : gym",
         "current": {
-          "text": "Текст",
-          "value": "characters"
+          "text": "Оценка",
+          "value": "rating"
         },
         "multi": false,
         "includeAll": false
@@ -184,7 +184,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "notes-journal-postgres"
       },
-      "description": "Выбери «Текст», «Связи» или «Зал» в фильтре над дашбордом. Цвет точки меняется от красного к зелёному с ростом объёма. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Зал отмечен зелёным в дату из имени дневной заметки.",
+      "description": "Выбери «Оценка», «Текст», «Связи» или «Зал» в фильтре над дашбордом. Оценки 0–4 красные, 5–7 оранжевые, 8–10 зелёные. Для текста и связей цвет меняется от красного к зелёному с ростом объёма. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Зал отмечен зелёным в дату из имени дневной заметки.",
       "gridPos": {
         "x": 0,
         "y": 21,
@@ -201,7 +201,7 @@
           "format": "table",
           "rawQuery": true,
           "refId": "A",
-          "rawSql": "WITH activity AS (\n    SELECT day, characters AS amount, 'симв.' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'characters'\n    UNION ALL\n    SELECT day, links AS amount, 'связей' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'links'\n    UNION ALL\n    SELECT day, 1 AS amount, 'Зал' AS unit\n    FROM journal.gym\n    WHERE ${activity:sqlstring} = 'gym'\n), dated AS (\n    SELECT day::timestamp AT TIME ZONE 'Europe/Moscow' AS \"time\", amount, unit\n    FROM activity\n    WHERE amount > 0\n)\nSELECT \"time\",\n    CASE unit WHEN 'Зал' THEN unit ELSE concat(amount, ' ', unit) END AS activity,\n    CASE unit\n        WHEN 'симв.' THEN\n            CASE WHEN amount >= 2000 THEN 4 WHEN amount >= 750 THEN 3 WHEN amount >= 200 THEN 2 ELSE 1 END\n        WHEN 'связей' THEN\n            CASE WHEN amount >= 8 THEN 4 WHEN amount >= 4 THEN 3 WHEN amount >= 2 THEN 2 ELSE 1 END\n        ELSE 4\n    END AS intensity\nFROM dated\nWHERE $__timeFilter(\"time\")\nORDER BY \"time\";"
+          "rawSql": "WITH activity AS (\n    SELECT day, rating AS amount, 'Оценка' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'rating' AND rating IS NOT NULL\n    UNION ALL\n    SELECT day, characters AS amount, 'симв.' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'characters'\n    UNION ALL\n    SELECT day, links AS amount, 'связей' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'links'\n    UNION ALL\n    SELECT day, 1 AS amount, 'Зал' AS unit\n    FROM journal.gym\n    WHERE ${activity:sqlstring} = 'gym'\n), dated AS (\n    SELECT day::timestamp AT TIME ZONE 'Europe/Moscow' AS \"time\", amount, unit\n    FROM activity\n    WHERE amount > 0 OR unit = 'Оценка'\n)\nSELECT \"time\",\n    CASE unit\n        WHEN 'Оценка' THEN concat(unit, ' ', amount, '/10')\n        WHEN 'Зал' THEN unit\n        ELSE concat(amount, ' ', unit)\n    END AS activity,\n    -- One calendar palette uses 0–10 for ratings and 11–14 for activity.\n    CASE unit\n        WHEN 'Оценка' THEN amount\n        WHEN 'симв.' THEN\n            CASE WHEN amount >= 2000 THEN 14 WHEN amount >= 750 THEN 13 WHEN amount >= 200 THEN 12 ELSE 11 END\n        WHEN 'связей' THEN\n            CASE WHEN amount >= 8 THEN 14 WHEN amount >= 4 THEN 13 WHEN amount >= 2 THEN 12 ELSE 11 END\n        ELSE 14\n    END AS intensity\nFROM dated\nWHERE $__timeFilter(\"time\")\nORDER BY \"time\";"
         }
       ],
       "options": {
@@ -229,20 +229,44 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "#f35b56",
+                "color": "#d84553",
                 "value": null
               },
               {
-                "color": "#f39243",
-                "value": 2
-              },
-              {
-                "color": "#f4cb55",
+                "color": "#f35b56",
                 "value": 3
               },
               {
+                "color": "#f39243",
+                "value": 5
+              },
+              {
+                "color": "#ffae55",
+                "value": 7
+              },
+              {
                 "color": "#42c87e",
-                "value": 4
+                "value": 8
+              },
+              {
+                "color": "#6be3a0",
+                "value": 10
+              },
+              {
+                "color": "#f35b56",
+                "value": 11
+              },
+              {
+                "color": "#f39243",
+                "value": 12
+              },
+              {
+                "color": "#f4cb55",
+                "value": 13
+              },
+              {
+                "color": "#42c87e",
+                "value": 14
               }
             ]
           }
@@ -568,5 +592,5 @@
       ]
     }
   ],
-  "version": 3
+  "version": 4
 }
