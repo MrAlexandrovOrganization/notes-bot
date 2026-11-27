@@ -17,6 +17,7 @@ import (
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/georeminders/v1"
 	loc "notes-bot/proto/location/v1"
 )
@@ -104,14 +105,34 @@ func (a *App) handleGeoAction(ctx context.Context, b *telego.Bot, q *telego.Call
 		if uc.State != tgstates.StateGeoRepeat || (id != "once" && id != "always" && id != "daily") {
 			return nil
 		}
-		a.updateState(ctx, user, func(u *tgstates.UserContext) { u.State = tgstates.StateGeoRuleConfirm; u.GeoDraft.Repeat = id })
-		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoRuleConfirm(uc.GeoDraft.Title, uc.GeoDraft.Transition, id)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoSave, "geo:saverule"), tgkeyboards.GeoButton(resources.GeoCancel, "geo:list:0")))
+		d := uc.GeoDraft
+		d.Repeat = id
+		if err := a.State.UpdateContext(ctx, user, func(u *tgstates.UserContext) {
+			u.State = tgstates.StateGeoRuleConfirm
+			u.GeoDraft = d
+		}); err != nil {
+			return err
+		}
+		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoRuleConfirm(d.Title, d.Transition, d.Repeat)), geoRuleConfirmKeyboard(d.CreateTask))
+	case "task":
+		if uc.State != tgstates.StateGeoRuleConfirm || (id != "yes" && id != "no") {
+			return nil
+		}
+		d := uc.GeoDraft
+		d.CreateTask = id == "yes"
+		if d.CreateTask && !taskactions.ValidTitle(strings.TrimSpace(d.Title)) {
+			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoTaskTextInvalid), geoRuleConfirmKeyboard(false))
+		}
+		if err := a.State.UpdateContext(ctx, user, func(u *tgstates.UserContext) { u.GeoDraft = d }); err != nil {
+			return err
+		}
+		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoRuleConfirm(d.Title, d.Transition, d.Repeat)), geoRuleConfirmKeyboard(d.CreateTask))
 	case "saverule":
 		if uc.State != tgstates.StateGeoRuleConfirm {
 			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoStale), tgkeyboards.GeoCancel())
 		}
 		d := uc.GeoDraft
-		if _, err := a.Geo.CreateRule(ctx, &pb.CreateRuleRequest{UserId: user, RequestId: d.RequestID, Rule: &pb.Rule{PlaceId: d.PlaceID, Title: d.Title, Transition: d.Transition, Repeat: d.Repeat}}); err != nil {
+		if _, err := a.Geo.CreateRule(ctx, &pb.CreateRuleRequest{UserId: user, RequestId: d.RequestID, Rule: &pb.Rule{PlaceId: d.PlaceID, Title: d.Title, Transition: d.Transition, Repeat: d.Repeat, CreateTask: d.CreateTask}}); err != nil {
 			return err
 		}
 		a.updateState(ctx, user, func(u *tgstates.UserContext) { u.State = tgstates.StateIdle; u.GeoDraft = tgstates.GeoDraft{} })
@@ -146,7 +167,7 @@ func (a *App) handleGeoAction(ctx context.Context, b *telego.Bot, q *telego.Call
 					name = p.Name
 				}
 			}
-			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoRuleCard(r.Title, name, r.Transition, r.Repeat, r.Armed)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoDelete, "geo:delrule:"+id), tgkeyboards.GeoButton(resources.GeoBack, "geo:rules:0")))
+			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoRuleCard(r.Title, name, r.Transition, r.Repeat, r.Armed)+resources.GeoRuleTaskLine(r.CreateTask)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoDelete, "geo:delrule:"+id), tgkeyboards.GeoButton(resources.GeoBack, "geo:rules:0")))
 		}
 		return nil
 	case "delrule":
@@ -163,6 +184,18 @@ func (a *App) handleGeoAction(ctx context.Context, b *telego.Bot, q *telego.Call
 	}
 	return nil
 }
+func geoRuleConfirmKeyboard(createTask bool) *telego.InlineKeyboardMarkup {
+	label, next := resources.CreateTaskDisabled, "yes"
+	if createTask {
+		label, next = resources.CreateTaskEnabled, "no"
+	}
+	return tgkeyboards.GeoKeyboard(
+		tgkeyboards.GeoButton(label, "geo:task:"+next),
+		tgkeyboards.GeoButton(resources.GeoSave, "geo:saverule"),
+		tgkeyboards.GeoButton(resources.GeoCancel, "geo:list:0"),
+	)
+}
+
 func geoStateText(a *App, ctx context.Context, b *telego.Bot, _ *telego.Update, chat, user int64, text string, uc *tgstates.UserContext) {
 	a.handleGeoText(ctx, b, chat, user, text, uc)
 }

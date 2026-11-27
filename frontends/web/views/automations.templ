@@ -12,10 +12,16 @@ type AutomationsData struct {
 	Date       string
 	Tasks      []*clients.Task
 	Rules      []*pb.Rule
-	Executions []string
+	Executions []AutomationExecution
 	Selected   *clients.Task
 	RequestID  string
 	Error      string
+}
+
+type AutomationExecution struct {
+	ID int64
+	Label string
+	CanCancel bool
 }
 
 templ Automations(d AutomationsData) {
@@ -28,13 +34,18 @@ templ Automations(d AutomationsData) {
 				for _, rule := range d.Rules {
 					<div class="border-t border-slate-100 pt-3">
 						<p class="font-medium">{ rule.TaskTitle } — { resources.AutomationStatus(int32(rule.GetTaskStatus().TargetStatus)) }</p>
-						<p>{ rule.GetNotify().Text }</p>
+						if notify := rule.GetNotify(); notify != nil {
+							<p>{ resources.AutomationNotify } — { notify.GetText() }</p>
+						}
+						if task := rule.GetCreateTask(); task != nil {
+							<p>{ resources.AutomationCreateTask } — { task.GetText() }</p>
+						}
 						<p class="text-sm text-slate-500">{ rule.GetTaskStatus().Date } · { fmt.Sprintf("Через %d мин.", rule.DelaySeconds/60) }</p>
 						if !rule.Armed {
 							<p class="text-sm text-slate-500">Уже сработало</p>
 						}
 						<form method="post" action={ fmt.Sprintf("/automations/%d/delete", rule.Id) }>
-							<button class="text-sm text-red-600" type="submit">Удалить и отменить ожидающие уведомления</button>
+							<button class="text-sm text-red-600" type="submit">Удалить и отменить ожидающие действия</button>
 						</form>
 					</div>
 				}
@@ -57,10 +68,15 @@ templ Automations(d AutomationsData) {
 								<option value="2">Выполнена</option><option value="3">Отклонена</option><option value="1">Возвращена к выполнению</option>
 							</select>
 						</label>
-						<label class="block">Уведомление <input name="text" maxlength="500" required class="w-full rounded border px-2 py-1"/></label>
-						<label class="block">Через сколько минут (0 — сразу) <input type="number" name="minutes" min="0" max="43200" value="0" required class="rounded border px-2 py-1"/></label>
+						<label class="block">Подождать минут (0 — сразу) <input type="number" name="minutes" min="0" max="43200" value="0" required class="rounded border px-2 py-1"/></label>
+						<fieldset class="space-y-2">
+							<legend class="font-medium">Действия</legend>
+							<p class="text-sm text-slate-500">{ resources.AutomationNoActions }</p>
+							<label class="block">{ resources.AutomationNotify } <input name="text" maxlength="500" placeholder="Текст уведомления" class="w-full rounded border px-2 py-1"/></label>
+							<label class="block">{ resources.AutomationCreateTask } <input name="task_text" maxlength="500" placeholder="Название задачи" class="w-full rounded border px-2 py-1"/></label>
+						</fieldset>
 						<label class="block"><input type="checkbox" name="repeat" value="yes"/> При каждом таком изменении</label>
-						<p class="text-sm text-slate-500">Правило ждёт следующее изменение. Текущее состояние задачи не запускает уведомление.</p>
+						<p class="text-sm text-slate-500">Правило ждёт следующее изменение. Текущее состояние задачи не запускает правило.</p>
 						<button type="submit" class="rounded bg-slate-900 px-3 py-2 text-white">Сохранить правило</button>
 					</form>
 				} else {
@@ -79,8 +95,15 @@ templ Automations(d AutomationsData) {
 			</section>
 			<section class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
 				<h2 class="font-medium">{ resources.AutomationHistory }</h2>
-				for _, line := range d.Executions {
-					<p class="text-sm">{ line }</p>
+				for _, execution := range d.Executions {
+					<div class="flex items-center justify-between gap-3">
+						<p class="text-sm">{ execution.Label }</p>
+						if execution.CanCancel {
+							<form method="post" action={ fmt.Sprintf("/automations/executions/%d/cancel", execution.ID) }>
+								<button class="text-sm text-red-600" type="submit">{ resources.AutomationCancelExecution }</button>
+							</form>
+						}
+					</div>
 				}
 				if len(d.Executions)==0 {
 					<p>{ resources.AutomationNoHistory }</p>

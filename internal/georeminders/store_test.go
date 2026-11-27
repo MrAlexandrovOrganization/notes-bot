@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/georeminders/v1"
 	loc "notes-bot/proto/location/v1"
 )
@@ -173,4 +174,41 @@ func TestValidationAndOwnership(t *testing.T) {
 	for _, r := range []*pb.Rule{nil, {PlaceId: uuid.NewString(), Title: "", Transition: "entered", Repeat: "once"}, {PlaceId: uuid.NewString(), Title: "test", Transition: "invalid", Repeat: "once"}, {PlaceId: uuid.NewString(), Title: "test", Transition: "entered", Repeat: "once", Timezone: "NoSuch/Zone"}} {
 		require.Error(t, validateRule(r))
 	}
+}
+
+func TestGeofenceCreatesTaskAndDeliveryFromOneTransition(t *testing.T) {
+	s := testStore(t)
+	s.Day = taskactions.Day{TimezoneOffsetHours: 3, StartHour: 7}
+	ctx := t.Context()
+	place := &loc.Place{Id: uuid.NewString(), Name: "Synthetic pharmacy", Version: 1}
+	rule := &pb.Rule{PlaceId: place.Id, Title: "Pick up order", Transition: "entered", Repeat: "once", CreateTask: true}
+	require.NoError(t, validateRule(rule))
+	require.NoError(t, s.Create(ctx, 101, rule, uuid.NewString()))
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, err := s.Pool.Exec(ctx, "UPDATE geo_rules SET created_at=$1", now.Add(-time.Hour))
+	require.NoError(t, err)
+	event := &loc.PlaceEvent{Sequence: 1, PlaceId: place.Id, PlaceVersion: 1, Transition: "entered", OccurredAt: timestamppb.New(now.Add(-time.Minute)), ConfirmedAt: timestamppb.New(now)}
+	feed := &loc.ListEventsResponse{Events: []*loc.PlaceEvent{event}, NextSequence: 1}
+	places := map[string]*loc.Place{place.Id: place}
+	require.NoError(t, s.Apply(ctx, 0, feed, places, now))
+	require.NoError(t, s.Apply(ctx, 0, feed, places, now))
+	rules, err := s.Rules(ctx, 101)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.True(t, rules[0].CreateTask)
+	require.False(t, rules[0].Armed)
+
+	delivery, err := s.Claim(ctx, 101)
+	require.NoError(t, err)
+	require.NotNil(t, delivery)
+	require.NoError(t, s.Complete(ctx, 101, delivery.Id, delivery.LeaseToken, false))
+	task, err := s.TaskQueue().ClaimTask(ctx, 101)
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	require.Equal(t, rule.Title, task.Text)
+	require.Equal(t, s.Day.Date(now), task.Date)
+	require.NoError(t, s.TaskQueue().CompleteTask(ctx, 101, task.ID, task.LeaseToken, true))
+	next, err := s.TaskQueue().ClaimTask(ctx, 101)
+	require.NoError(t, err)
+	require.Nil(t, next)
 }

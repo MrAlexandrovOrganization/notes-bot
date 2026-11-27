@@ -75,11 +75,13 @@ func TestWebAutomationFormAndOwnerScope(t *testing.T) {
 	tracked := request("POST", "/automations/track", url.Values{"date": {"12-Nov-2026"}, "index": {"0"}, "expected": {task.Text}}, true)
 	require.Equal(t, http.StatusSeeOther, tracked.Code)
 	require.True(t, a.Core.(*webAutomationCore).tracked)
-	form := url.Values{"date": {"12-Nov-2026"}, "task_id": {task.ID}, "request_id": {uuid.NewString()}, "status": {"2"}, "text": {"Check report"}, "minutes": {"30"}}
+	form := url.Values{"date": {"12-Nov-2026"}, "task_id": {task.ID}, "request_id": {uuid.NewString()}, "status": {"2"}, "text": {"Check report"}, "task_text": {"File report"}, "minutes": {"30"}}
 	saved := request("POST", "/automations", form, true)
 	require.Equal(t, http.StatusSeeOther, saved.Code)
 	require.EqualValues(t, 101, auto.created.UserId)
 	require.EqualValues(t, 1800, auto.created.Rule.DelaySeconds)
+	require.Equal(t, "Check report", auto.created.Rule.GetNotify().GetText())
+	require.Equal(t, "File report", auto.created.Rule.GetCreateTask().GetText())
 	form.Set("minutes", "-1")
 	require.Equal(t, http.StatusBadRequest, request("POST", "/automations", form, true).Code)
 }

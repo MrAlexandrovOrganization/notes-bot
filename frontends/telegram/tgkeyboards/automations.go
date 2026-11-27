@@ -54,6 +54,14 @@ func AutomationTasks(tasks []tgstates.AutomationChoice, page int) *telego.Inline
 func AutomationStatuses() *telego.InlineKeyboardMarkup {
 	return GeoKeyboard(GeoButton(resources.AutomationCompleted, "automation:status:2"), GeoButton(resources.AutomationRejected, "automation:status:3"), GeoButton(resources.AutomationPending, "automation:status:1"), GeoButton(resources.GeoCancel, "automation:list:0"))
 }
+func AutomationActions() *telego.InlineKeyboardMarkup {
+	return GeoKeyboard(
+		GeoButton(resources.AutomationNotify, "automation:action:notify"),
+		GeoButton(resources.AutomationCreateTask, "automation:action:task"),
+		GeoButton(resources.AutomationBoth, "automation:action:both"),
+		GeoButton(resources.GeoCancel, "automation:list:0"),
+	)
+}
 func AutomationFrequency() *telego.InlineKeyboardMarkup {
 	return GeoKeyboard(GeoButton(resources.AutomationOnce, "automation:repeat:once"), GeoButton(resources.AutomationRepeat, "automation:repeat:always"), GeoButton(resources.GeoCancel, "automation:list:0"))
 }

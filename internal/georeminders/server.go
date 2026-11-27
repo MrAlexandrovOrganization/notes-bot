@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/georeminders/v1"
 	loc "notes-bot/proto/location/v1"
 )
@@ -139,6 +140,9 @@ func validateRule(r *pb.Rule) error {
 	r.Title = strings.TrimSpace(r.Title)
 	if !utf8.ValidString(r.Title) || utf8.RuneCountInString(r.Title) < 1 || utf8.RuneCountInString(r.Title) > 500 {
 		return status.Error(codes.InvalidArgument, "invalid title")
+	}
+	if r.CreateTask && !taskactions.ValidTitle(r.Title) {
+		return status.Error(codes.InvalidArgument, "invalid task title")
 	}
 	if _, err := uuid.Parse(r.PlaceId); err != nil {
 		return status.Error(codes.InvalidArgument, "invalid place id")

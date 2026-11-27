@@ -81,6 +81,19 @@ func validateOperationID(operationID string) error {
 }
 
 func (r *realNoteStore) AppendToNoteOnce(ctx context.Context, date, text, operationID string) error {
+	return r.applyDailyOperation(ctx, date, text, operationID, "", func(_ string, content string) (string, error) {
+		return endWithNewline(content) + text + "\n", nil
+	})
+}
+
+func endWithNewline(content string) string {
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		return content + "\n"
+	}
+	return content
+}
+
+func (r *realNoteStore) applyDailyOperation(ctx context.Context, date, text, operationID, kind string, update func(path, content string) (string, error)) error {
 	if err := validateDate(date); err != nil {
 		return err
 	}
@@ -108,7 +121,7 @@ func (r *realNoteStore) AppendToNoteOnce(ctx context.Context, date, text, operat
 	defer unlockNote()
 
 	keyHash := sha256.Sum256([]byte(operationID))
-	payloadHash := sha256.Sum256([]byte(date + "\x00" + text))
+	payloadHash := sha256.Sum256([]byte(kind + date + "\x00" + text))
 	keyPrefix := fmt.Sprintf("%s%x:", appendMarkerPrefix, keyHash)
 	marker := fmt.Sprintf("%s%x -->", keyPrefix, payloadHash)
 	found, err := findAppendOperation(ctx, filePath, keyPrefix, marker)
@@ -144,11 +157,11 @@ func (r *realNoteStore) AppendToNoteOnce(ctx context.Context, date, text, operat
 	if err != nil {
 		return err
 	}
-	if len(content) > 0 && content[len(content)-1] != '\n' {
-		content = append(content, '\n')
+	updated, err := update(filePath, string(content))
+	if err != nil {
+		return err
 	}
-	content = append(content, []byte(text+"\n"+marker+"\n")...)
-	return writeFileAtomic(filePath, content, info.Mode().Perm())
+	return writeFileAtomic(filePath, []byte(endWithNewline(updated)+marker+"\n"), info.Mode().Perm())
 }
 
 func findAppendOperation(ctx context.Context, filePath, keyPrefix, expectedMarker string) (bool, error) {

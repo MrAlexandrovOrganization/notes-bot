@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"notes-bot/internal/automationevents"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/automation/v1"
 )
 
@@ -154,8 +155,15 @@ func (s *Store) Ingest(ctx context.Context, e *pb.Event, now time.Time) error {
 		if !expiry.After(now) {
 			continue
 		}
-		if _, err = tx.Exec(ctx, query("enqueue"), m.id, e.Source, e.Id, m.user, r.GetNotify().Text, due, expiry); err != nil {
-			return err
+		if notify := r.GetNotify(); notify != nil {
+			if _, err = tx.Exec(ctx, query("enqueue"), m.id, e.Source, e.Id, m.user, notify.Text, due, expiry); err != nil {
+				return err
+			}
+		}
+		if task := r.GetCreateTask(); task != nil {
+			if _, err = tx.Exec(ctx, query("enqueue_task"), m.id, e.Source, e.Id, m.user, task.Text, due, expiry, s.Day.Date(due)); err != nil {
+				return err
+			}
 		}
 		if _, err = tx.Exec(ctx, query("fired"), m.id, at); err != nil {
 			return err
@@ -200,7 +208,7 @@ func (s *Store) Executions(ctx context.Context, user int64) ([]*pb.Execution, er
 		e := new(pb.Execution)
 		var due time.Time
 		var payload []byte
-		if err = rows.Scan(&e.Id, &e.RuleId, &e.Status, &e.Attempts, &due, &payload); err != nil {
+		if err = rows.Scan(&e.Id, &e.RuleId, &e.Status, &e.Attempts, &due, &payload, &e.ActionType); err != nil {
 			return nil, err
 		}
 		rule := new(pb.Rule)
@@ -212,4 +220,8 @@ func (s *Store) Executions(ctx context.Context, user int64) ([]*pb.Execution, er
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) TaskQueue() taskactions.PostgresQueue {
+	return taskactions.PostgresQueue{Pool: s.Pool, ClaimSQL: query("claim_task"), CompleteSQL: query("complete_task"), ExpireSQL: query("expire_task")}
 }

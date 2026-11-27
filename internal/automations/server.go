@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"notes-bot/internal/automationevents"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/automation/v1"
 	notes "notes-bot/proto/notes"
 )
@@ -43,8 +44,8 @@ func safeError(err error) error {
 	return status.Error(codes.Unavailable, "automations temporarily unavailable")
 }
 func validateRule(r *pb.Rule) error {
-	if r == nil || r.GetTaskStatus() == nil || r.GetNotify() == nil {
-		return status.Error(codes.InvalidArgument, "task trigger and notification action required")
+	if r == nil || r.GetTaskStatus() == nil || (r.GetNotify() == nil && r.GetCreateTask() == nil) {
+		return status.Error(codes.InvalidArgument, "task trigger and at least one action required")
 	}
 	t := r.GetTaskStatus()
 	if _, err := time.Parse("02-Jan-2006", t.Date); err != nil {
@@ -56,11 +57,18 @@ func validateRule(r *pb.Rule) error {
 	if !automationevents.ValidStatus(t.TargetStatus) {
 		return status.Error(codes.InvalidArgument, "invalid target status")
 	}
-	text := strings.TrimSpace(r.GetNotify().Text)
-	if !utf8.ValidString(text) || utf8.RuneCountInString(text) < 1 || utf8.RuneCountInString(text) > 500 {
-		return status.Error(codes.InvalidArgument, "invalid notification text")
+	if notify := r.GetNotify(); notify != nil {
+		notify.Text = strings.TrimSpace(notify.Text)
+		if !utf8.ValidString(notify.Text) || notify.Text == "" || utf8.RuneCountInString(notify.Text) > 500 {
+			return status.Error(codes.InvalidArgument, "invalid notification text")
+		}
 	}
-	r.GetNotify().Text = text
+	if task := r.GetCreateTask(); task != nil {
+		task.Text = strings.TrimSpace(task.Text)
+		if !taskactions.ValidTitle(task.Text) {
+			return status.Error(codes.InvalidArgument, "invalid task text")
+		}
+	}
 	if r.DelaySeconds < 0 || r.DelaySeconds > 2592000 {
 		return status.Error(codes.InvalidArgument, "delay must be between zero and thirty days")
 	}
@@ -124,9 +132,29 @@ func (s *Server) ListExecutions(ctx context.Context, r *pb.ListExecutionsRequest
 	if _, err := s.Store.Pool.Exec(ctx, query("expire")); err != nil {
 		return nil, safeError(err)
 	}
+	if _, err := s.Store.Pool.Exec(ctx, query("expire_task")); err != nil {
+		return nil, safeError(err)
+	}
 	out, err := s.Store.Executions(ctx, r.UserId)
 	return &pb.ListExecutionsResponse{Executions: out}, safeError(err)
 }
+func (s *Server) CancelExecution(ctx context.Context, r *pb.CancelExecutionRequest) (*pb.CancelExecutionResponse, error) {
+	if err := s.authorize(r.GetUserId()); err != nil {
+		return nil, err
+	}
+	if r.GetExecutionId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid execution id")
+	}
+	var cancelled bool
+	if err := s.Store.Pool.QueryRow(ctx, query("cancel_execution"), r.ExecutionId, r.UserId).Scan(&cancelled); err != nil {
+		return nil, safeError(err)
+	}
+	if !cancelled {
+		return nil, status.Error(codes.FailedPrecondition, "execution can no longer be cancelled")
+	}
+	return &pb.CancelExecutionResponse{}, nil
+}
+
 func (s *Server) ClaimDelivery(ctx context.Context, r *pb.ClaimDeliveryRequest) (*pb.ClaimDeliveryResponse, error) {
 	if err := s.authorize(r.GetUserId()); err != nil {
 		return nil, err

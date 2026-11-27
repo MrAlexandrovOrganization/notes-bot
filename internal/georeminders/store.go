@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/georeminders/v1"
 	loc "notes-bot/proto/location/v1"
 )
@@ -28,7 +29,10 @@ func query(name string) string {
 	return string(b)
 }
 
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct {
+	Pool *pgxpool.Pool
+	Day  taskactions.Day
+}
 
 func (s *Store) Migrate(ctx context.Context) error {
 	tx, err := s.Pool.Begin(ctx)
@@ -83,7 +87,7 @@ func (s *Store) Create(ctx context.Context, user int64, r *pb.Rule, requestID st
 		return err
 	}
 	var at *time.Time
-	if err = tx.QueryRow(ctx, query("create_rule"), user, r.PlaceId, r.Title, r.Transition, r.Repeat, r.MaxAgeSeconds, r.Timezone, requestID).Scan(&r.Id, &r.Armed, &at); err != nil {
+	if err = tx.QueryRow(ctx, query("create_rule"), user, r.PlaceId, r.Title, r.Transition, r.Repeat, r.MaxAgeSeconds, r.Timezone, requestID, r.CreateTask).Scan(&r.Id, &r.Armed, &at); err != nil {
 		return err
 	}
 	if at != nil {
@@ -101,7 +105,7 @@ func (s *Store) Rules(ctx context.Context, user int64) ([]*pb.Rule, error) {
 	for rows.Next() {
 		r := new(pb.Rule)
 		var at *time.Time
-		if err = rows.Scan(&r.Id, &r.PlaceId, &r.Title, &r.Transition, &r.Repeat, &r.MaxAgeSeconds, &r.Timezone, &r.Armed, &at); err != nil {
+		if err = rows.Scan(&r.Id, &r.PlaceId, &r.Title, &r.Transition, &r.Repeat, &r.MaxAgeSeconds, &r.Timezone, &r.Armed, &at, &r.CreateTask); err != nil {
 			return nil, err
 		}
 		if at != nil {
@@ -145,14 +149,15 @@ func (s *Store) Apply(ctx context.Context, expected int64, feed *loc.ListEventsR
 			return err
 		}
 		type match struct {
-			id, user int64
-			title    string
-			age      int32
+			id, user   int64
+			title      string
+			age        int32
+			createTask bool
 		}
 		var matches []match
 		for rows.Next() {
 			var m match
-			if err = rows.Scan(&m.id, &m.user, &m.title, &m.age); err != nil {
+			if err = rows.Scan(&m.id, &m.user, &m.title, &m.age, &m.createTask); err != nil {
 				rows.Close()
 				return err
 			}
@@ -169,6 +174,11 @@ func (s *Store) Apply(ctx context.Context, expected int64, feed *loc.ListEventsR
 			}
 			if _, err = tx.Exec(ctx, query("enqueue"), m.id, e.Sequence, m.user, m.title, p.Name, e.Transition, expiry); err != nil {
 				return err
+			}
+			if m.createTask {
+				if _, err = tx.Exec(ctx, query("enqueue_task"), m.id, e.Sequence, m.user, m.title, at.Add(24*time.Hour), s.Day.Date(at)); err != nil {
+					return err
+				}
 			}
 			if _, err = tx.Exec(ctx, query("fired"), m.id, at); err != nil {
 				return err
@@ -205,4 +215,8 @@ func (s *Store) Complete(ctx context.Context, user, id int64, token string, succ
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func (s *Store) TaskQueue() taskactions.PostgresQueue {
+	return taskactions.PostgresQueue{Pool: s.Pool, ClaimSQL: query("claim_task"), CompleteSQL: query("complete_task"), ExpireSQL: query("expire_task")}
 }

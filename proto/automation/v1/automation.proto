@@ -15,6 +15,7 @@ service AutomationsService {
   rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
   rpc DeleteRule(DeleteRuleRequest) returns (DeleteRuleResponse);
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse);
+  rpc CancelExecution(CancelExecutionRequest) returns (CancelExecutionResponse);
   rpc ClaimDelivery(ClaimDeliveryRequest) returns (ClaimDeliveryResponse);
   rpc CompleteDelivery(CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
 }
@@ -64,6 +65,9 @@ message TaskTrigger {
 message NotifyAction {
   string text = 1;
 }
+message CreateTaskAction {
+  string text = 1;
+}
 message Rule {
   int64 id = 1;
   oneof trigger {
@@ -76,6 +80,7 @@ message Rule {
   bool repeat = 5;
   bool armed = 6;
   string task_title = 7;
+  CreateTaskAction create_task = 8;
 }
 message CreateRuleRequest {
   int64 user_id = 1;
@@ -103,6 +108,7 @@ message Execution {
   int32 attempts = 4;
   google.protobuf.Timestamp due_at = 5;
   string task_title = 6;
+  string action_type = 7;
 }
 message ListExecutionsRequest {
   int64 user_id = 1;
@@ -110,6 +116,11 @@ message ListExecutionsRequest {
 message ListExecutionsResponse {
   repeated Execution executions = 1;
 }
+message CancelExecutionRequest {
+  int64 user_id = 1;
+  int64 execution_id = 2;
+}
+message CancelExecutionResponse {}
 message Delivery {
   int64 id = 1;
   string lease_token = 2;

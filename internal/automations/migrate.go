@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"notes-bot/internal/taskactions"
 )
 
 //go:embed queries/*.sql migrations/*.sql
@@ -21,7 +23,10 @@ func query(name string) string {
 	return string(b)
 }
 
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct {
+	Pool *pgxpool.Pool
+	Day  taskactions.Day
+}
 
 func (s *Store) Migrate(ctx context.Context) error {
 	tx, err := s.Pool.Begin(ctx)

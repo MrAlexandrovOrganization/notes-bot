@@ -30,6 +30,7 @@ const (
 	GeoDeleteRulePrompt  = "Удалить это напоминание?"
 	GeoRulesEmpty        = "Напоминаний по месту пока нет. Открой место и выбери «Когда приду» или «Когда уйду»."
 	GeoRulesHeader       = "🔔 Напоминания по месту"
+	GeoTaskTextInvalid   = "Для создания задачи нужен текст в одну строку без служебной разметки."
 )
 
 func GeoState(state string) string {
@@ -75,6 +76,13 @@ func GeoRuleLabel(title string, armed bool) string {
 }
 func GeoNotification(title, place, event string) string {
 	return fmt.Sprintf("🔔 %s\n\n📍 %s — %s", title, place, GeoTransition(event))
+}
+
+func GeoRuleTaskLine(createTask bool) string {
+	if createTask {
+		return "\n" + CreateTaskEnabled
+	}
+	return "\n" + CreateTaskDisabled
 }
 
 func GeoRuleCard(title, place, event, repeat string, armed bool) string {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"notes-bot/internal/automations"
 	"notes-bot/internal/georeminders"
 	"notes-bot/internal/grpcutil"
+	"notes-bot/internal/taskactions"
 	"notes-bot/internal/telemetry"
 	"notes-bot/notifications"
 	apb "notes-bot/proto/automation/v1"
@@ -71,7 +73,8 @@ func main() {
 	if err != nil {
 		logger.Fatal("invalid automations configuration")
 	}
-	autoStore := &automations.Store{Pool: pool}
+	actionDay := taskactions.Day{TimezoneOffsetHours: cfg.TimezoneOffsetHours, StartHour: cfg.DayStartHour}
+	autoStore := &automations.Store{Pool: pool, Day: actionDay}
 	if len(os.Args) > 1 && os.Args[1] == "migrate-automations" {
 		migrationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -85,7 +88,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("invalid geofence configuration")
 	}
-	geoStore := &georeminders.Store{Pool: pool}
+	geoStore := &georeminders.Store{Pool: pool, Day: actionDay}
 	if len(os.Args) > 1 && os.Args[1] == "migrate-geo" {
 		migrationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -129,6 +132,18 @@ func main() {
 	}
 
 	grpcServer := grpcutil.NewServer(logger)
+	var actionWorkers sync.WaitGroup
+	var core notespb.NotesServiceClient
+	var events apb.CoreEventsServiceClient
+	if autoEnabled || geoConfig.Address != "" {
+		conn, err := grpcutil.Dial(cfg.CoreGRPCHost, cfg.CoreGRPCPort)
+		if err != nil {
+			logger.Fatal("Core action connection unavailable")
+		}
+		defer conn.Close()
+		core = notespb.NewNotesServiceClient(conn)
+		events = apb.NewCoreEventsServiceClient(conn)
+	}
 	autoDone := make(chan struct{})
 	if autoEnabled {
 		owner, err := strconv.ParseInt(os.Getenv("ROOT_ID"), 10, 64)
@@ -141,12 +156,10 @@ func main() {
 		if err := autoStore.RegisterMetrics(); err != nil {
 			logger.Warn("automation metrics unavailable")
 		}
-		conn, err := grpcutil.Dial(cfg.CoreGRPCHost, cfg.CoreGRPCPort)
-		if err != nil {
-			logger.Fatal("automation Core connection unavailable")
-		}
-		defer conn.Close()
-		autoServer := &automations.Server{Store: autoStore, Owner: owner, Core: notespb.NewNotesServiceClient(conn), Events: apb.NewCoreEventsServiceClient(conn)}
+		autoServer := &automations.Server{Store: autoStore, Owner: owner, Core: core, Events: events}
+		actionWorkers.Go(func() {
+			taskactions.Run(ctx, core, autoStore.TaskQueue(), "automation", owner, func() { logger.Warn("automation task action failed; retry retained") })
+		})
 		apb.RegisterAutomationsServiceServer(grpcServer, autoServer)
 		go func() {
 			defer close(autoDone)
@@ -169,6 +182,9 @@ func main() {
 		}
 		defer conn.Close()
 		geopb.RegisterGeoRemindersServiceServer(grpcServer, geoServer)
+		actionWorkers.Go(func() {
+			taskactions.Run(ctx, core, geoStore.TaskQueue(), "geo", geoConfig.UserID, func() { logger.Warn("geofence task action failed; retry retained") })
+		})
 		go func() {
 			defer close(geoDone)
 			ticker := time.NewTicker(10 * time.Second)
@@ -208,4 +224,5 @@ func main() {
 	<-schedulerDone
 	<-geoDone
 	<-autoDone
+	actionWorkers.Wait()
 }

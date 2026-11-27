@@ -6,17 +6,19 @@ import pb "notes-bot/proto/english/v1"
 type UserState string
 
 const (
-	StateEnglishMenu       UserState = "english_menu"
-	StateEnglishInput      UserState = "english_input"
-	StateEnglishPreview    UserState = "english_preview"
-	StateEnglishClarify    UserState = "english_clarify"
-	StateEnglishReview     UserState = "english_review"
-	StateAutomationTask    UserState = "automation_task"
-	StateAutomationStatus  UserState = "automation_status"
-	StateAutomationText    UserState = "automation_text"
-	StateAutomationDelay   UserState = "automation_delay"
-	StateAutomationRepeat  UserState = "automation_repeat"
-	StateAutomationConfirm UserState = "automation_confirm"
+	StateEnglishMenu        UserState = "english_menu"
+	StateEnglishInput       UserState = "english_input"
+	StateEnglishPreview     UserState = "english_preview"
+	StateEnglishClarify     UserState = "english_clarify"
+	StateEnglishReview      UserState = "english_review"
+	StateAutomationTask     UserState = "automation_task"
+	StateAutomationStatus   UserState = "automation_status"
+	StateAutomationAction   UserState = "automation_action"
+	StateAutomationTaskText UserState = "automation_task_text"
+	StateAutomationText     UserState = "automation_text"
+	StateAutomationDelay    UserState = "automation_delay"
+	StateAutomationRepeat   UserState = "automation_repeat"
+	StateAutomationConfirm  UserState = "automation_confirm"
 
 	StateGeoName                    UserState = "geo_name"
 	StateGeoPoint                   UserState = "geo_point"
@@ -104,6 +106,7 @@ type GeoDraft struct {
 	Title      string  `json:"title"`
 	Transition string  `json:"transition"`
 	Repeat     string  `json:"repeat"`
+	CreateTask bool    `json:"create_task,omitempty"`
 }
 
 // SearchHit is the minimum view of a search hit kept in user context for pagination.
@@ -120,15 +123,17 @@ type AutomationChoice struct {
 	Text  string `json:"text"`
 }
 type AutomationDraft struct {
-	Date         string             `json:"date"`
-	RequestID    string             `json:"request_id"`
-	Choices      []AutomationChoice `json:"choices"`
-	TaskID       string             `json:"task_id"`
-	TaskTitle    string             `json:"task_title"`
-	TargetStatus int32              `json:"target_status"`
-	Text         string             `json:"text"`
-	DelaySeconds int32              `json:"delay_seconds"`
-	Repeat       bool               `json:"repeat"`
+	Date                string             `json:"date"`
+	RequestID           string             `json:"request_id"`
+	Choices             []AutomationChoice `json:"choices"`
+	TaskID              string             `json:"task_id"`
+	TaskTitle           string             `json:"task_title"`
+	TargetStatus        int32              `json:"target_status"`
+	Text                string             `json:"text"`
+	TaskText            string             `json:"task_text,omitempty"`
+	NotifyAndCreateTask bool               `json:"notify_and_create_task,omitempty"`
+	DelaySeconds        int32              `json:"delay_seconds"`
+	Repeat              bool               `json:"repeat"`
 }
 
 // EnglishContext retains input drafts and the current Telegram view.

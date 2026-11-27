@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/resources"
@@ -20,6 +23,7 @@ func (a *App) registerAutomationRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /automations/track", a.handleTrackAutomation)
 	mux.HandleFunc("POST /automations", a.handleCreateAutomation)
 	mux.HandleFunc("POST /automations/{id}/delete", a.handleDeleteAutomation)
+	mux.HandleFunc("POST /automations/executions/{id}/cancel", a.handleCancelAutomationExecution)
 }
 func (a *App) automationForm(w http.ResponseWriter, r *http.Request) bool {
 	if a.Automations == nil {
@@ -63,7 +67,11 @@ func (a *App) handleAutomations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, e := range runs.Executions {
-		data.Executions = append(data.Executions, resources.AutomationExecution(e.TaskTitle, e.Status, e.Attempts, e.DueAt.AsTime().In(time.FixedZone("", a.Cfg.TimezoneOffsetHours*3600)).Format("02.01 15:04")))
+		due := e.DueAt.AsTime().In(time.FixedZone("", a.Cfg.TimezoneOffsetHours*3600)).Format("02.01 15:04")
+		data.Executions = append(data.Executions, views.AutomationExecution{
+			ID: e.Id, Label: resources.AutomationExecution(e.TaskTitle, e.Status, e.ActionType, e.Attempts, due),
+			CanCancel: e.Status == "pending" && e.Attempts == 0,
+		})
 	}
 	if id := r.URL.Query().Get("task"); id != "" {
 		for _, task := range data.Tasks {
@@ -114,13 +122,50 @@ func (a *App) handleCreateAutomation(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	_, err := a.Automations.CreateRule(ctx, &pb.CreateRuleRequest{UserId: a.Cfg.RootID, RequestId: r.FormValue("request_id"), Rule: &pb.Rule{Trigger: &pb.Rule_TaskStatus{TaskStatus: &pb.TaskTrigger{Date: r.FormValue("date"), TaskId: r.FormValue("task_id"), TargetStatus: pb.TaskStatus(state)}}, Action: &pb.Rule_Notify{Notify: &pb.NotifyAction{Text: r.FormValue("text")}}, DelaySeconds: int32(minutes * 60), Repeat: r.FormValue("repeat") == "yes"}})
+	rule := &pb.Rule{
+		Trigger:      &pb.Rule_TaskStatus{TaskStatus: &pb.TaskTrigger{Date: r.FormValue("date"), TaskId: r.FormValue("task_id"), TargetStatus: pb.TaskStatus(state)}},
+		DelaySeconds: int32(minutes * 60), Repeat: r.FormValue("repeat") == "yes",
+	}
+	if text := strings.TrimSpace(r.FormValue("text")); text != "" {
+		rule.Action = &pb.Rule_Notify{Notify: &pb.NotifyAction{Text: text}}
+	}
+	if task := strings.TrimSpace(r.FormValue("task_text")); task != "" {
+		rule.CreateTask = &pb.CreateTaskAction{Text: task}
+	}
+	if rule.Action == nil && rule.CreateTask == nil {
+		http.Error(w, resources.AutomationNoActions, http.StatusBadRequest)
+		return
+	}
+	_, err := a.Automations.CreateRule(ctx, &pb.CreateRuleRequest{UserId: a.Cfg.RootID, RequestId: r.FormValue("request_id"), Rule: rule})
 	if err != nil {
 		http.Error(w, resources.GeoInvalid, http.StatusBadRequest)
 		return
 	}
 	http.Redirect(w, r, "/automations", http.StatusSeeOther)
 }
+func (a *App) handleCancelAutomationExecution(w http.ResponseWriter, r *http.Request) {
+	if !a.automationForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, resources.GeoInvalid, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	_, err = a.Automations.CancelExecution(ctx, &pb.CancelExecutionRequest{UserId: a.Cfg.RootID, ExecutionId: id})
+	if status.Code(err) == codes.FailedPrecondition {
+		http.Error(w, resources.AutomationAlreadyStarted, http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, resources.AutomationUnavailable, http.StatusServiceUnavailable)
+		return
+	}
+	http.Redirect(w, r, "/automations", http.StatusSeeOther)
+}
+
 func (a *App) handleDeleteAutomation(w http.ResponseWriter, r *http.Request) {
 	if !a.automationForm(w, r) {
 		return

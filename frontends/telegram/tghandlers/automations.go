@@ -2,6 +2,7 @@ package tghandlers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -9,12 +10,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mymmrac/telego"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"notes-bot/frontends/telegram/clients"
 	"notes-bot/frontends/telegram/resources"
 	"notes-bot/frontends/telegram/tgfmt"
 	"notes-bot/frontends/telegram/tgkeyboards"
 	"notes-bot/frontends/telegram/tgstates"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/automation/v1"
 )
 
@@ -115,10 +119,29 @@ func (a *App) handleAutomationAction(ctx context.Context, b *telego.Bot, q *tele
 		}
 		d := uc.AutomationDraft
 		d.TargetStatus = int32(n)
-		if err = set(tgstates.StateAutomationText, d); err != nil {
+		if err = set(tgstates.StateAutomationAction, d); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationTextPrompt), tgkeyboards.AutomationCancel())
+		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationActionPrompt), tgkeyboards.AutomationActions())
+	case "action":
+		if uc.State != tgstates.StateAutomationAction {
+			return nil
+		}
+		d := uc.AutomationDraft
+		next, prompt := tgstates.StateAutomationText, resources.AutomationTextPrompt
+		switch arg {
+		case "task":
+			next, prompt = tgstates.StateAutomationTaskText, resources.AutomationTaskTextPrompt
+		case "both":
+			d.NotifyAndCreateTask = true
+		case "notify":
+		default:
+			return nil
+		}
+		if err = set(next, d); err != nil {
+			return err
+		}
+		return replyToCallback(ctx, b, q, tgfmt.Escape(prompt), tgkeyboards.AutomationCancel())
 	case "repeat":
 		if uc.State != tgstates.StateAutomationRepeat || (arg != "once" && arg != "always") {
 			return nil
@@ -128,13 +151,23 @@ func (a *App) handleAutomationAction(ctx context.Context, b *telego.Bot, q *tele
 		if err = set(tgstates.StateAutomationConfirm, d); err != nil {
 			return err
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationConfirm(d.TaskTitle, d.Date, d.TargetStatus, d.DelaySeconds/60, d.Text, d.Repeat)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoSave, "automation:save"), tgkeyboards.GeoButton(resources.GeoCancel, "automation:list:0")))
+		return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationConfirm(d.TaskTitle, d.Date, d.TargetStatus, d.DelaySeconds/60, d.Text, d.TaskText, d.Repeat)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoSave, "automation:save"), tgkeyboards.GeoButton(resources.GeoCancel, "automation:list:0")))
 	case "save":
 		if uc.State != tgstates.StateAutomationConfirm {
 			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.GeoStale), tgkeyboards.AutomationCancel())
 		}
 		d := uc.AutomationDraft
-		_, err := a.Automations.CreateRule(ctx, &pb.CreateRuleRequest{UserId: user, RequestId: d.RequestID, Rule: &pb.Rule{Trigger: &pb.Rule_TaskStatus{TaskStatus: &pb.TaskTrigger{Date: d.Date, TaskId: d.TaskID, TargetStatus: pb.TaskStatus(d.TargetStatus)}}, Action: &pb.Rule_Notify{Notify: &pb.NotifyAction{Text: d.Text}}, DelaySeconds: d.DelaySeconds, Repeat: d.Repeat}})
+		rule := &pb.Rule{
+			Trigger:      &pb.Rule_TaskStatus{TaskStatus: &pb.TaskTrigger{Date: d.Date, TaskId: d.TaskID, TargetStatus: pb.TaskStatus(d.TargetStatus)}},
+			DelaySeconds: d.DelaySeconds, Repeat: d.Repeat,
+		}
+		if d.Text != "" {
+			rule.Action = &pb.Rule_Notify{Notify: &pb.NotifyAction{Text: d.Text}}
+		}
+		if d.TaskText != "" {
+			rule.CreateTask = &pb.CreateTaskAction{Text: d.TaskText}
+		}
+		_, err := a.Automations.CreateRule(ctx, &pb.CreateRuleRequest{UserId: user, RequestId: d.RequestID, Rule: rule})
 		if err != nil {
 			return err
 		}
@@ -152,7 +185,7 @@ func (a *App) handleAutomationAction(ctx context.Context, b *telego.Bot, q *tele
 				continue
 			}
 			t := r.GetTaskStatus()
-			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationConfirm(r.TaskTitle, t.Date, int32(t.TargetStatus), r.DelaySeconds/60, r.GetNotify().Text, r.Repeat)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoDelete, "automation:confirmdelete:"+arg), tgkeyboards.GeoButton(resources.GeoBack, "automation:list:0")))
+			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationConfirm(r.TaskTitle, t.Date, int32(t.TargetStatus), r.DelaySeconds/60, r.GetNotify().GetText(), r.GetCreateTask().GetText(), r.Repeat)), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.GeoDelete, "automation:confirmdelete:"+arg), tgkeyboards.GeoButton(resources.GeoBack, "automation:list:0")))
 		}
 		return nil
 	case "confirmdelete":
@@ -166,20 +199,42 @@ func (a *App) handleAutomationAction(ctx context.Context, b *telego.Bot, q *tele
 			return err
 		}
 		return a.handleAutomationAction(ctx, b, q, user, []string{"automation", "list", "0"})
+	case "cancelrun":
+		id, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil || id <= 0 {
+			return nil
+		}
+		_, err = a.Automations.CancelExecution(ctx, &pb.CancelExecutionRequest{UserId: user, ExecutionId: id})
+		if status.Code(err) == codes.FailedPrecondition {
+			return replyToCallback(ctx, b, q, tgfmt.Escape(resources.AutomationAlreadyStarted), tgkeyboards.GeoKeyboard(tgkeyboards.GeoButton(resources.AutomationHistory, "automation:history")))
+		}
+		if err != nil {
+			return err
+		}
+		return a.handleAutomationAction(ctx, b, q, user, []string{"automation", "history"})
 	case "history":
 		out, err := a.Automations.ListExecutions(ctx, &pb.ListExecutionsRequest{UserId: user})
 		if err != nil {
 			return err
 		}
 		var lines []string
+		var buttons [][]telego.InlineKeyboardButton
 		for _, e := range out.Executions[:min(10, len(out.Executions))] {
-			lines = append(lines, resources.AutomationExecution(e.TaskTitle, e.Status, e.Attempts, e.DueAt.AsTime().In(time.FixedZone("", a.Cfg.TimezoneOffsetHours*3600)).Format("02.01 15:04")))
+			due := e.DueAt.AsTime().In(time.FixedZone("", a.Cfg.TimezoneOffsetHours*3600)).Format("02.01 15:04")
+			line := resources.AutomationExecution(e.TaskTitle, e.Status, e.ActionType, e.Attempts, due)
+			if e.Status == "pending" && e.Attempts == 0 {
+				number := len(buttons) + 1
+				line = fmt.Sprintf("%d. %s", number, line)
+				buttons = append(buttons, tgkeyboards.GeoButton(fmt.Sprintf("%s №%d", resources.AutomationCancelExecution, number), fmt.Sprintf("automation:cancelrun:%d", e.Id)))
+			}
+			lines = append(lines, line)
 		}
 		text := strings.Join(lines, "\n")
 		if text == "" {
 			text = resources.AutomationNoHistory
 		}
-		return replyToCallback(ctx, b, q, tgfmt.Escape(text), tgkeyboards.AutomationCancel())
+		buttons = append(buttons, tgkeyboards.GeoButton(resources.GeoBack, "automation:list:0"))
+		return replyToCallback(ctx, b, q, tgfmt.Escape(text), tgkeyboards.GeoKeyboard(buttons...))
 	}
 	return nil
 }
@@ -192,8 +247,15 @@ func automationStateText(a *App, ctx context.Context, b *telego.Bot, _ *telego.U
 	case tgstates.StateAutomationText:
 		if n := utf8.RuneCountInString(text); n > 0 && n <= 500 {
 			d.Text = text
-			next = tgstates.StateAutomationDelay
-			prompt = resources.AutomationDelayPrompt
+			next, prompt = tgstates.StateAutomationDelay, resources.AutomationDelayPrompt
+			if d.NotifyAndCreateTask {
+				next, prompt = tgstates.StateAutomationTaskText, resources.AutomationTaskTextPrompt
+			}
+		}
+	case tgstates.StateAutomationTaskText:
+		if taskactions.ValidTitle(strings.TrimSpace(text)) {
+			d.TaskText = strings.TrimSpace(text)
+			next, prompt = tgstates.StateAutomationDelay, resources.AutomationDelayPrompt
 		}
 	case tgstates.StateAutomationDelay:
 		n, err := strconv.Atoi(text)

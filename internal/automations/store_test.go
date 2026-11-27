@@ -13,10 +13,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"notes-bot/internal/automationevents"
+	"notes-bot/internal/taskactions"
 	pb "notes-bot/proto/automation/v1"
 )
 
@@ -199,4 +202,60 @@ func TestDelayedActionSurvivesRestartAndExpires(t *testing.T) {
 	history, err := restarted.Executions(ctx, 101)
 	require.NoError(t, err)
 	require.Equal(t, "expired", history[0].Status)
+}
+
+func TestDelayedActionsPersistSeparatelyAndCanBeCancelled(t *testing.T) {
+	s := testStore(t)
+	s.Day = taskactions.Day{TimezoneOffsetHours: 3, StartHour: 7}
+	ctx := t.Context()
+	id := uuid.NewString()
+	rule := taskRule(id, 1800, true)
+	rule.CreateTask = &pb.CreateTaskAction{Text: "Follow up"}
+	require.NoError(t, validateRule(rule))
+	require.NoError(t, s.Create(ctx, 101, uuid.NewString(), rule))
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	event := taskEvent(id, 1, pb.TaskStatus_TASK_STATUS_COMPLETED, now)
+	require.NoError(t, s.Ingest(ctx, event, now))
+	require.NoError(t, s.Ingest(ctx, event, now))
+	restarted := &Store{Pool: s.Pool, Day: s.Day}
+	runs, err := restarted.Executions(ctx, 101)
+	require.NoError(t, err)
+	require.Len(t, runs, 2)
+	require.Equal(t, taskactions.CreateTask, runs[0].ActionType)
+	require.Equal(t, taskactions.Notify, runs[1].ActionType)
+	for _, run := range runs {
+		require.WithinDuration(t, now.Add(30*time.Minute), run.DueAt.AsTime(), time.Microsecond)
+	}
+	task, err := restarted.TaskQueue().ClaimTask(ctx, 101)
+	require.NoError(t, err)
+	require.Nil(t, task)
+
+	server := &Server{Store: restarted, Owner: 101}
+	req := &pb.CancelExecutionRequest{UserId: 202, ExecutionId: runs[1].Id}
+	_, err = server.CancelExecution(ctx, req)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	req.UserId = 101
+	_, err = server.CancelExecution(ctx, req)
+	require.NoError(t, err)
+	_, err = s.Pool.Exec(ctx, "UPDATE automation_task_executions SET due_at=now(),next_attempt_at=now()")
+	require.NoError(t, err)
+	notify, err := restarted.Claim(ctx, 101)
+	require.NoError(t, err)
+	require.Nil(t, notify)
+
+	task, err = restarted.TaskQueue().ClaimTask(ctx, 101)
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	require.Equal(t, "Follow up", task.Text)
+	require.Equal(t, s.Day.Date(now.Add(30*time.Minute)), task.Date)
+	require.ErrorIs(t, restarted.Complete(ctx, 101, task.ID, task.LeaseToken, true), pgx.ErrNoRows)
+	req.ExecutionId = task.ID
+	_, err = server.CancelExecution(ctx, req)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.NoError(t, restarted.TaskQueue().CompleteTask(ctx, 101, task.ID, task.LeaseToken, true))
+	runs, err = restarted.Executions(ctx, 101)
+	require.NoError(t, err)
+	require.Equal(t, "sent", runs[0].Status)
+	require.Equal(t, "cancelled", runs[1].Status)
 }

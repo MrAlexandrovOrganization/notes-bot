@@ -198,3 +198,26 @@ func TestNoteLockCancellation(t *testing.T) {
 	_, err = lockFile(ctx, path)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+func TestAddTaskOnceRetryPreservesTaskAndLogicalDate(t *testing.T) {
+	daily := setupNotesEnv(t)
+	tasks := &realTaskStore{}
+	srv := NewNotesServer(nil, &realNoteStore{}, nil, tasks)
+	req := &pb.AddTaskOnceRequest{Date: "12-Oct-2026", TaskText: "Pick up the order", OperationId: "geo:1"}
+	_, err := srv.AddTaskOnce(t.Context(), req)
+	require.NoError(t, err)
+	require.NoError(t, tasks.SetTaskStatus(t.Context(), req.Date, 0, features.TaskStateCompleted))
+	_, err = srv.AddTaskOnce(t.Context(), req)
+	require.NoError(t, err)
+	content, err := os.ReadFile(filepath.Join(daily, req.Date+".md"))
+	require.NoError(t, err)
+	parsed := features.ParseTasks(t.Context(), string(content))
+	require.Len(t, parsed, 1)
+	require.Equal(t, req.TaskText, parsed[0].Text)
+	require.True(t, parsed[0].Completed())
+
+	_, err = srv.AddTaskOnce(t.Context(), &pb.AddTaskOnceRequest{Date: "13-Oct-2026", TaskText: req.TaskText, OperationId: req.OperationId})
+	require.Equal(t, codes.AlreadyExists, status.Code(err))
+	_, err = os.Stat(filepath.Join(daily, "13-Oct-2026.md"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}

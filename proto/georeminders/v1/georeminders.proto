@@ -46,6 +46,7 @@ message Rule {
   string timezone = 7;
   bool armed = 8;
   google.protobuf.Timestamp last_fired_at = 9;
+  bool create_task = 10;
 }
 message CreateRuleRequest {
   int64 user_id = 1;
