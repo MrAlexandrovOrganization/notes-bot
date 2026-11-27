@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"slices"
 
+	"google.golang.org/protobuf/proto"
+
 	pb "notes-bot/proto/english/v1"
 )
 
@@ -138,7 +140,7 @@ func (s *session) current(cards map[string]*pb.Card) (*pb.ReviewPosition, bool) 
 }
 
 func (s *session) positionAt(cards map[string]*pb.Card, index int) *pb.ReviewPosition {
-	card := cards[s.Queue[index]]
+	card := proto.CloneOf(cards[s.Queue[index]])
 	p := s.Progress[card.Id]
 	en, ru := p.side("en"), p.side("ru")
 	card.Lapses = p.Lapses + en.Lapses + ru.Lapses

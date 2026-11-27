@@ -10,6 +10,17 @@ import (
 	pb "notes-bot/proto/english/v1"
 )
 
+func TestEnglishReviewKeepsCardProgressOutOfNextPreview(t *testing.T) {
+	cards := map[string]*pb.Card{"a": {Id: "a"}, "b": {Id: "b"}}
+	s := session{Seed: "fixed", Round: 2, Queue: []string{"a", "b"}, Progress: map[string]progress{
+		"b": {Lapses: 1},
+	}}
+	require.EqualValues(t, 1, s.positionAt(cards, 1).GetCard().GetLapses())
+	first, _ := s.current(cards)
+	require.Equal(t, "b", first.GetNextPreview().GetId())
+	require.Zero(t, first.GetNextPreview().GetLapses())
+}
+
 func TestEnglishRoundRatingLevelsAndCap(t *testing.T) {
 	s := session{Seed: "fixed-test-seed", Round: 1, Progress: map[string]progress{}}
 	for i, interval := range [][2]int32{{2, 3}, {4, 5}, {7, 9}, {14, 16}, {14, 16}} {
