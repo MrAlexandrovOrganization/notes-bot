@@ -8,7 +8,7 @@ import (
 func TestScanHistory(t *testing.T) {
 	vault := fstest.MapFS{
 		"Daily/01-Jan-2024.md":  {Data: []byte("---\r\nОценка: 0\r\n---\r\n- [x] ЗАЛ [completion:: 2024-01-02] <!-- task -->\r\n- [ ] Зал\r\n---\r\nПривет 🌍\r\n[[Алиса|А]] [[Борис#Данные|Б]] [[Алиса|А]]\r\n![[image.png]]\r\n```text\r\n[[Ошибка]]\r\n```\r\n")},
-		"Daily/02-Jan-2024.md":  {Data: []byte("---\nОценка:\n---\n- [X] зал\n- [-] зал\n- [x] Купить зал\n")},
+		"Daily/02-Jan-2024.md":  {Data: []byte("---\nОценка:\n---\n- [X] зал\n- [x] Зал\n- [-] зал\n- [x] Купить зал\n")},
 		"Daily/03-Jan-2024.md":  {Data: []byte("---\nОценка: 12\n---\n- [-] зал\n- [x] Не зал\n")},
 		"Daily/README.md":       {Data: []byte("no daily date")},
 		"Other/Backlink.md":     {Data: []byte("---\ndate: '[[01-Jan-2024]]'\n---\n[день](../Daily/01-Jan-2024.md)\n")},
@@ -35,8 +35,8 @@ func TestScanHistory(t *testing.T) {
 			t.Fatalf("unexpected rating on %v", day.Date)
 		}
 	}
-	if len(snapshot.GymDays) != 1 || snapshot.GymDays[0].Day() != 2 {
-		t.Fatalf("expected one gym day on January 2, got %v", snapshot.GymDays)
+	if len(snapshot.GymDays) != 2 || snapshot.GymDays[0].Day() != 1 || snapshot.GymDays[1].Day() != 2 {
+		t.Fatalf("expected one gym mark per note on January 1 and 2, got %v", snapshot.GymDays)
 	}
 	if len(snapshot.Meetings) != 1 || snapshot.Meetings[0].Date.Day() != 1 {
 		t.Fatalf("expected one pair on January 1, got %v", snapshot.Meetings)

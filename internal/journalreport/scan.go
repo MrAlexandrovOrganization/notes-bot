@@ -20,7 +20,6 @@ import (
 
 const (
 	dailyLayout = "02-Jan-2006"
-	isoDate     = "2006-01-02"
 	peopleDir   = "Tags/People/"
 )
 
@@ -29,7 +28,6 @@ var (
 	rating      = regexp.MustCompile("(?m)^Оценка:[ \t]*([^\r\n]*)")
 	taskLine    = regexp.MustCompile(`^[-*+]\s+\[([ xX?\-])\]\s*(.*)$`)
 	gymTitle    = regexp.MustCompile(`(?i)^зал[\s.!✅]*$`)
-	completion  = regexp.MustCompile(`\[completion::\s*(\d{4}-\d{2}-\d{2})\s*\]`)
 	htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)
 	obComment   = regexp.MustCompile(`(?s)%%.*?%%`)
 	inlineCode  = regexp.MustCompile("`[^`\n]*`")
@@ -118,7 +116,6 @@ func scan(ctx context.Context, vault fs.FS) (Snapshot, error) {
 	for name := range dates {
 		related[name] = make(map[string]struct{})
 	}
-	gymDays := make(map[time.Time]struct{})
 	for _, name := range files {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
@@ -145,7 +142,9 @@ func scan(ctx context.Context, vault fs.FS) (Snapshot, error) {
 		result.Days = append(result.Days, Day{
 			Date: date, Rating: readRating(header), Characters: diaryCharacters(body),
 		})
-		findGymDays(body, date, gymDays)
+		if hasCompletedGymTask(body) {
+			result.GymDays = append(result.GymDays, date)
+		}
 		result.Meetings = append(result.Meetings, findMeetings(date, targets)...)
 	}
 	days := make(map[time.Time]int, len(dates))
@@ -154,9 +153,6 @@ func scan(ctx context.Context, vault fs.FS) (Snapshot, error) {
 	}
 	for i := range result.Days {
 		result.Days[i].Links = days[result.Days[i].Date]
-	}
-	for date := range gymDays {
-		result.GymDays = append(result.GymDays, date)
 	}
 	return result, nil
 }
@@ -245,24 +241,18 @@ func diaryCharacters(body string) int {
 	return total
 }
 
-func findGymDays(body string, date time.Time, days map[time.Time]struct{}) {
+func hasCompletedGymTask(body string) bool {
 	for line := range strings.Lines(body) {
 		task := taskLine.FindStringSubmatch(strings.TrimSpace(line))
 		if task == nil || !strings.EqualFold(task[1], "x") {
 			continue
 		}
 		title, _, _ := strings.Cut(task[2], "[completion::")
-		if !gymTitle.MatchString(strings.TrimSpace(title)) {
-			continue
+		if gymTitle.MatchString(strings.TrimSpace(title)) {
+			return true
 		}
-		doneDate := date
-		if stamp := completion.FindStringSubmatch(task[2]); stamp != nil {
-			if parsed, err := time.Parse(isoDate, stamp[1]); err == nil {
-				doneDate = parsed
-			}
-		}
-		days[doneDate] = struct{}{}
 	}
+	return false
 }
 
 func (index noteIndex) links(source, content string) map[string]struct{} {

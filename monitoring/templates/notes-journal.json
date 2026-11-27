@@ -39,7 +39,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "notes-journal-postgres"
       },
-      "description": "Оценки от 0 до 10. Пустые оценки пропущены. Ноль — выставленная оценка.",
+      "description": "Линия соединяет выставленные оценки. Красный: 0–4, оранжевый: 5–7, зелёный: 8–10. Дни без оценки пропущены.",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -73,13 +73,104 @@
           "max": 10,
           "decimals": 0,
           "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "showPoints": "always",
+            "pointSize": 4,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "gradientMode": "scheme"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d84553",
+                "value": null
+              },
+              {
+                "color": "#f35b56",
+                "value": 3
+              },
+              {
+                "color": "#f39243",
+                "value": 5
+              },
+              {
+                "color": "#ffae55",
+                "value": 7
+              },
+              {
+                "color": "#42c87e",
+                "value": 8
+              },
+              {
+                "color": "#6be3a0",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Символы по дням",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Количество символов в тексте дневной заметки. Среднее и максимум — за выбранный период по дням с заметкой.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 11
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSqlFile": "characters-daily.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "color": {
             "mode": "fixed",
             "fixedColor": "light-blue"
           },
           "custom": {
-            "drawStyle": "points",
-            "showPoints": "always",
-            "pointSize": 4
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "showPoints": "auto"
           }
         },
         "overrides": []
@@ -93,10 +184,10 @@
         "type": "grafana-postgresql-datasource",
         "uid": "notes-journal-postgres"
       },
-      "description": "Выбери «Текст», «Связи» или «Зал» в фильтре над дашбордом. Чем ярче точка, тем выше значение. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Для зала берётся дата выполнения, при её отсутствии — дата дневной заметки.",
+      "description": "Выбери «Текст», «Связи» или «Зал» в фильтре над дашбордом. Цвет точки меняется от красного к зелёному с ростом объёма. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Зал отмечен зелёным в дату из имени дневной заметки.",
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 21,
         "w": 24,
         "h": 33
       },
@@ -138,19 +229,19 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "#275340",
+                "color": "#f35b56",
                 "value": null
               },
               {
-                "color": "#269060",
+                "color": "#f39243",
                 "value": 2
               },
               {
-                "color": "#29b979",
+                "color": "#f4cb55",
                 "value": 3
               },
               {
-                "color": "#56e8a9",
+                "color": "#42c87e",
                 "value": 4
               }
             ]
@@ -170,7 +261,7 @@
       "description": "Одна точка — день с оценкой. X — символы, Y — оценка дня.",
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 54,
         "w": 12,
         "h": 10
       },
@@ -278,7 +369,7 @@
       "description": "Одна точка — день с оценкой. X — связи, Y — оценка дня.",
       "gridPos": {
         "x": 12,
-        "y": 43,
+        "y": 54,
         "w": 12,
         "h": 10
       },
@@ -386,7 +477,7 @@
       "description": "Коэффициент r по дням с оценкой за выбранный период. Рядом размер выборки. Пустое значение — недостаточно точек или одна из величин постоянна.",
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 64,
         "w": 24,
         "h": 5
       },
@@ -447,7 +538,7 @@
       "description": "Ребро соединяет людей, на карточки которых есть ссылки в одной дневной заметке. Число на ребре — количество таких дней, число на узле — дни с совместным упоминанием этого человека.",
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 69,
         "w": 24,
         "h": 19
       },
@@ -477,5 +568,5 @@
       ]
     }
   ],
-  "version": 2
+  "version": 3
 }
