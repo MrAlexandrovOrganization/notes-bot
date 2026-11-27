@@ -67,7 +67,7 @@ templ Day(d DayData) {
 					if d.Content == "" {
 						<p class="notes-copy notes-subtle">Пока нет записей</p>
 					} else {
-						<div class="notes-copy">{ d.Content }</div>
+						@noteMarkdown(d.Content, "Daily/" + d.Date + ".md")
 					}
 				</div>
 				@dayEditor(d.Date, "/day/append", "Добавить запись", "edit", true)
@@ -134,6 +134,7 @@ templ dayEditor(date, action, label, icon string, multiline bool) {
 			<button class="notes-primary" type="submit">Добавить</button>
 			<p class="notes-subtle" data-draft-status aria-live="polite" hidden></p>
 		</form>
+
 	</details>
 }
 

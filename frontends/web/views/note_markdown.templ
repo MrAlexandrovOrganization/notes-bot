@@ -1,0 +1,14 @@
+package views
+
+import "path"
+
+templ noteMarkdown(content, note string) {
+	if path.Ext(note) == ".md" {
+		<div class="notes-copy notes-markdown">
+			// Only the Markdown renderer's HTML crosses the template escaping boundary.
+			@templ.Raw(renderNoteMarkdown(content, note))
+		</div>
+	} else {
+		<pre class="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">{ content }</pre>
+	}
+}

@@ -157,7 +157,14 @@ func diaryText(content string, tasks []*taskView) string {
 		}
 	}
 	diary := make([]string, 0, len(lines))
+	fence := ""
 	for _, line := range lines {
+		previousFence := fence
+		fence = diaryFence(line, fence)
+		if previousFence != "" || fence != "" || strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t") {
+			diary = append(diary, line)
+			continue
+		}
 		text := strings.TrimSpace(line)
 		if text == "## Дневник" || text == "## Заметки" || text == "## Задачи" {
 			continue
@@ -167,7 +174,27 @@ func diaryText(content string, tasks []*taskView) string {
 		}
 		diary = append(diary, line)
 	}
-	return strings.TrimSpace(strings.Join(diary, "\n"))
+	text := strings.Join(diary, "\n")
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	return strings.Trim(text, "\n")
+}
+
+func diaryFence(line, active string) string {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 || (!strings.HasPrefix(trimmed, "```") && !strings.HasPrefix(trimmed, "~~~")) {
+		return active
+	}
+	info := strings.TrimLeft(trimmed, trimmed[:1])
+	marker := trimmed[:len(trimmed)-len(info)]
+	if active == "" && (marker[0] == '~' || !strings.Contains(info, "`")) {
+		return marker
+	}
+	if active != "" && strings.HasPrefix(marker, active) && strings.TrimSpace(info) == "" {
+		return ""
+	}
+	return active
 }
 
 func (a *App) handleUpdateRating(w http.ResponseWriter, r *http.Request) {
