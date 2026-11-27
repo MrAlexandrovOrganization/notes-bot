@@ -2,6 +2,7 @@ package views
 
 import (
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -9,17 +10,20 @@ import (
 )
 
 type EnglishData struct {
-	Dictionary   bool
-	Hidden       bool
-	Query        string
-	Selection    string
-	Operation    string
-	Message      string
-	Dictionaries []*pb.DictionaryInfo
-	Current      *pb.ReviewPosition
-	Round        []*pb.ReviewPosition
-	Words        []*pb.Card
+	Dictionary           bool
+	Hidden               bool
+	Query                string
+	Selection            string
+	Operation            string
+	PreparationOperation string
+	Message              string
+	Dictionaries         []*pb.DictionaryInfo
+	Current              *pb.ReviewPosition
+	Round                []*pb.ReviewPosition
+	Words                []*pb.Card
 }
+
+var englishHintLetter = regexp.MustCompile(`\p{L}\p{M}*`)
 
 func (d EnglishData) scopes() []string {
 	if d.Selection == "" || d.Selection == "all" {
@@ -63,8 +67,18 @@ templ English(d EnglishData) {
 	@Page("Английский", "english") {
 		<h1 class="notes-title">Английский</h1>
 		<nav class="notes-segment" aria-label="Режим английского">
-			<a href={ englishURL(d.scopes(), false, false) } if !d.Dictionary { aria-current="page" }>Повторение</a>
-			<a href={ englishURL(d.scopes(), true, false) } if d.Dictionary { aria-current="page" }>Словарь</a>
+			<a
+				href={ englishURL(d.scopes(), false, false) }
+				if !d.Dictionary {
+					aria-current="page"
+				}
+			>Повторение</a>
+			<a
+				href={ englishURL(d.scopes(), true, false) }
+				if d.Dictionary {
+					aria-current="page"
+				}
+			>Словарь</a>
 		</nav>
 		<details class="notes-card mt-3">
 			<summary class="notes-row notes-accent">{ d.scopeTitle() }</summary>
@@ -101,12 +115,19 @@ templ englishReview(d EnglishData) {
 	if position.GetPromptLanguage() == "ru" {
 		{{ prompt, answer, instruction = card.GetSource(), card.GetEnglish(), "Вспомни по-английски" }}
 	}
+	{{ hint := englishHintLetter.FindString(answer) }}
 	<section class="notes-card notes-review" data-english-review data-scope={ d.Selection }>
 		<div data-review-card hidden?={ card == nil }>
 			<p class="notes-subtle" data-review-position>{ "Круг " + strconv.FormatInt(position.GetRound(), 10) + " · Карточка " + strconv.Itoa(int(position.GetPosition())) + " из " + strconv.Itoa(int(position.GetRoundSize())) }</p>
 			<progress aria-label="Прогресс круга" value={ strconv.Itoa(int(position.GetPosition())) } max={ strconv.Itoa(int(max(1, position.GetRoundSize()))) }></progress>
 			<p class="notes-subtle mt-4" data-review-instruction>{ instruction }</p>
 			<h2 data-review-prompt>{ prompt }</h2>
+			<div class="notes-review-hint-slot">
+				<details class="notes-review-hint" data-review-hint hidden?={ hint == "" }>
+					<summary class="notes-accent" aria-controls="review-hint-letter">Подсказка</summary>
+					<span id="review-hint-letter" class="notes-accent" data-review-hint-letter>{ hint }</span>
+				</details>
+			</div>
 			<div id="review-answer" class="notes-answer">
 				<h2 class="notes-accent" data-review-answer>{ answer }</h2>
 				<p data-review-detail="explanation" hidden?={ card.GetExplanation() == "" }>{ card.GetExplanation() }</p>
@@ -114,7 +135,7 @@ templ englishReview(d EnglishData) {
 				<p data-review-detail="context" class="notes-subtle" hidden?={ card.GetContext() == "" }>{ card.GetContext() }</p>
 			</div>
 			<div class="notes-review-actions">
-				<details class="notes-review-reveal">
+				<details class="notes-review-reveal" data-review-reveal>
 					<summary class="notes-primary notes-review-action" aria-controls="review-answer">Показать ответ</summary>
 					<form method="post" action="/english/grade" class="notes-grades">
 						@englishFields(d)
@@ -147,7 +168,8 @@ templ englishDictionary(d EnglishData) {
 	</form>
 	if !d.Hidden {
 		<details class="notes-card notes-group">
-			<summary class="notes-row notes-action">@Icon("plus") Добавить слово</summary>
+			<summary class="notes-row notes-action">@Icon("plus")
+Добавить слово</summary>
 			<form action="/english/words" method="post" class="notes-form">
 				@englishFields(d)
 				<input name="q" type="hidden" value={ d.Query }/>
@@ -158,6 +180,10 @@ templ englishDictionary(d EnglishData) {
 				<input id="word-translation" name="source" required maxlength="600"/>
 				<button class="notes-primary" type="submit">Сохранить</button>
 			</form>
+		</details>
+		<details class="notes-card notes-group">
+			<summary class="notes-row notes-action">Подготовить карточку</summary>
+			@englishPreparationInput(EnglishPreparationData{Dictionary: d, Operation: d.PreparationOperation})
 		</details>
 	}
 	<div class="notes-card notes-group">

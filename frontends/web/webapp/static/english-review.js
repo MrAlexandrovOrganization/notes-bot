@@ -8,7 +8,9 @@
   const cardPanel = review.querySelector("[data-review-card]");
   const empty = review.querySelector("[data-review-empty]");
   const status = review.querySelector("[data-review-status]");
-  const reveal = cardPanel.querySelector("details");
+  const reveal = cardPanel.querySelector("[data-review-reveal]");
+  const hint = cardPanel.querySelector("[data-review-hint]");
+  const hintLetter = hint.querySelector("[data-review-hint-letter]");
   const showAnswer = reveal.querySelector("summary");
   showAnswer.addEventListener("click", (event) => {
     if (event.detail === 0) {
@@ -88,14 +90,20 @@
     cardPanel.querySelector("[data-review-instruction]").textContent =
       russianFirst ? "Вспомни по-английски" : "Вспомни по-русски";
     cardPanel.querySelector("[data-review-prompt]").textContent = russianFirst ? card.source : card.english;
-    cardPanel.querySelector("[data-review-answer]").textContent = russianFirst ? card.english : card.source;
+    const answer = (russianFirst ? card.english : card.source) ?? "";
+    cardPanel.querySelector("[data-review-answer]").textContent = answer;
+    hintLetter.textContent = answer.match(/\p{L}\p{M}*/u)?.[0] ?? "";
+    hint.hidden = !hintLetter.textContent;
     for (const detail of cardPanel.querySelectorAll("[data-review-detail]")) {
       detail.textContent = card[detail.dataset.reviewDetail] ?? "";
       detail.hidden = !detail.textContent;
     }
     const changed = tokens[0].value !== current.token;
     for (const token of tokens) token.value = current.token;
-    if (changed) reveal.open = false;
+    if (changed) {
+      reveal.open = false;
+      hint.open = false;
+    }
     if (focus) showAnswer.focus({ preventScroll: true });
   }
 

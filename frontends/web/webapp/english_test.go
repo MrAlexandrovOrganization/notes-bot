@@ -19,7 +19,7 @@ func TestWebEnglishReviewUsesSameQueue(t *testing.T) {
 	next := strings.Repeat("b", 64)
 	fake := &mobileEnglishClient{
 		current: &pb.ReviewPosition{
-			Card:  &pb.Card{English: "cliff", Source: "утёс"},
+			Card:  &pb.Card{English: "… cliff", Source: "утёс"},
 			Token: token, Round: 2, Position: 1, RoundSize: 2, PromptLanguage: "ru",
 		},
 		next: &pb.ReviewPosition{
@@ -38,6 +38,8 @@ func TestWebEnglishReviewUsesSameQueue(t *testing.T) {
 	require.Contains(t, w.Body.String(), "утёс")
 	require.Contains(t, w.Body.String(), "Фильм")
 	require.Contains(t, w.Body.String(), "Показать ответ")
+	require.Contains(t, w.Body.String(), "Подсказка")
+	require.Contains(t, w.Body.String(), `data-review-hint-letter>c</span>`)
 	require.Contains(t, w.Body.String(), "Разделы Notes")
 	require.Contains(t, w.Body.String(), `"token":"`+next+`"`)
 	require.Contains(t, w.Body.String(), `мечта \u003c/script\u003e`)

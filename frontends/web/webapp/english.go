@@ -20,6 +20,8 @@ func (a *App) registerEnglishRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /english/round", a.handleEnglishRound)
 	mux.HandleFunc("POST /english/grade", a.handleEnglishGrade)
 	mux.HandleFunc("POST /english/words", a.handleEnglishWord)
+	mux.HandleFunc("POST /english/words/prepare", a.handleEnglishPrepare)
+	mux.HandleFunc("POST /english/words/confirm", a.handleEnglishConfirm)
 	mux.HandleFunc("POST /english/visibility", a.handleEnglishVisibility)
 }
 
@@ -44,6 +46,7 @@ func (a *App) handleEnglish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if d.Dictionary {
+		d.PreparationOperation = uuid.NewString()
 		response, err := a.English.ListCards(r.Context(), &pb.ListCardsRequest{
 			IncludeProgress: true, DictionaryId: d.Selection, HiddenOnly: d.Hidden,
 		})
@@ -120,7 +123,7 @@ func (a *App) parseEnglishForm(w http.ResponseWriter, r *http.Request) bool {
 		http.Error(w, "Словарь временно недоступен", http.StatusServiceUnavailable)
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Некорректная форма", http.StatusBadRequest)
 		return false
@@ -163,14 +166,23 @@ func (a *App) handleEnglishWord(w http.ResponseWriter, r *http.Request) {
 		englishRedirect(w, r, true, status.Error(codes.InvalidArgument, "incomplete card"))
 		return
 	}
-	date, err := a.Core.GetTodayDate(r.Context())
-	if err == nil {
-		_, err = a.English.SaveCard(r.Context(), &pb.SaveCardRequest{
-			OperationId: "web:" + id.String(),
-			Card:        &pb.Card{Kind: "word", English: english, Source: source, Date: date},
-		})
-	}
+	err = a.saveEnglishWord(r, id, &pb.Card{Kind: "word", English: english, Source: source})
 	englishRedirect(w, r, true, err)
+}
+
+func (a *App) saveEnglishWord(r *http.Request, id uuid.UUID, card *pb.Card) error {
+	if card.Date == "" {
+		date, err := a.Core.GetTodayDate(r.Context())
+		if err != nil {
+			return err
+		}
+		card.Date = date
+	}
+	_, err := a.English.SaveCard(r.Context(), &pb.SaveCardRequest{
+		OperationId: "web:" + id.String(),
+		Card:        card,
+	})
+	return err
 }
 
 func (a *App) handleEnglishVisibility(w http.ResponseWriter, r *http.Request) {

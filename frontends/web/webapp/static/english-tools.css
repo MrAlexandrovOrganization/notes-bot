@@ -1,0 +1,15 @@
+.notes-review-hint-slot {
+  height: 2.75rem;
+}
+.notes-review-hint > summary {
+  display: inline-grid;
+  min-height: 2.75rem;
+  padding-inline: 0.7rem;
+  place-items: center;
+}
+.notes-review-hint > span {
+  font-weight: 700;
+}
+[data-review-card]:has(.notes-review-reveal[open]) .notes-review-hint {
+  visibility: hidden;
+}

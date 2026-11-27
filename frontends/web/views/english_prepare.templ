@@ -1,0 +1,78 @@
+package views
+
+import (
+	"net/url"
+
+	pb "notes-bot/proto/english/v1"
+)
+
+type EnglishPreparationData struct {
+	Dictionary  EnglishData
+	Operation   string
+	Input       string
+	Instruction string
+	Question    string
+	Message     string
+	Card        *pb.Card
+}
+
+func (d EnglishPreparationData) dictionaryURL() templ.SafeURL {
+	values := url.Values{"view": {"dictionary"}, "scope": d.Dictionary.scopes()}
+	if d.Dictionary.Hidden {
+		values.Set("hidden", "1")
+	}
+	if d.Dictionary.Query != "" {
+		values.Set("q", d.Dictionary.Query)
+	}
+	return templ.URL("/english?" + values.Encode())
+}
+
+templ EnglishPreparation(d EnglishPreparationData) {
+	@Page("Подготовить карточку", "english") {
+		<h1 class="notes-title">Подготовить карточку</h1>
+		<a class="notes-accent" href={ d.dictionaryURL() }>К словарю</a>
+		@ErrorBanner(d.Message)
+		<section class="notes-card notes-group">
+			if d.Card == nil {
+				@englishPreparationInput(d)
+			} else {
+				<form action="/english/words/confirm" method="post" class="notes-form">
+					@englishPreparationFields(d)
+					<input type="hidden" name="date" value={ d.Card.GetDate() }/>
+					<label for="prepared-english">Слово по-английски</label>
+					<input id="prepared-english" name="english" value={ d.Card.GetEnglish() } required maxlength="600"/>
+					<label for="prepared-source">Перевод на русский</label>
+					<input id="prepared-source" name="source" value={ d.Card.GetSource() } required maxlength="600"/>
+					<label for="prepared-example">Пример</label>
+					<input id="prepared-example" name="example" value={ d.Card.GetExample() } maxlength="600"/>
+					<button class="notes-primary" type="submit" name="confirm" value="1">Подтвердить и сохранить</button>
+				</form>
+			}
+		</section>
+	}
+}
+
+templ englishPreparationInput(d EnglishPreparationData) {
+	<form action="/english/words/prepare" method="post" class="notes-form">
+		@englishPreparationFields(d)
+		<label for="prepare-input">Слово или выражение</label>
+		<input id="prepare-input" name="input" value={ d.Input } required maxlength="600"/>
+		if d.Question != "" || d.Instruction != "" {
+			<label for="prepare-instruction">
+				if d.Question == "" {
+					Уточнение
+				} else {
+					{ d.Question }
+				}
+			</label>
+			<input id="prepare-instruction" name="instruction" value={ d.Instruction } maxlength="600"/>
+		}
+		<button class="notes-primary" type="submit">Подготовить</button>
+	</form>
+}
+
+templ englishPreparationFields(d EnglishPreparationData) {
+	@englishFields(d.Dictionary)
+	<input name="q" type="hidden" value={ d.Dictionary.Query }/>
+	<input name="operation" type="hidden" value={ d.Operation }/>
+}
