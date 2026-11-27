@@ -1,0 +1,478 @@
+{
+  "uid": "notes-journal",
+  "title": "Notes · Дневник",
+  "schemaVersion": 41,
+  "tags": [
+    "notes-bot",
+    "дневник"
+  ],
+  "editable": true,
+  "timezone": "Europe/Moscow",
+  "weekStart": "monday",
+  "refresh": "",
+  "time": {
+    "from": "now-3y/d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "custom",
+        "name": "activity",
+        "label": "Календарь",
+        "query": "Текст : characters,Связи : links,Зал : gym",
+        "current": {
+          "text": "Текст",
+          "value": "characters"
+        },
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Оценка дня",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Оценки от 0 до 10. Пустые оценки пропущены. Ноль — выставленная оценка.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSqlFile": "ratings.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 10,
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-blue"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "showPoints": "always",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Календарь активности",
+      "type": "marcusolsson-calendar-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Выбери «Текст», «Связи» или «Зал» в фильтре над дашбордом. Чем ярче точка, тем выше значение. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Для зала берётся дата выполнения, при её отсутствии — дата дневной заметки.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 33
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "calendar.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "defaultView": "year",
+        "views": [
+          "year",
+          "month",
+          "week"
+        ],
+        "dateFormat": "inherit",
+        "timeRangeType": "default",
+        "timeField": "time",
+        "textField": "activity",
+        "colors": "thresholds",
+        "colorField": "intensity",
+        "displayFields": [
+          "text"
+        ],
+        "showEventTooltip": true,
+        "showMonthTime": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#275340",
+                "value": null
+              },
+              {
+                "color": "#269060",
+                "value": 2
+              },
+              {
+                "color": "#29b979",
+                "value": 3
+              },
+              {
+                "color": "#56e8a9",
+                "value": 4
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Оценка и количество символов",
+      "type": "xychart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Одна точка — день с оценкой. X — символы, Y — оценка дня.",
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "characters.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "mapping": "manual",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Символы"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Оценка"
+              }
+            },
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-blue"
+          },
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "show": "points",
+            "fillOpacity": 45,
+            "pointSize": {
+              "fixed": 5
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Символы"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Символы"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Оценка"
+            },
+            "properties": [
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Оценка"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "title": "Оценка и количество связанных заметок",
+      "type": "xychart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Одна точка — день с оценкой. X — связи, Y — оценка дня.",
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "links.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "mapping": "manual",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Связи"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Оценка"
+              }
+            },
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-purple"
+          },
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "show": "points",
+            "fillOpacity": 45,
+            "pointSize": {
+              "fixed": 5
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Связи"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Связи"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Оценка"
+            },
+            "properties": [
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Оценка"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "title": "Корреляция Пирсона",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Коэффициент r по дням с оценкой за выбранный период. Рядом размер выборки. Пустое значение — недостаточно точек или одна из величин постоянна.",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "correlations.sql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "noValue": "—"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Дней с оценкой"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "title": "Люди в дневнике",
+      "type": "nodeGraph",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Ребро соединяет людей, на карточки которых есть ссылки в одной дневной заметке. Число на ребре — количество таких дней, число на узле — дни с совместным упоминанием этого человека.",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "people-nodes.sql",
+          "refId": "nodes"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSqlFile": "people-edges.sql",
+          "refId": "edges"
+        }
+      ]
+    }
+  ]
+}

@@ -42,6 +42,12 @@
     },
     {
       "kind": "dashboards",
+      "file": "monitoring/grafana-dashboards/notes-journal.json",
+      "destination": "notes-bot/notes-journal.json",
+      "location": "central"
+    },
+    {
+      "kind": "dashboards",
       "file": "monitoring/grafana-dashboards/location.json",
       "destination": "Location/location.json",
       "location": "central",

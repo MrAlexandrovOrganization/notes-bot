@@ -1,0 +1,18 @@
+apiVersion: 1
+datasources:
+  - name: Notes Journal
+    uid: notes-journal-postgres
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: 100.64.0.5:15435
+    user: journal_grafana
+    jsonData:
+      database: journal
+      sslmode: disable
+      postgresVersion: 1600
+      maxOpenConns: 3
+      maxIdleConns: 1
+      connMaxLifetime: 60
+    secureJsonData:
+      password: '${NOTES_JOURNAL_GRAFANA_PASSWORD}'
+    editable: false

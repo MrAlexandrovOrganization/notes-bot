@@ -12,3 +12,7 @@ english-reporting-check:
 format: monitoring-dashboard
 check: monitoring-check english-reporting-check
 monitoring-register: monitoring-check
+
+.PHONY: migrate-journal
+migrate-journal: assert-active
+	$(DOCKER_COMPOSE) exec -T postgres-english psql -X -v ON_ERROR_STOP=1 -U journal_writer -d journal < ops/journal/001.sql

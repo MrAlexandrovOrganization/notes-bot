@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DASHBOARDS = ("location", "location-zones", "location-context", "notes-english")
+DASHBOARDS = ("location", "location-zones", "location-context", "notes-english", "notes-journal")
 
 
 def build(name):

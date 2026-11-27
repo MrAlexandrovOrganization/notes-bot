@@ -13,6 +13,7 @@ import (
 	"notes-bot/core"
 	"notes-bot/internal/automationevents"
 	"notes-bot/internal/grpcutil"
+	"notes-bot/internal/journalreport"
 	"notes-bot/internal/telemetry"
 	apb "notes-bot/proto/automation/v1"
 	pb "notes-bot/proto/notes"
@@ -32,7 +33,7 @@ func main() {
 		port = "50051"
 	}
 
-	core.GetConfig(ctx)
+	cfg := core.GetConfig(ctx)
 
 	if automationsEnabled {
 		if err := core.PrepareTaskEvents(context.Background()); err != nil {
@@ -84,6 +85,9 @@ func main() {
 	}()
 
 	go notesServer.LoadHistoricalRatings(ctx)
+	if dsn := os.Getenv("JOURNAL_DB_DSN"); dsn != "" {
+		go journalreport.Run(ctx, cfg.NotesDir, dsn, logger)
+	}
 
 	<-ctx.Done()
 	logger.Info("shutting down gracefully...")

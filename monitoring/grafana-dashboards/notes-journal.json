@@ -1,0 +1,478 @@
+{
+  "uid": "notes-journal",
+  "title": "Notes · Дневник",
+  "schemaVersion": 41,
+  "tags": [
+    "notes-bot",
+    "дневник"
+  ],
+  "editable": true,
+  "timezone": "Europe/Moscow",
+  "weekStart": "monday",
+  "refresh": "",
+  "time": {
+    "from": "now-3y/d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "custom",
+        "name": "activity",
+        "label": "Календарь",
+        "query": "Текст : characters,Связи : links,Зал : gym",
+        "current": {
+          "text": "Текст",
+          "value": "characters"
+        },
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Оценка дня",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Оценки от 0 до 10. Пустые оценки пропущены. Ноль — выставленная оценка.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT day::timestamp AT TIME ZONE 'Europe/Moscow' AS \"time\", rating AS \"Оценка\"\nFROM journal.daily\nWHERE rating IS NOT NULL AND $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\nORDER BY day;"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 10,
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-blue"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "showPoints": "always",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Календарь активности",
+      "type": "marcusolsson-calendar-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Выбери «Текст», «Связи» или «Зал» в фильтре над дашбордом. Чем ярче точка, тем выше значение. Связи — уникальные заметки со ссылкой из дневной заметки или на неё. Для зала берётся дата выполнения, при её отсутствии — дата дневной заметки.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 33
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "WITH activity AS (\n    SELECT day, characters AS amount, 'симв.' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'characters'\n    UNION ALL\n    SELECT day, links AS amount, 'связей' AS unit\n    FROM journal.daily\n    WHERE ${activity:sqlstring} = 'links'\n    UNION ALL\n    SELECT day, 1 AS amount, 'Зал' AS unit\n    FROM journal.gym\n    WHERE ${activity:sqlstring} = 'gym'\n), dated AS (\n    SELECT day::timestamp AT TIME ZONE 'Europe/Moscow' AS \"time\", amount, unit\n    FROM activity\n    WHERE amount > 0\n)\nSELECT \"time\",\n    CASE unit WHEN 'Зал' THEN unit ELSE concat(amount, ' ', unit) END AS activity,\n    CASE unit\n        WHEN 'симв.' THEN\n            CASE WHEN amount >= 2000 THEN 4 WHEN amount >= 750 THEN 3 WHEN amount >= 200 THEN 2 ELSE 1 END\n        WHEN 'связей' THEN\n            CASE WHEN amount >= 8 THEN 4 WHEN amount >= 4 THEN 3 WHEN amount >= 2 THEN 2 ELSE 1 END\n        ELSE 4\n    END AS intensity\nFROM dated\nWHERE $__timeFilter(\"time\")\nORDER BY \"time\";"
+        }
+      ],
+      "options": {
+        "defaultView": "year",
+        "views": [
+          "year",
+          "month",
+          "week"
+        ],
+        "dateFormat": "inherit",
+        "timeRangeType": "default",
+        "timeField": "time",
+        "textField": "activity",
+        "colors": "thresholds",
+        "colorField": "intensity",
+        "displayFields": [
+          "text"
+        ],
+        "showEventTooltip": true,
+        "showMonthTime": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#275340",
+                "value": null
+              },
+              {
+                "color": "#269060",
+                "value": 2
+              },
+              {
+                "color": "#29b979",
+                "value": 3
+              },
+              {
+                "color": "#56e8a9",
+                "value": 4
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Оценка и количество символов",
+      "type": "xychart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Одна точка — день с оценкой. X — символы, Y — оценка дня.",
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT characters AS \"Символы\", rating AS \"Оценка\", day::text AS \"Дата\"\nFROM journal.daily\nWHERE rating IS NOT NULL AND $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\nORDER BY day;"
+        }
+      ],
+      "options": {
+        "mapping": "manual",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Символы"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Оценка"
+              }
+            },
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-blue"
+          },
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "show": "points",
+            "fillOpacity": 45,
+            "pointSize": {
+              "fixed": 5
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Символы"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Символы"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Оценка"
+            },
+            "properties": [
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Оценка"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "title": "Оценка и количество связанных заметок",
+      "type": "xychart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Одна точка — день с оценкой. X — связи, Y — оценка дня.",
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT links AS \"Связи\", rating AS \"Оценка\", day::text AS \"Дата\"\nFROM journal.daily\nWHERE rating IS NOT NULL AND $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\nORDER BY day;"
+        }
+      ],
+      "options": {
+        "mapping": "manual",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Связи"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Оценка"
+              }
+            },
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-purple"
+          },
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "show": "points",
+            "fillOpacity": 45,
+            "pointSize": {
+              "fixed": 5
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Связи"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Связи"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Оценка"
+            },
+            "properties": [
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Оценка"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "title": "Корреляция Пирсона",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Коэффициент r по дням с оценкой за выбранный период. Рядом размер выборки. Пустое значение — недостаточно точек или одна из величин постоянна.",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT count(*) AS \"Дней с оценкой\",\n       round(corr(rating, characters)::numeric, 2) AS \"Оценка и символы\",\n       round(corr(rating, links)::numeric, 2) AS \"Оценка и связи\"\nFROM journal.daily\nWHERE rating IS NOT NULL AND $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow');"
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "noValue": "—"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Дней с оценкой"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "title": "Люди в дневнике",
+      "type": "nodeGraph",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "notes-journal-postgres"
+      },
+      "description": "Ребро соединяет людей, на карточки которых есть ссылки в одной дневной заметке. Число на ребре — количество таких дней, число на узле — дни с совместным упоминанием этого человека.",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "nodes",
+          "rawSql": "WITH people AS (\n    SELECT first_id AS id, first_name AS title, day\n    FROM journal.people_pairs\n    WHERE $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\n    UNION ALL\n    SELECT second_id AS id, second_name AS title, day\n    FROM journal.people_pairs\n    WHERE $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\n)\nSELECT id, max(title) AS title, count(DISTINCT day) AS mainstat\nFROM people\nGROUP BY id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "notes-journal-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "edges",
+          "rawSql": "SELECT first_id || '-' || second_id AS id,\n       first_id AS source,\n       second_id AS target,\n       count(*) AS mainstat,\n       least(1 + ln(count(*)::double precision), 6) AS thickness\nFROM journal.people_pairs\nWHERE $__timeFilter(day::timestamp AT TIME ZONE 'Europe/Moscow')\nGROUP BY first_id, second_id;"
+        }
+      ]
+    }
+  ]
+}
