@@ -30,6 +30,7 @@ const (
 
 type queue interface {
 	Claim(context.Context) (*Job, error)
+	IsFront(context.Context, *Job) (bool, error)
 	Release(context.Context, *Job, time.Duration) error
 }
 
@@ -154,6 +155,15 @@ func (w *Worker) poll(ctx context.Context, job *Job) time.Duration {
 }
 
 func (w *Worker) deliver(ctx context.Context, job *Job) time.Duration {
+	if job.Error == "" {
+		front, err := w.store.IsFront(ctx, job)
+		if err != nil {
+			return retryAfter
+		}
+		if !front {
+			return pollAfter
+		}
+	}
 	// Only acknowledge after the result is in Notes PostgreSQL. A previous Ack
 	// may have succeeded, and Transcriber may already have deleted the result.
 	ack, err := w.whisper.Ack(ctx, job.RemoteID)

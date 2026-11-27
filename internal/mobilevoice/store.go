@@ -130,10 +130,27 @@ func (s *Store) Migrate(ctx context.Context) error {
 	default:
 		return errors.New("unsupported web voice schema version")
 	}
+	var orderVersion int
+	if err := tx.QueryRow(ctx, sql("sql/order_migration_version")).Scan(&orderVersion); err != nil {
+		return err
+	}
+	switch orderVersion {
+	case 0:
+		if _, err := tx.Exec(ctx, sql("migrations/003")); err != nil {
+			return err
+		}
+	case 3:
+	default:
+		return errors.New("unsupported voice delivery order schema version")
+	}
 	return tx.Commit(ctx)
 }
 
 func (s *Store) CheckSchema(ctx context.Context) error {
+	var orderVersion int
+	if s.Pool.QueryRow(ctx, sql("sql/order_migration_version")).Scan(&orderVersion) != nil || orderVersion != 3 {
+		return errors.New("voice delivery order schema unavailable; run make migrate-voice")
+	}
 	if s.web {
 		var version int
 		if s.Pool.QueryRow(ctx, sql("sql/web_migration_version")).Scan(&version) != nil || version != 2 {
@@ -204,6 +221,12 @@ func (s *Store) Claim(ctx context.Context) (*Job, error) {
 		return nil, nil
 	}
 	return job, err
+}
+
+func (s *Store) IsFront(ctx context.Context, job *Job) (bool, error) {
+	var front bool
+	err := s.Pool.QueryRow(ctx, s.jobSQL("is_front"), job.ID, job.Lease).Scan(&front)
+	return front, err
 }
 
 func (s *Store) Release(ctx context.Context, job *Job, delay time.Duration) error {

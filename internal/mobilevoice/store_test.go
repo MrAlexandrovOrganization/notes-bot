@@ -265,3 +265,95 @@ func TestWebVoiceMigrationLeavesLegacyMobileQueueRunning(t *testing.T) {
 	require.False(t, created)
 	require.Equal(t, Saved, state.State)
 }
+
+type orderedTranscriber struct {
+	results map[string]*clients.JobResult
+}
+
+func (*orderedTranscriber) SubmitOnce(_ context.Context, _ io.Reader, _, _, identity string) (string, int, error) {
+	return identity, 1, nil
+}
+
+func (s *orderedTranscriber) GetStatus(_ context.Context, id string) (*clients.JobResult, error) {
+	return s.results[id], nil
+}
+
+func (*orderedTranscriber) Ack(context.Context, string) (bool, error) { return true, nil }
+
+type orderedNotes struct {
+	written []string
+}
+
+func (*orderedNotes) EnsureNote(context.Context, string) (bool, error) { return true, nil }
+
+func (n *orderedNotes) AppendToNoteOnce(_ context.Context, _, text, _ string) (bool, error) {
+	n.written = append(n.written, text)
+	return true, nil
+}
+
+func (n *orderedNotes) AppendToNoteByPathOnce(ctx context.Context, path, text, id string) (bool, error) {
+	return n.AppendToNoteOnce(ctx, path, text, id)
+}
+
+func TestVoiceDeliveryKeepsArrivalOrderAcrossTranscriptionSpeedsAndQueues(t *testing.T) {
+	mobile := testStore(t)
+	ctx := t.Context()
+	require.NoError(t, mobile.Migrate(ctx))
+	web := NewWebStore(mobile.Pool)
+
+	long := Upload{ID: uuid.NewString(), Date: "27-Nov-2026", Audio: []byte("synthetic MP4")}
+	short := Upload{ID: uuid.NewString(), Path: "Daily/27-Nov-2026.md", Audio: []byte("\x1a\x45\xdf\xa3\x9f\x42\x82\x84webm")}
+	other := Upload{ID: uuid.NewString(), Path: "Synthetic/unrelated.md", Audio: short.Audio}
+	_, _, err := mobile.Enqueue(ctx, long)
+	require.NoError(t, err)
+	_, _, err = web.Enqueue(ctx, short)
+	require.NoError(t, err)
+	_, _, err = web.Enqueue(ctx, other)
+	require.NoError(t, err)
+	// A replay after a lost receipt must preserve the original order.
+	_, created, err := mobile.Enqueue(ctx, long)
+	require.NoError(t, err)
+	require.False(t, created)
+
+	results := &orderedTranscriber{results: map[string]*clients.JobResult{
+		"notes-mobile:" + long.ID: {Status: pb.JobStatus_RUNNING},
+		"notes-web:" + short.ID:   {Status: pb.JobStatus_DONE, Text: "short"},
+		"notes-web:" + other.ID:   {Status: pb.JobStatus_DONE, Text: "unrelated"},
+	}}
+	notes := &orderedNotes{}
+	step := func(store *Store, upload Upload, state string, ready bool) {
+		t.Helper()
+		// Control which job is due to simulate arbitrary worker timing and restarts.
+		table := "mobile_voice_jobs"
+		if store.web {
+			table = "web_voice_jobs"
+		}
+		_, err := store.Pool.Exec(ctx, "UPDATE "+table+
+			" SET next_at = CASE WHEN id = $1 THEN now() ELSE now() + interval '1 hour' END", upload.ID)
+		require.NoError(t, err)
+		job, err := store.Claim(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, job)
+		require.Equal(t, upload.ID, job.ID)
+		delay := NewWorker(store, results, notes, zap.NewNop()).advance(ctx, job)
+		require.NoError(t, store.Release(ctx, job, delay))
+		require.Equal(t, state, job.State)
+		require.Equal(t, ready, job.ResultReady)
+	}
+	step(mobile, long, Transcribing, false)
+	step(mobile, long, Transcribing, false)
+	step(web, short, Transcribing, false)
+	step(web, short, Transcribing, true)
+	step(web, short, Transcribing, true)
+	require.Empty(t, notes.written, "fast transcription must wait for the first recording")
+	step(web, other, Transcribing, false)
+	step(web, other, Transcribing, true)
+	step(web, other, Saved, true)
+	require.Equal(t, []string{"unrelated"}, notes.written)
+
+	results.results["notes-mobile:"+long.ID] = &clients.JobResult{Status: pb.JobStatus_DONE, Text: "long"}
+	step(mobile, long, Transcribing, true)
+	step(mobile, long, Saved, true)
+	step(web, short, Saved, true)
+	require.Equal(t, []string{"unrelated", "long", "short"}, notes.written)
+}

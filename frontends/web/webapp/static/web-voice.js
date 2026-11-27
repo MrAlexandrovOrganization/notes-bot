@@ -66,6 +66,11 @@
     });
   }
 
+  async function orderedJobs() {
+    const stored = await withJobs("readonly", (store) => store.getAll());
+    return stored.sort((first, second) => (first.createdOrder || 0) - (second.createdOrder || 0));
+  }
+
   function destination(composer) {
     return { date: composer.dataset.date, path: composer.dataset.path };
   }
@@ -147,7 +152,17 @@
     }
     try {
       const job = { ...destination(composer), id: newID(), blob, status: "local" };
-      await withJobs("readwrite", (store) => store.add(job));
+      await withJobs("readwrite", (store) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+          // Allocate the order in the same transaction as the audio, across tabs.
+          job.createdOrder = request.result.reduce(
+            (next, older) => Math.max(next, (older.createdOrder || 0) + 1), Date.now(),
+          );
+          store.add(job);
+        };
+        return request;
+      });
       jobs.push(job);
       showMessage(composer, "");
       void processJobs();
@@ -184,7 +199,7 @@
         if (["saved", "failed"].includes(current.status)) return current;
         return { ...current, blob: undefined, status: data.status, error: data.error || "" };
       });
-      return;
+      return true;
     }
 
     const errors = {
@@ -199,15 +214,16 @@
           ? current
           : { ...current, status: "failed", error: errors[response.status] }
       ));
-      return;
+      return true;
     }
     if (response.type === "opaqueredirect" || response.status === 401 || response.status === 403) {
       queueMessages.set(job.id, "Войдите в Notes, чтобы продолжить отправку и расшифровку.");
-      return;
+      return false;
     }
     queueMessages.set(job.id, "Сервер временно не принимает аудио. Повторим отправку.");
     const delay = Number(response.headers.get("Retry-After")) || 10;
     retryAfter.set(job.id, Date.now() + delay * 1000);
+    return false;
   }
 
   async function refreshSavedNote(job) {
@@ -233,23 +249,30 @@
     }
     working = true;
     try {
-      jobs = await withJobs("readonly", (store) => store.getAll());
+      jobs = await orderedJobs();
       paintAll();
+      let awaitingUpload = false;
       for (const job of jobs) {
         if (job.status === "saved") {
           await refreshSavedNote(job).catch(() => {});
           continue;
         }
-        if (job.status !== "local" && !activeStatuses.has(job.status)) continue;
-        if ((retryAfter.get(job.id) || 0) > Date.now()) continue;
+        const local = job.status === "local";
+        if (local ? awaitingUpload : !activeStatuses.has(job.status)) continue;
+        if ((retryAfter.get(job.id) || 0) > Date.now()) {
+          if (local) awaitingUpload = true;
+          continue;
+        }
         retryAfter.delete(job.id);
         try {
-          await updateFromServer(job);
+          const received = await updateFromServer(job);
+          if (local) awaitingUpload = !received;
         } catch {
+          if (local) awaitingUpload = true;
           queueMessages.set(job.id, "Нет связи с Notes. Продолжим после подключения.");
         }
       }
-      jobs = await withJobs("readonly", (store) => store.getAll());
+      jobs = await orderedJobs();
       paintAll();
     } catch {
       document.querySelectorAll(composerSelector).forEach((composer) => {
