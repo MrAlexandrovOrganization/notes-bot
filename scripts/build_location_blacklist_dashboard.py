@@ -2,6 +2,7 @@
 """Build Grafana dashboards from their templates and SQL sources."""
 
 import argparse
+import copy
 import json
 from pathlib import Path
 
@@ -24,6 +25,33 @@ def build(name):
             variable["query"] = sql(filename)
             variable["definition"] = variable["query"]
     for panel in dashboard["panels"]:
+        route_config = panel.pop("routeGeneration", None)
+        if route_config is not None:
+            layers, targets = [], []
+            variants = (
+                ("JKLM", " · со всеми точками", 0.25, "TRUE"),
+                ("EFGH", " · со скрытыми вне блэклиста", 0.5,
+                 "(NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))"),
+                ("ABCD", "", 1, "NOT hidden"),
+            )
+            for refs, suffix, opacity, condition in variants:
+                for profile, ref in zip(route_config["profiles"], refs):
+                    source = profile["source"]
+                    if source not in {"android", "ios", "telegram-bot", "unknown"}:
+                        raise ValueError("Unknown route source")
+                    layer = copy.deepcopy(route_config["routeLayer"])
+                    layer["name"] = profile["name"] + suffix
+                    layer["filterData"]["options"] = ref
+                    layer["config"]["style"]["color"]["fixed"] = profile["color"]
+                    layer["config"]["style"]["opacity"] = opacity
+                    layers.append(layer)
+                    target = copy.deepcopy(route_config["routeTarget"])
+                    target["refId"] = ref
+                    target.pop("rawSqlFile", None)
+                    target["rawSql"] = sql("route-source.sql").replace("__SOURCE__", source).replace("__CONDITION__", condition)
+                    targets.append(target)
+            panel["options"]["layers"] = layers + panel["options"]["layers"]
+            panel["targets"] = targets + panel["targets"]
         for target in panel.get("targets", []):
             filename = target.pop("rawSqlFile", None)
             if filename is not None:

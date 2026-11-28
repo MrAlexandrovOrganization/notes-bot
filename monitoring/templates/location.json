@@ -34,7 +34,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Маршруты видимых точек и полупрозрачные маршруты с добавлением скрытых вне блэклиста. Наведите на маркер для информации о точке.",
+      "description": "Маршруты видимых точек, со скрытыми вне блэклиста и со всеми точками. Наведите на маркер для информации о точке.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -127,214 +127,6 @@
         "layers": [
           {
             "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "dark-green"
-                },
-                "lineWidth": 2,
-                "opacity": 0.5,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "E"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Android · со скрытыми вне блэклиста",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "blue"
-                },
-                "lineWidth": 2,
-                "opacity": 0.5,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "F"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "iPhone · со скрытыми вне блэклиста",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "orange"
-                },
-                "lineWidth": 2,
-                "opacity": 0.5,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "G"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Telegram · со скрытыми вне блэклиста",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "gray"
-                },
-                "lineWidth": 2,
-                "opacity": 0.5,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "H"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Неизвестный · со скрытыми вне блэклиста",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "dark-green"
-                },
-                "lineWidth": 2,
-                "opacity": 1,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "A"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Android",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "blue"
-                },
-                "lineWidth": 2,
-                "opacity": 1,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "B"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "iPhone",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "orange"
-                },
-                "lineWidth": 2,
-                "opacity": 1,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "C"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Telegram",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
-              "arrow": 1,
-              "style": {
-                "color": {
-                  "fixed": "gray"
-                },
-                "lineWidth": 2,
-                "opacity": 1,
-                "size": {
-                  "fixed": 5
-                }
-              }
-            },
-            "filterData": {
-              "id": "byRefId",
-              "options": "D"
-            },
-            "location": {
-              "mode": "auto"
-            },
-            "name": "Неизвестный",
-            "opacity": 1,
-            "tooltip": true,
-            "type": "route"
-          },
-          {
-            "config": {
               "showLegend": false,
               "style": {
                 "color": {
@@ -403,94 +195,6 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "refId": "A",
-          "rawSqlFile": "route-android.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "B",
-          "rawSqlFile": "route-ios.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "C",
-          "rawSqlFile": "route-telegram-bot.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "D",
-          "rawSqlFile": "route-unknown.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "E",
-          "rawSqlFile": "route-android-with-hidden.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "F",
-          "rawSqlFile": "route-ios-with-hidden.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "G",
-          "rawSqlFile": "route-telegram-bot-with-hidden.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "refId": "H",
-          "rawSqlFile": "route-unknown-with-hidden.sql"
-        },
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "eftexe5xy5hxca"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
           "refId": "I",
           "sql": {
             "columns": [
@@ -514,7 +218,67 @@
         }
       ],
       "title": "Route",
-      "type": "geomap"
+      "type": "geomap",
+      "routeGeneration": {
+        "profiles": [
+          {
+            "source": "android",
+            "name": "Android",
+            "color": "dark-green"
+          },
+          {
+            "source": "ios",
+            "name": "iPhone",
+            "color": "blue"
+          },
+          {
+            "source": "telegram-bot",
+            "name": "Telegram",
+            "color": "orange"
+          },
+          {
+            "source": "unknown",
+            "name": "Неизвестный",
+            "color": "gray"
+          }
+        ],
+        "routeLayer": {
+          "config": {
+            "arrow": 1,
+            "style": {
+              "color": {
+                "fixed": "dark-green"
+              },
+              "lineWidth": 2,
+              "opacity": 1,
+              "size": {
+                "fixed": 5
+              }
+            }
+          },
+          "filterData": {
+            "id": "byRefId",
+            "options": "A"
+          },
+          "location": {
+            "mode": "auto"
+          },
+          "name": "Android",
+          "opacity": 1,
+          "tooltip": true,
+          "type": "route"
+        },
+        "routeTarget": {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A"
+        }
+      }
     },
     {
       "datasource": {

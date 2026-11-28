@@ -34,7 +34,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Маршруты видимых точек и полупрозрачные маршруты с добавлением скрытых вне блэклиста. Наведите на маркер для информации о точке.",
+      "description": "Маршруты видимых точек, со скрытыми вне блэклиста и со всеми точками. Наведите на маркер для информации о точке.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -125,6 +125,110 @@
           "showZoom": true
         },
         "layers": [
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "dark-green"
+                },
+                "lineWidth": 2,
+                "opacity": 0.25,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "J"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Android · со всеми точками",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "blue"
+                },
+                "lineWidth": 2,
+                "opacity": 0.25,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "K"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "iPhone · со всеми точками",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "lineWidth": 2,
+                "opacity": 0.25,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "L"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Telegram · со всеми точками",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "gray"
+                },
+                "lineWidth": 2,
+                "opacity": 0.25,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "M"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Неизвестный · со всеми точками",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
           {
             "config": {
               "arrow": 1,
@@ -403,8 +507,8 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "refId": "A",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "refId": "J",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE TRUE\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -414,8 +518,8 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "refId": "B",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "refId": "K",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE TRUE\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -425,8 +529,8 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "refId": "C",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "refId": "L",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE TRUE\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -436,8 +540,8 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "refId": "D",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source\nFROM locations\nWHERE NOT hidden\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "refId": "M",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE TRUE\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -448,7 +552,7 @@
           "format": "table",
           "rawQuery": true,
           "refId": "E",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source,\n  hidden,\n  quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -459,7 +563,7 @@
           "format": "table",
           "rawQuery": true,
           "refId": "F",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source,\n  hidden,\n  quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -470,7 +574,7 @@
           "format": "table",
           "rawQuery": true,
           "refId": "G",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source,\n  hidden,\n  quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -481,7 +585,51 @@
           "format": "table",
           "rawQuery": true,
           "refId": "H",
-          "rawSql": "SELECT\n  recorded_at AS \"time\",\n  id,\n  latitude,\n  longitude,\n  accuracy,\n  date,\n  source::text AS source,\n  hidden,\n  quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE NOT hidden\n  AND source = 'android'\n  AND 'android' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE NOT hidden\n  AND source = 'ios'\n  AND 'ios' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "C",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE NOT hidden\n  AND source = 'telegram-bot'\n  AND 'telegram-bot' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "D",
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, hidden, quality_reason\nFROM locations\nWHERE NOT hidden\n  AND source = 'unknown'\n  AND 'unknown' IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         },
         {
           "datasource": {
@@ -510,7 +658,7 @@
             "limit": 50
           },
           "table": "locations",
-          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, provider, hidden, quality_reason\nFROM locations\nWHERE source::text IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\n  AND (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude))\nORDER BY recorded_at, id;"
+          "rawSql": "SELECT recorded_at AS \"time\", id, latitude, longitude, accuracy, date,\n       source::text AS source, provider, hidden, quality_reason,\n       public.location_blacklist_matches(latitude, longitude) AS blacklisted\nFROM locations\nWHERE source::text IN (${source:sqlstring})\n  AND $__timeFilter(recorded_at)\nORDER BY recorded_at, id;"
         }
       ],
       "title": "Route",
