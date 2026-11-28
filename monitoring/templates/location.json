@@ -1386,6 +1386,54 @@
             "selected": false
           }
         ]
+      },
+      {
+        "name": "show_hidden",
+        "label": "Отображать скрытые",
+        "type": "custom",
+        "query": "Да : yes, Нет : no",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "text": "Да",
+          "value": "yes"
+        },
+        "options": [
+          {
+            "text": "Да",
+            "value": "yes",
+            "selected": true
+          },
+          {
+            "text": "Нет",
+            "value": "no",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "show_blocked",
+        "label": "Отображать заблокированные",
+        "type": "custom",
+        "query": "Да : yes, Нет : no",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "text": "Да",
+          "value": "yes"
+        },
+        "options": [
+          {
+            "text": "Да",
+            "value": "yes",
+            "selected": true
+          },
+          {
+            "text": "Нет",
+            "value": "no",
+            "selected": false
+          }
+        ]
       }
     ]
   },
