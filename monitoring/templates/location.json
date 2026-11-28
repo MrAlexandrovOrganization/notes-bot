@@ -34,7 +34,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "eftexe5xy5hxca"
       },
-      "description": "Маршруты видимых точек за выбранный период. Android — зелёный, iPhone — синий, Telegram — оранжевый, неизвестный источник — серый.",
+      "description": "Маршруты видимых точек и полупрозрачные маршруты с добавлением скрытых вне блэклиста. Наведите на маркер для информации о точке.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -62,7 +62,46 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "android": {
+                        "text": "Android",
+                        "color": "dark-green",
+                        "index": 0
+                      },
+                      "ios": {
+                        "text": "iPhone",
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "telegram-bot": {
+                        "text": "Telegram",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "unknown": {
+                        "text": "Неизвестный",
+                        "color": "gray",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 0,
@@ -94,7 +133,7 @@
                   "fixed": "dark-green"
                 },
                 "lineWidth": 2,
-                "opacity": 1,
+                "opacity": 0.5,
                 "size": {
                   "fixed": 5
                 }
@@ -102,12 +141,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "A"
+              "options": "E"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Android",
+            "name": "Android · со скрытыми вне блэклиста",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -120,7 +159,7 @@
                   "fixed": "blue"
                 },
                 "lineWidth": 2,
-                "opacity": 1,
+                "opacity": 0.5,
                 "size": {
                   "fixed": 5
                 }
@@ -128,12 +167,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "B"
+              "options": "F"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "iPhone",
+            "name": "iPhone · со скрытыми вне блэклиста",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -146,7 +185,7 @@
                   "fixed": "orange"
                 },
                 "lineWidth": 2,
-                "opacity": 1,
+                "opacity": 0.5,
                 "size": {
                   "fixed": 5
                 }
@@ -154,12 +193,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "C"
+              "options": "G"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Telegram",
+            "name": "Telegram · со скрытыми вне блэклиста",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -172,7 +211,7 @@
                   "fixed": "gray"
                 },
                 "lineWidth": 2,
-                "opacity": 1,
+                "opacity": 0.5,
                 "size": {
                   "fixed": 5
                 }
@@ -180,15 +219,167 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "D"
+              "options": "H"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Неизвестный",
+            "name": "Неизвестный · со скрытыми вне блэклиста",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "dark-green"
+                },
+                "lineWidth": 2,
+                "opacity": 0.5,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "E"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Android · со скрытыми вне блэклиста",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "blue"
+                },
+                "lineWidth": 2,
+                "opacity": 0.5,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "F"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "iPhone · со скрытыми вне блэклиста",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "orange"
+                },
+                "lineWidth": 2,
+                "opacity": 0.5,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "G"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Telegram · со скрытыми вне блэклиста",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "arrow": 1,
+              "style": {
+                "color": {
+                  "fixed": "gray"
+                },
+                "lineWidth": 2,
+                "opacity": 0.5,
+                "size": {
+                  "fixed": 5
+                }
+              }
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "H"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Неизвестный · со скрытыми вне блэклиста",
+            "opacity": 1,
+            "tooltip": true,
+            "type": "route"
+          },
+          {
+            "config": {
+              "showLegend": false,
+              "style": {
+                "color": {
+                  "field": "source",
+                  "fixed": "gray"
+                },
+                "opacity": 0.8,
+                "rotation": {
+                  "fixed": 0,
+                  "max": 360,
+                  "min": -360,
+                  "mode": "mod"
+                },
+                "size": {
+                  "fixed": 4,
+                  "min": 4,
+                  "max": 4
+                },
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 12,
+                  "offsetX": 0,
+                  "offsetY": 0,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "name": "Точки маршрута",
+            "tooltip": true,
+            "type": "markers",
+            "filterData": {
+              "id": "byRefId",
+              "options": "I"
+            }
           }
         ],
         "tooltip": {
@@ -247,6 +438,79 @@
           "rawQuery": true,
           "refId": "D",
           "rawSqlFile": "route-unknown.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "E",
+          "rawSqlFile": "route-android-with-hidden.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "F",
+          "rawSqlFile": "route-ios-with-hidden.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "G",
+          "rawSqlFile": "route-telegram-bot-with-hidden.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "H",
+          "rawSqlFile": "route-unknown-with-hidden.sql"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "eftexe5xy5hxca"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "I",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
+          "table": "locations",
+          "rawSqlFile": "route-point-details.sql"
         }
       ],
       "title": "Route",
