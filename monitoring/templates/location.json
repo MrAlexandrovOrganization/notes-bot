@@ -237,7 +237,7 @@
                   "fixed": "dark-green"
                 },
                 "lineWidth": 2,
-                "opacity": 0.5,
+                "opacity": 1,
                 "size": {
                   "fixed": 5
                 }
@@ -245,12 +245,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "E"
+              "options": "A"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Android · со скрытыми вне блэклиста",
+            "name": "Android",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -263,7 +263,7 @@
                   "fixed": "blue"
                 },
                 "lineWidth": 2,
-                "opacity": 0.5,
+                "opacity": 1,
                 "size": {
                   "fixed": 5
                 }
@@ -271,12 +271,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "F"
+              "options": "B"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "iPhone · со скрытыми вне блэклиста",
+            "name": "iPhone",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -289,7 +289,7 @@
                   "fixed": "orange"
                 },
                 "lineWidth": 2,
-                "opacity": 0.5,
+                "opacity": 1,
                 "size": {
                   "fixed": 5
                 }
@@ -297,12 +297,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "G"
+              "options": "C"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Telegram · со скрытыми вне блэклиста",
+            "name": "Telegram",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
@@ -315,7 +315,7 @@
                   "fixed": "gray"
                 },
                 "lineWidth": 2,
-                "opacity": 0.5,
+                "opacity": 1,
                 "size": {
                   "fixed": 5
                 }
@@ -323,12 +323,12 @@
             },
             "filterData": {
               "id": "byRefId",
-              "options": "H"
+              "options": "D"
             },
             "location": {
               "mode": "auto"
             },
-            "name": "Неизвестный · со скрытыми вне блэклиста",
+            "name": "Неизвестный",
             "opacity": 1,
             "tooltip": true,
             "type": "route"
