@@ -133,7 +133,7 @@
                   "fixed": "dark-green"
                 },
                 "lineWidth": 2,
-                "opacity": 0.25,
+                "opacity": 0.05,
                 "size": {
                   "fixed": 5
                 }
@@ -159,7 +159,7 @@
                   "fixed": "blue"
                 },
                 "lineWidth": 2,
-                "opacity": 0.25,
+                "opacity": 0.05,
                 "size": {
                   "fixed": 5
                 }
@@ -185,7 +185,7 @@
                   "fixed": "orange"
                 },
                 "lineWidth": 2,
-                "opacity": 0.25,
+                "opacity": 0.05,
                 "size": {
                   "fixed": 5
                 }
@@ -211,7 +211,7 @@
                   "fixed": "gray"
                 },
                 "lineWidth": 2,
-                "opacity": 0.25,
+                "opacity": 0.05,
                 "size": {
                   "fixed": 5
                 }

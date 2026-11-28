@@ -29,7 +29,7 @@ def build(name):
         if route_config is not None:
             layers, targets = [], []
             variants = (
-                ("JKLM", " · с заблокированными точками", 0.25,
+                ("JKLM", " · с заблокированными точками", 0.05,
                  "(${show_blocked:sqlstring} = 'yes' AND (NOT hidden OR public.location_blacklist_matches(latitude, longitude) OR ${show_hidden:sqlstring} = 'yes'))"),
                 ("EFGH", " · со скрытыми вне блэклиста", 0.5,
                  "(${show_hidden:sqlstring} = 'yes' AND (NOT hidden OR NOT public.location_blacklist_matches(latitude, longitude)))"),
